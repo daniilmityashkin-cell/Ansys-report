@@ -1,0 +1,3 @@
+https://edrmedeso.com/article/automating-ansys-mechanical-reports-a-guide-to-the-edrmedeso-report-generator/
+
+https://ansyshelp.ansys.com/public/account/secured?returnurl=/Views/Secured/corp/v242/en/wb_sim/ds_Reports_Customizing.html
