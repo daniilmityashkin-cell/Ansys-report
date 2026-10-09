@@ -93,6 +93,7 @@ class Report:
                            red=(str(v) == "Не выполнен"))
         if widths:
             t.autofit = False
+            for i, w in enumerate(widths): t.columns[i].width = Cm(w)
             for r in t.rows:
                 for i, w in enumerate(widths): r.cells[i].width = Cm(w)
         self.para(indent=0)
@@ -294,7 +295,7 @@ class Report:
         rows = [[b["belt"], f"{b['belt']} пояс", fmt(b[key]), fmt(limit), "Выполнен" if b[ok_key] else "Не выполнен"]
                 for b in (belts or self.c["belts"])]
         self.table(["№ п/п", "Конструктивный элемент резервуара", f"{crit_name}, МПа (максимум)", limit_label,
-                    "Оценка выполнения критерия прочности"], rows, caption=caption, widths=[1.3, 3.6, 3.9, 3.9, 3.6])
+                    "Оценка выполнения критерия прочности"], rows, caption=caption, widths=[1.3, 4.4, 3.8, 3.8, 3.9])
 
     def sec5_6(self):
         c, t = self.c, self.p.tank
