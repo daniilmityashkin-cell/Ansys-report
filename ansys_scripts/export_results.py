@@ -8,10 +8,10 @@
 #   log.txt              что получилось / ошибки
 # Скрипт временно добавляет результаты по поясам и сразу удаляет их. Проект после запуска не сохраняйте.
 import os, io, re
+import System
 
 out = os.path.join(os.environ["TEMP"], "ansys_report_out")
-if not os.path.isdir(out):
-    os.makedirs(out)
+System.IO.Directory.CreateDirectory(out)
 log = []
 
 def write(name, lines):
