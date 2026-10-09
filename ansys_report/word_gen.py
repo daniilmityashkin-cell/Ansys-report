@@ -113,7 +113,7 @@ class Report:
         trPr = row._tr.get_or_add_trPr()
         el = OxmlElement("w:tblHeader"); el.set(qn("w:val"), "true"); trPr.append(el)
 
-    def figure(self, key: str, caption: str, width_cm=15):
+    def figure(self, key: str, caption: str, width_cm=12.5):
         """Вставляет картинку из images_dir (файл <key>.png|jpg); иначе — заметная заглушка."""
         self.fig += 1
         img = self._find_image(key)
