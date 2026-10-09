@@ -24,3 +24,12 @@ def test_excel_and_word_build(tmp_path):
     assert wb.sheetnames == ["Т-001 полный", "Т-001 пустой", "Проверка"]
     docx_path, missing = build_report(p, tmp_path / "a.docx")
     assert docx_path.stat().st_size > 10_000 and "fig01_general" in missing
+
+
+def test_real_ansys_example(tmp_path):
+    """Данные, выгруженные скриптом export_results.py из реального проекта Ansys."""
+    p = load_project(Path(__file__).parent.parent / "examples/T001_ansys/project.yaml")
+    c = calc_all(p)
+    assert len(c["belts"]) == 12 and c["belts_empty"] and c["strength_ok"]
+    assert [s["k"] for s in c["stability"][:3]] == [11.6, 11.6, 10.9] and c["stability_ok"]
+    build_report(p, tmp_path / "r.docx")

@@ -28,17 +28,17 @@ def calc_all(p: Project) -> dict:
     m, t, L = p.material, p.tank, p.loads
     sy = m["yield_mpa"]
     allow = sy / 1.5                      # [σ] = σ0,2 / 1,5
-    belts = []
-    for r in p.results:
-        i = r["belt"]
-        belts.append({
-            "belt": i, "thickness": t["belts_thickness"][i - 1],
+    def evaluate(results):
+        return [{
+            "belt": r["belt"], "thickness": t["belts_thickness"][r["belt"] - 1],
             "fiber": r["fiber"], "equivalent": r["equivalent"], "membrane": r["membrane"],
             "ok_fiber": r["fiber"] <= 3 * allow,
             "ok_eq": r["equivalent"] <= 3 * allow,
             "ok_mem": r["membrane"] <= allow,
-        })
-    stab = p.raw["results"]["stability"]
+        } for r in results]
+    belts = evaluate(p.results)
+    belts_empty = evaluate(p.results_empty) if p.results_empty else None
+    stab = p.stability
     kmin = min(s["k"] for s in stab)
     step = t["belt_height"]
     return {
@@ -51,9 +51,10 @@ def calc_all(p: Project) -> dict:
         "wall_ins_n": L["wall_insulation_kg"] * 10, "roof_ins_n": L["roof_insulation_kg"] * 10,
         "limits_dev": [step * k / 200 for k in range(1, len(belts) + 1)],
         "heights": [step * k for k in range(1, len(belts) + 1)],
-        "belts": belts,
+        "belts": belts, "belts_empty": belts_empty,
         "strength_ok": all(b["ok_fiber"] and b["ok_eq"] and b["ok_mem"] for b in belts),
         "kmin": kmin, "stability_ok": kmin >= p.raw["results"]["required_k"],
+        "stability": stab,
         "max_eq": max(b["equivalent"] for b in belts),
         "max_mem": max(b["membrane"] for b in belts),
         "max_fiber": max(b["fiber"] for b in belts),

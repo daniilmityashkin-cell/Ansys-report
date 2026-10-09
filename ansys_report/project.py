@@ -24,6 +24,8 @@ class Project:
     survey_full: list[list[float]]    # [belt][point], мм
     survey_empty: list[list[float]]
     results: list[dict]               # по поясам: belt, fiber, equivalent, membrane
+    results_empty: list[dict] | None = None   # то же для пустого резервуара (необязательно)
+    stability: list[dict] | None = None       # [{case, k}] — из yaml или stability.csv
 
     @property
     def report(self): return self.raw["report"]
@@ -65,11 +67,32 @@ def load_project(yaml_path: str | Path) -> Project:
     s = raw["survey"]
     full = _load_survey(root / s["full"], n, s["points_per_belt"])
     empty = _load_survey(root / s["empty"], n, s["points_per_belt"])
-    res = []
-    for r in _read_csv(root / raw["results"]["full"]):
-        res.append({"belt": int(r["belt"]), "fiber": float(r["fiber"].replace(",", ".")),
-                    "equivalent": float(r["equivalent"].replace(",", ".")),
-                    "membrane": float(r["membrane"].replace(",", "."))})
+    res = _load_belts(root / raw["results"]["full"], n)
+    res_empty = _load_belts(root / raw["results"]["empty"], n) if raw["results"].get("empty") else None
+    return Project(root, raw, full, empty, res, res_empty, _load_stability(root, raw["results"]))
+
+
+def _num(x) -> float:
+    return float(str(x).replace(",", "."))
+
+
+def _load_belts(path: Path, n: int) -> list[dict]:
+    res = [{"belt": int(r["belt"]), "fiber": _num(r["fiber"]), "equivalent": _num(r["equivalent"]),
+            "membrane": _num(r["membrane"])} for r in _read_csv(path)]
     if len(res) != n:
-        raise ProjectError(f"results: {len(res)} поясов, а в модели {n}")
-    return Project(root, raw, full, empty, res)
+        raise ProjectError(f"{path.name}: {len(res)} поясов, а в модели {n}")
+    return res
+
+
+def _load_stability(root: Path, r: dict) -> list[dict]:
+    """Либо список в yaml (stability), либо stability.csv из export_results.py:
+    stability_csv + stability_labels {"Eigenvalue Buckling": "Ветер Y"} + stability_modes (сколько мод брать)."""
+    if r.get("stability_csv"):
+        labels, modes = r.get("stability_labels", {}), int(r.get("stability_modes", 2))
+        out = []
+        for row in _read_csv(root / r["stability_csv"]):
+            if int(row["mode"]) <= modes:
+                out.append({"case": f"{labels.get(row['analysis'], row['analysis'])}, мода {row['mode']}",
+                            "k": round(_num(row["k"]), 1)})
+        return out
+    return list(r.get("stability", []))
