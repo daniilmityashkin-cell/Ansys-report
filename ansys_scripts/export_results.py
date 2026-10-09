@@ -1,29 +1,85 @@
 # -*- coding: utf-8 -*-
-# Скрипт для Ansys Mechanical (IronPython). НЕ ПРОВЕРЕН на реальной модели — запускать и править по ошибкам.
-# Запуск: Mechanical → вкладка Automation → Scripting → открыть файл → Run.
-# Что делает: для каждого результата, у которого Scoping = Named Selection вида "belt_1".."belt_12",
-# берёт максимум и пишет results_full.csv (belt,fiber,equivalent,membrane); сохраняет картинку каждого результата.
-# Подготовка модели: в Named Selections создать belt_1..belt_N; для каждого пояса добавить результаты
-# Equivalent Stress (-> equivalent), Maximum Principal Stress поверхностный (-> fiber) и membrane (-> membrane),
-# в Name результата дописать суффикс _eq / _fiber / _mem, например "belt_3_eq".
-import os, re
-out = r"C:\ansys_report_out"
+# Выгрузка результатов из Ansys Mechanical 2026 R1 (IronPython) для генератора отчётов.
+# Запуск: Automation -> Scripting -> вкладка "+" -> вставить -> Run.
+# Результат в папке %TEMP%\ansys_report_out:
+#   <анализ>_belts.csv   belt,fiber,equivalent,membrane  (МПа, максимум по поясам p1..p12)
+#   stability.csv        analysis,mode,k                 (коэффициенты запаса устойчивости)
+#   *.png                картинки существующих результатов
+#   log.txt              что получилось / ошибки
+# Скрипт временно добавляет результаты по поясам и сразу удаляет их. Проект после запуска не сохраняйте.
+import os, io, re
+
+out = os.path.join(os.environ["TEMP"], "ansys_report_out")
 if not os.path.isdir(out):
     os.makedirs(out)
-sol = ExtAPI.DataModel.Project.Model.Analyses[0].Solution
-sol.EvaluateAllResults()
-data = {}
-for r in sol.Children:
-    m = re.match(r"belt_(\d+)_(eq|fiber|mem)$", r.Name)
-    if not m:
-        continue
-    belt, kind = int(m.group(1)), m.group(2)
-    data.setdefault(belt, {})[kind] = r.Maximum.Value / 1e6   # Па -> МПа (проверить единицы модели!)
-    r.Activate()
-    Graphics.ExportImage(os.path.join(out, "%s.png" % r.Name))
-with open(os.path.join(out, "results_full.csv"), "w") as f:
-    f.write("belt,fiber,equivalent,membrane\n")
-    for b in sorted(data):
-        d = data[b]
-        f.write("%d,%.1f,%.1f,%.1f\n" % (b, d.get("fiber", 0), d.get("eq", 0), d.get("mem", 0)))
+log = []
+
+def write(name, lines):
+    f = io.open(os.path.join(out, name), "w", encoding="utf-8")
+    f.write(u"\n".join(lines))
+    f.close()
+
+def mpa(q):
+    v = q.Value
+    if str(q.Unit) == "Pa":
+        v = v / 1e6
+    return v
+
+model = ExtAPI.DataModel.Project.Model
+belts = {}
+for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
+    m = re.match(r"^p\s*(\d+)$", b.Name)
+    if m:
+        belts[int(m.group(1))] = b.GetGeoBody().Id
+log.append(u"Найдено поясов: %d" % len(belts))
+
+stab = [u"analysis,mode,k"]
+for a in model.Analyses:
+    sol = a.Solution
+    aname = a.Name.replace(" ", "_")
+    # 1. картинки существующих результатов
+    for r in sol.Children:
+        if r.Name.startswith("Solution Information"):
+            continue
+        try:
+            r.Activate()
+            Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
+        except Exception as e:
+            log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
+    # 2. устойчивость: коэффициент запаса = ReportedFrequency у результатов Eigenvalue Buckling
+    if a.Name.startswith("Eigenvalue"):
+        for r in sol.Children:
+            if r.GetType().Name == "TotalDeformation":
+                stab.append(u"%s,%d,%.4f" % (a.Name, r.Mode, r.ReportedFrequency.Value))
+    # 3. прочность: максимумы по поясам
+    elif a.Name.startswith("Static"):
+        created = []
+        rows = {}
+        try:
+            for i in sorted(belts):
+                sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
+                sel.Ids = [belts[i]]
+                eq = sol.AddEquivalentStress()
+                eq.Location = sel
+                fb = sol.AddMaximumPrincipalStress()
+                fb.Location = sel
+                mem = sol.AddMaximumPrincipalStress()
+                mem.Location = sel
+                mem.Position = type(mem.Position).Middle
+                created.append((i, eq, fb, mem))
+            sol.EvaluateAllResults()
+            lines = [u"belt,fiber,equivalent,membrane"]
+            for i, eq, fb, mem in created:
+                lines.append(u"%d,%.2f,%.2f,%.2f" % (i, mpa(fb.Maximum), mpa(eq.Maximum), mpa(mem.Maximum)))
+            write("%s_belts.csv" % aname, lines)
+            log.append(u"%s: выгружено %d поясов" % (a.Name, len(created)))
+        except Exception as e:
+            log.append(u"%s: ОШИБКА %s" % (a.Name, e))
+        for t in created:
+            for r in t[1:]:
+                r.Delete()
+
+write("stability.csv", stab)
+write("log.txt", log)
+print(u"\n".join(log))
 print("Готово: " + out)
