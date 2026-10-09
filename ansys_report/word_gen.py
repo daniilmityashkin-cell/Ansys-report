@@ -250,9 +250,9 @@ class Report:
         self.figure("fig04_loads", "Нагрузки")
         self.figure("fig05_hydrostatic", "Гидростатическое давление")
 
-    def strength_table(self, caption, key, crit_name, limit, ok_key, limit_label):
+    def strength_table(self, caption, key, crit_name, limit, ok_key, limit_label, belts=None):
         rows = [[b["belt"], f"{b['belt']} пояс", fmt(b[key]), fmt(limit), "Выполнен" if b[ok_key] else "Не выполнен"]
-                for b in self.c["belts"]]
+                for b in (belts or self.c["belts"])]
         self.table(["№ п/п", "Конструктивный элемент резервуара", f"{crit_name}, МПа (максимум)", limit_label,
                     "Оценка выполнения критерия прочности"], rows, caption=caption)
 
@@ -280,29 +280,36 @@ class Report:
         self.figure("fig11_empty_mem", "Мембранные (срединные) напряжения в стенке")
         self.figure("fig12_empty_fiber", "Фибровые (поверхностные) напряжения в стенке")
         self.figure("fig13_empty_deform", "Деформации стенки")
+        be = c["belts_empty"]
+        if be:
+            for cap, key, lim, ok, lab in (
+                    ("Первые главные поверхностные (фибровые) напряжения, пустой резервуар", "fiber", c["allow3"], "ok_fiber", "Допустимое значение напряжений, 3[σ], МПа"),
+                    ("Эквивалентные по Мизесу поверхностные напряжения, пустой резервуар", "equivalent", c["allow3"], "ok_eq", "Допустимое значение напряжений, 3[σ], МПа"),
+                    ("Первые главные срединные (мембранные) напряжения, пустой резервуар", "membrane", c["allow"], "ok_mem", "Допустимое значение напряжений, [σ], МПа")):
+                self.strength_table(cap, key, "Максимальное расчетное значение", lim, ok, lab, belts=be)
         self.h1("6 Результаты расчета РВС на устойчивость")
         self.h1("6.1 Результаты расчета РВС на устойчивость искривленного резервуара без гидростатического давления и с ветровой нагрузкой")
-        for i, s in enumerate(self.p.raw["results"]["stability"], 1):
+        for i, s in enumerate(self.c["stability"], 1):
             self.figure(f"fig_stab{i}", f"Коэффициент запаса устойчивости Fкр/F = k = {fmt(s['k'])}, {s['case'].lower()}")
         rows = [[s["case"], fmt(s["k"]), "Выполнен" if s["k"] >= self.p.raw["results"]["required_k"] else "Не выполнен"]
-                for s in self.p.raw["results"]["stability"]]
+                for s in self.c["stability"]]
         self.table(["Расчетный случай", "Коэффициент запаса k", "Оценка"], rows, caption="Коэффициенты запаса устойчивости")
 
     def sec8(self):
         c, t, res = self.c, self.p.tank, self.p.raw["results"]
         self.h1("8 Выводы и рекомендации")
         s_ok = "прочность стенки обеспечена" if c["strength_ok"] else "прочность стенки НЕ обеспечена: критерии выполнены не по всем поясам"
-        i = res["ideal"]
+        i = res.get("ideal")
         items = [
             f"Расчеты прочности стенки {t['name']} при наливе продукта плотностью {t['product_density']} кг/м3 до расчетной высоты {fmt(t['fill_level']/1000)} м "
             f"с учетом фактической формы стенки показали, что {s_ok}.",
-            f"Максимальные эквивалентные напряжения в стенке идеального РВС составили {i['equivalent']} МПа, мембранные – {i['membrane']} МПа, фибровые (меридиональные) – {i['fiber']} МПа.",
+            (f"Максимальные эквивалентные напряжения в стенке идеального РВС составили {i['equivalent']} МПа, мембранные – {i['membrane']} МПа, фибровые (меридиональные) – {i['fiber']} МПа." if i else None),
             f"Максимальные эквивалентные напряжения в стенке РВС с отклонениями от идеальной формы составили {fmt(c['max_eq'])} МПа, "
             f"мембранные – {fmt(c['max_mem'])} МПа, фибровые – {fmt(c['max_fiber'])} МПа (допускаемые: {fmt(c['allow'])} МПа для мембранных, {fmt(c['allow3'],0)} МПа для фибровых и эквивалентных).",
             f"Минимальный запас устойчивости стенки составил k = {fmt(c['kmin'])} (требуется не менее {fmt(res['required_k'])}) – запас устойчивости " + ("достаточный." if c["stability_ok"] else "НЕДОСТАТОЧНЫЙ."),
             f"Допустимый уровень налива продукта по условию прочности составил {fmt(res['max_fill_m'])} м." if c["strength_ok"] else
             "Для продолжения эксплуатации требуется снижение уровня налива или вывод резервуара в ремонт; допустимый уровень налива следует определить повторным расчетом."]
-        for k, x in enumerate(items, 1): self.body(f"{k}. {x}")
+        for k, x in enumerate([x for x in items if x], 1): self.body(f"{k}. {x}")
 
     def appendices(self):
         self.h1("Приложение 1 – Перечень использованной нормативной технической и методической документации", new_page=True)
