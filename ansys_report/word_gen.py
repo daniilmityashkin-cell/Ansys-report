@@ -97,6 +97,9 @@ class Report:
 
     def _find_image(self, key):
         folder = self.p.root / self.p.raw.get("images_dir", "images")
+        mapped = (self.p.raw.get("images") or {}).get(key)   # явное соответствие рисунок -> файл из Ansys
+        if mapped and (folder / mapped).exists():
+            return folder / mapped
         for ext in (".png", ".jpg", ".jpeg"):
             f = folder / f"{key}{ext}"
             if f.exists(): return f

@@ -83,3 +83,19 @@ results:
 
 # папка с картинками из Ansys (необязательно); имена файлов см. README
 images_dir: images
+
+# Соответствие рисунков отчёта файлам из export_results.py (<анализ>_<результат>.png).
+# Лишние строки можно удалять, недостающие рисунки заменяются красной заглушкой.
+images:
+  fig06_eq_stress: Static_Structural_Equivalent_Stress.png
+  fig07_membrane: Static_Structural_Membrane_Stress.png
+  fig08_fiber: Static_Structural_Maximum_Principal_Stress.png
+  fig09_deform: Static_Structural_Total_Deformation.png
+  fig10_empty_eq: Static_Structural_2_Equivalent_Stress.png
+  fig11_empty_mem: Static_Structural_2_Membrane_Stress.png
+  fig12_empty_fiber: Static_Structural_2_Bending_Stress.png
+  fig13_empty_deform: Static_Structural_2_Total_Deformation.png
+  fig_stab1: Eigenvalue_Buckling_Total_Deformation.png
+  fig_stab2: Eigenvalue_Buckling_Total_Deformation_2.png
+  fig_stab3: Eigenvalue_Buckling_2_Total_Deformation.png
+  fig_stab4: Eigenvalue_Buckling_2_Total_Deformation_2.png
