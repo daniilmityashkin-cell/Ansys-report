@@ -34,6 +34,7 @@ for (dim, name), n in groups.items():
     p(u"  %s | %s | %d шт." % (dim, name, n))
 
 p(u"\n== Не-балочные тела подробно (первые 60) ==")
+# тела p1..p12, okrayka, dno, krovlya, k1..k3
 k = 0
 for b in bodies:
     if str(safe(lambda: b.DimensionType)) == "Line" or b.Name.startswith("Beam"):
@@ -50,6 +51,7 @@ for ns in safe(lambda: model.NamedSelections.Children, []):
     p(u"  %s" % ns.Name)
 
 p(u"\n== Анализы ==")
+shown = []
 for a in model.Analyses:
     p(u"\n-- %s (%s)" % (a.Name, safe(lambda: a.AnalysisType)))
     for c in a.Children:
@@ -58,6 +60,10 @@ for a in model.Analyses:
             for r in c.Children:
                 mx = safe(lambda: r.Maximum, u"-")
                 p(u"        результат: %s | %s | max=%s" % (r.Name, safe(lambda: r.GetType().Name), mx))
+                if not shown:
+                    shown.append(1)
+                    p(u"        свойства первого результата: %s" % u", ".join(
+                        [x for x in dir(r) if not x.startswith("_")]))
 
 with io.open(out, "w", encoding="utf-8") as f:
     f.write(u"\n".join(L))
