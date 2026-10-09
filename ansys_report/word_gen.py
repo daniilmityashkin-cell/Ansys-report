@@ -24,24 +24,54 @@ class Report:
         self.tab = 0
         self.missing: list[str] = []
 
-    # ---------- примитивы ----------
-    def para(self, text="", style="Normal", bold=False, align=None, italic=False, size=None, indent=True):
+    # ---------- примитивы (оформление как в образце ТО-019-26: TNR 12, по ширине, отступ 1 см) ----------
+    FONT = "Times New Roman"
+
+    @classmethod
+    def _run(cls, par, text, size=12, bold=False, italic=False):
+        r = par.add_run(text)
+        r.font.name = cls.FONT
+        r._element.rPr.rFonts.set(qn("w:eastAsia"), cls.FONT)
+        r.font.size = Pt(size); r.bold = bold; r.italic = italic
+        r.font.color.rgb = RGBColor(0, 0, 0)
+        return r
+
+    def para(self, text="", style="Normal", bold=False, align=WD_ALIGN_PARAGRAPH.JUSTIFY, italic=False,
+             size=12, indent=1.0, keep_next=False, space_before=0, space_after=0):
         par = self.d.add_paragraph(style=style)
         if text:
-            r = par.add_run(text); r.bold = bold; r.italic = italic
-            if size: r.font.size = Pt(size)
-        if align is not None: par.alignment = align
+            self._run(par, text, size, bold, italic)
+        pf = par.paragraph_format
+        par.alignment = align
+        pf.first_line_indent = Cm(indent) if indent else None
+        pf.space_before, pf.space_after = Pt(space_before), Pt(space_after)
+        pf.line_spacing = 1.0
+        pf.keep_with_next = keep_next
         return par
 
     def h1(self, text, new_page=False):
-        h = self.d.add_paragraph(text, style="Heading 1")
+        """Заголовок раздела: полужирный 12 пт, абзацный отступ, отбивка 12/6 пт."""
+        h = self.d.add_paragraph(style="Heading 1")
+        self._run(h, text, 12, bold=True)
+        h.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        h.paragraph_format.first_line_indent = Cm(1.0)
+        h.paragraph_format.space_before, h.paragraph_format.space_after = Pt(12), Pt(6)
+        h.paragraph_format.keep_with_next = True
         h.paragraph_format.page_break_before = new_page
         return h
 
-    def body(self, text): return self.d.add_paragraph(text, style="Normal")
+    def h2(self, text):
+        """Подраздел (1.1, 2.1 …): полужирный 12 пт по ширине."""
+        return self.para(text, bold=True, keep_next=True, space_before=6, space_after=3)
+
+    def body(self, text): return self.para(text)
 
     def bullets(self, items):
-        for it in items: self.d.add_paragraph("- " + it, style="Normal")
+        for it in items:
+            self.para("- " + it, indent=1.25)
+
+    def caption(self, text):
+        return self.para(text, align=CENTER, indent=0, space_before=3, space_after=9)
 
     def page_break(self): self.d.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
@@ -49,8 +79,8 @@ class Report:
               fills: dict | None = None):
         if caption:
             self.tab += 1
-            cap = self.para(f"Таблица {self.tab} – {caption}", style="Normal", align=WD_ALIGN_PARAGRAPH.LEFT)
-            cap.paragraph_format.keep_with_next = True
+            self.para(f"Таблица {self.tab} – {caption}", align=WD_ALIGN_PARAGRAPH.LEFT, indent=0,
+                      keep_next=True, space_before=6, space_after=3)
         t = self.d.add_table(rows=1, cols=len(header))
         t.style = "Table Grid"; t.alignment = WD_TABLE_ALIGNMENT.CENTER
         for i, h in enumerate(header):
@@ -62,9 +92,10 @@ class Report:
                 self._cell(cells[i], str(v), align=CENTER if i else WD_ALIGN_PARAGRAPH.LEFT,
                            red=(str(v) == "Не выполнен"))
         if widths:
+            t.autofit = False
             for r in t.rows:
                 for i, w in enumerate(widths): r.cells[i].width = Cm(w)
-        self.d.add_paragraph()
+        self.para(indent=0)
         return t
 
     @staticmethod
@@ -73,7 +104,7 @@ class Report:
         par = cell.paragraphs[0]
         par.paragraph_format.space_after = Pt(0); par.paragraph_format.first_line_indent = Cm(0)
         if align is not None: par.alignment = align
-        r = par.add_run(text); r.bold = bold; r.font.size = Pt(11)
+        r = Report._run(par, text, 12, bold)
         if red: r.font.color.rgb = RGBColor(0xC0, 0, 0)
 
     @staticmethod
@@ -86,14 +117,14 @@ class Report:
         self.fig += 1
         img = self._find_image(key)
         if img:
-            self.d.add_paragraph(style="Normal").add_run().add_picture(str(img), width=Cm(width_cm))
-            self.d.paragraphs[-1].alignment = CENTER
+            pp = self.para(indent=0, align=CENTER, keep_next=True, space_before=6)
+            pp.add_run().add_picture(str(img), width=Cm(width_cm))
         else:
             self.missing.append(key)
             par = self.para(f"[Рисунок не найден: {key}.png — положите экспорт из Ansys в папку images]",
-                            align=CENTER, italic=True)
+                            align=CENTER, italic=True, indent=0)
             par.runs[0].font.color.rgb = RGBColor(0xC0, 0, 0)
-        self.para(f"Рисунок {self.fig}. {caption}", align=CENTER)
+        self.caption(f"Рисунок {self.fig}. {caption}")
 
     def _find_image(self, key):
         folder = self.p.root / self.p.raw.get("images_dir", "images")
@@ -106,7 +137,7 @@ class Report:
         return None
 
     def math(self, text):
-        par = self.para(text, align=CENTER, italic=True); return par
+        return self.para(text, align=CENTER, italic=True, indent=0, space_before=3, space_after=3)
 
     # ---------- части отчёта ----------
     def header_footer(self):
@@ -126,26 +157,31 @@ class Report:
         for x in runs[1:]: x.text = ""
 
     def title_page(self):
+        """Титульный лист как в образце: всё 14 пт, по центру; заголовок полужирный."""
         r, t = self.p.report, self.p.tank
-        for _ in range(5): self.d.add_paragraph()
-        self.para(f"ТЕХНИЧЕСКИЙ ОТЧЕТ №{r['number']}", bold=True, align=CENTER, size=14)
-        self.para("по результатам расчета методом конечных элементов", align=CENTER)
-        self.d.add_paragraph()
-        self.para(r["title"], bold=True, align=CENTER)
-        for _ in range(6): self.d.add_paragraph()
+        C = dict(align=CENTER, indent=0, size=14)
+        for _ in range(6): self.para(**C)
+        self.para(f"ТЕХНИЧЕСКИЙ ОТЧЕТ №{r['number']}", bold=True, **C)
+        self.para("по результатам расчета методом конечных элементов", **C)
+        self.para(**C)
+        self.para(r["title"], bold=True, **C)
+        for _ in range(9): self.para(**C)
         tb = self.d.add_table(rows=1, cols=2)
-        tb.rows[0].cells[0].text = "Выполнил:"
-        c = tb.rows[0].cells[1]; c.text = ""
-        c.paragraphs[0].text = r["executor_position"]
-        c.add_paragraph(f"__________ / {r['executor_name']}/")
-        c.add_paragraph(f"«___» ___________ {r['year']} г.")
-        for par in c.paragraphs: par.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        for _ in range(4): self.d.add_paragraph()
-        self.para(f"{r['year']} г.", align=CENTER)
+        left, right = tb.rows[0].cells
+        left.text = ""; right.text = ""
+        self._run(left.paragraphs[0], "Выполнил:", 14)
+        lines = [r["executor_position"], f"__________ / {r['executor_name']}/", f"«___» ___________ {r['year']} г."]
+        right.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        self._run(right.paragraphs[0], lines[0], 14)
+        for ln in lines[1:]:
+            pp = right.add_paragraph(); pp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            self._run(pp, ln, 14)
+        for _ in range(8): self.para(**C)
+        self.para(f"{r['year']} г.", **C)
         self.page_break()
 
     def toc(self):
-        self.para("СОДЕРЖАНИЕ", bold=True, align=CENTER)
+        self.para("СОДЕРЖАНИЕ", bold=True, align=CENTER, indent=0, size=14, space_after=6)
         par = self.d.add_paragraph()
         run = par.add_run()
         for typ, txt in (("begin", None), (None, 'TOC \\o "1-2" \\h \\z \\u'), ("separate", None)):
@@ -214,7 +250,8 @@ class Report:
         self.table(["Сталь", "Плотность, кг/м3", "Модуль Юнга, МПа", "Коэффициент Пуассона", "Предел прочности, МПа",
                     "Предел текучести, МПа", "Для толщин стенок, мм"],
                    [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m["thickness_range"]]],
-                   caption="Механические характеристики используемых материалов")
+                   caption="Механические характеристики используемых материалов",
+                   widths=[1.6, 2.3, 2.6, 2.7, 2.6, 2.6, 2.4])
         sy = m["yield_mpa"]
         self.body("Согласно ГОСТ 31385-2023 и СП 16.13330.2020 расчетные сопротивления:")
         self.math(f"1-й пояс: R = {sy}·0,7·1,0 / (1,05·1,05) = {fmt(c['R1'],2)} МПа")
@@ -257,7 +294,7 @@ class Report:
         rows = [[b["belt"], f"{b['belt']} пояс", fmt(b[key]), fmt(limit), "Выполнен" if b[ok_key] else "Не выполнен"]
                 for b in (belts or self.c["belts"])]
         self.table(["№ п/п", "Конструктивный элемент резервуара", f"{crit_name}, МПа (максимум)", limit_label,
-                    "Оценка выполнения критерия прочности"], rows, caption=caption)
+                    "Оценка выполнения критерия прочности"], rows, caption=caption, widths=[1.3, 3.6, 3.9, 3.9, 3.6])
 
     def sec5_6(self):
         c, t = self.c, self.p.tank
