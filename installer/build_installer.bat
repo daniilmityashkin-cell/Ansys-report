@@ -3,6 +3,7 @@ rem Builds AnsysReport.exe (PyInstaller) and, if Inno Setup is installed, the in
 rem Run from the repository root:  installer\build_installer.bat
 setlocal
 cd /d "%~dp0\.."
+if /i "%1"=="iss" goto :iss
 python -m pip install -r requirements.txt pyinstaller || goto :err
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
@@ -14,8 +15,10 @@ python -m PyInstaller --noconfirm --clean --windowed --name AnsysReport ^
   launcher.py || goto :err
 echo.
 echo Program folder: dist\AnsysReport  (run dist\AnsysReport\AnsysReport.exe)
+:iss
 set ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
 if not exist "%ISCC%" set ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe
+if not exist "%ISCC%" set ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe
 if exist "%ISCC%" (
   "%ISCC%" installer\AnsysReport.iss || goto :err
   echo Installer: installer\Output\AnsysReport_Setup.exe
