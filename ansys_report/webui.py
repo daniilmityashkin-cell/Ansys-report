@@ -20,6 +20,21 @@ def _asset(name: str) -> bytes:
     return (WEB / name).read_bytes()
 
 
+def app_log_path() -> Path:
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "AnsysReport"
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "app.log"
+
+
+def app_log(text: str):
+    """Журнал программы в файл (в окне без консоли иначе ошибки не видно): %LOCALAPPDATA%\\AnsysReport\\app.log"""
+    try:
+        with open(app_log_path(), "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text + "\n")
+    except Exception:
+        pass
+
+
 class Job:
     """Состояние текущей сборки отчёта (одна за раз)."""
     def __init__(self):
@@ -36,6 +51,7 @@ class Job:
     def log(self, msg: str):
         with self.lock:
             self.lines.append(str(msg))
+        app_log(str(msg))
 
     def snapshot(self, since: int) -> dict:
         with self.lock:
@@ -143,6 +159,7 @@ def make_handler(job: Job, state: dict):
 
 
 def _run(job: Job, d: dict, build):
+    app_log(f"Старт сборки: проект={d.get('project')} папка={d.get('out')} reuse={d.get('reuse')} solve={d.get('solve')}")
     try:
         anketa = d["anketa"]
         empty = [k for k in ("number", "executor_name", "site") if not str(anketa.get(k, "")).strip()]
@@ -154,8 +171,10 @@ def _run(job: Job, d: dict, build):
         job.log("ГОТОВО.")
     except PermissionError:
         job.error = "Файл открыт в Word или Excel. Закройте его и повторите."
-    except Exception as e:  # noqa: BLE001
-        job.error = f"{type(e).__name__}: {e}"
+    except BaseException as e:  # noqa: BLE001
+        import traceback
+        app_log("ОШИБКА:\n" + traceback.format_exc())
+        job.error = f"{type(e).__name__}: {e}  (подробности: {app_log_path()})"
     finally:
         job.done = True
         job.running = False
@@ -174,6 +193,7 @@ def _browser_cmd(url: str) -> list[str] | None:
 
 
 def main(open_window: bool = True, port: int = 0) -> int:
+    app_log("=== запуск программы ===")
     job, state = Job(), {"last_ping": time.time()}
     srv = ThreadingHTTPServer(("127.0.0.1", port), make_handler(job, state))
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
