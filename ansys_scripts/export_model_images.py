@@ -5,7 +5,7 @@
 import os, io
 import System
 
-out = os.path.join(os.environ["TEMP"], "ansys_report_out")
+out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 log = []
 model = ExtAPI.DataModel.Project.Model

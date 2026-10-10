@@ -9,10 +9,13 @@ from .word_gen import build_report
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "apdl"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "apdl"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     a = ap.parse_args(argv)
+    if a.command == "wizard":
+        from .wizard import main as wiz_main
+        return wiz_main()
     if a.command == "gui":
         from .gui import main as gui_main
         return gui_main()

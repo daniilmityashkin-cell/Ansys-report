@@ -1,0 +1,112 @@
+"""Главное окно продукта: выбрать проект Ansys → заполнить анкету → «Собрать отчёт».
+Программа сама запускает Mechanical в фоне, выгружает данные и собирает Word + Excel."""
+from __future__ import annotations
+import json
+import os
+import sys
+import threading
+from datetime import date
+from pathlib import Path
+
+FIELDS = [  # ключ шаблона, подпись, значение по умолчанию
+    ("number", "Номер отчёта", "ТО-001-26"),
+    ("year", "Год", str(date.today().year)),
+    ("title", "Название отчёта", "Резервуара РВС на прочность и устойчивость"),
+    ("tank_name", "Тип/название резервуара", "РВС-"),
+    ("tag", "Позиция (номер)", "Т-001"),
+    ("site", "Площадка / заказчик", ""),
+    ("site_number", "Номер на площадке", ""),
+    ("purpose", "Назначение", "хранения технологической воды"),
+    ("product", "Продукт", "Техническая вода"),
+    ("hazard_class", "Класс опасности", "КС-2а"),
+    ("roof_radius", "Радиус крыши, мм", "34200"),
+    ("kmd", "Документация (КМД)", ""),
+    ("executor_position", "Должность исполнителя", ""),
+    ("executor_name", "Исполнитель (Ф.И.О.)", ""),
+    ("contractor", "Сведения об исполнителе", ""),
+    ("phone", "Телефон", ""),
+]
+SETTINGS = Path.home() / ".ansys_report_settings.json"
+
+
+def _load():
+    try:
+        return json.loads(SETTINGS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False):
+    """Полный цикл: Ansys → выгрузка → project.yaml → Word/Excel. Возвращает список файлов."""
+    from .ansys_connect import extract, make_project_folder
+    from .gui import build_all
+    data = Path(out_dir) / "_ansys_data"
+    if not (reuse_data and (data / "model_data.json").exists()):
+        extract(project_file, data, log)
+    yaml_path = make_project_folder(data, anketa)
+    log("Собираю отчёт…")
+    return build_all(yaml_path, out_dir, log)
+
+
+def main() -> int:
+    import tkinter as tk
+    from tkinter import filedialog, scrolledtext
+
+    st = _load()
+    root = tk.Tk()
+    root.title("Автоматизация отчётов Ansys")
+    root.geometry("820x760")
+    proj = tk.StringVar(value=st.get("project", ""))
+    outd = tk.StringVar(value=st.get("out", str(Path.home() / "Documents" / "AnsysReport")))
+    reuse = tk.BooleanVar(value=False)
+    vars_ = {k: tk.StringVar(value=st.get("anketa", {}).get(k, d)) for k, _, d in FIELDS}
+
+    tk.Label(root, text="1. Проект Ansys (.wbpj / .wbpz)", font=("", 10, "bold")).grid(row=0, column=0, sticky="w", padx=8, pady=(8, 0))
+    tk.Entry(root, textvariable=proj, width=80).grid(row=1, column=0, padx=8, sticky="we")
+    tk.Button(root, text="Выбрать…", command=lambda: proj.set(filedialog.askopenfilename(
+        filetypes=[("Проект Ansys", "*.wbpj *.wbpz *.mechdb")]) or proj.get())).grid(row=1, column=1, padx=8)
+    tk.Label(root, text="2. Папка для отчёта", font=("", 10, "bold")).grid(row=2, column=0, sticky="w", padx=8, pady=(8, 0))
+    tk.Entry(root, textvariable=outd, width=80).grid(row=3, column=0, padx=8, sticky="we")
+    tk.Button(root, text="Выбрать…", command=lambda: outd.set(filedialog.askdirectory() or outd.get())).grid(row=3, column=1, padx=8)
+
+    form = tk.LabelFrame(root, text="3. Сведения для отчёта (их нет в Ansys)")
+    form.grid(row=4, column=0, columnspan=2, sticky="we", padx=8, pady=8)
+    for i, (k, label, _) in enumerate(FIELDS):
+        tk.Label(form, text=label, anchor="w").grid(row=i // 2, column=(i % 2) * 2, sticky="w", padx=6, pady=2)
+        tk.Entry(form, textvariable=vars_[k], width=32).grid(row=i // 2, column=(i % 2) * 2 + 1, padx=6, pady=2)
+    tk.Checkbutton(root, text="Не запускать Ansys заново (взять уже выгруженные данные)", variable=reuse
+                   ).grid(row=5, column=0, sticky="w", padx=8)
+    box = scrolledtext.ScrolledText(root, height=12, state="disabled")
+    box.grid(row=7, column=0, columnspan=2, sticky="nsew", padx=8, pady=8)
+    root.grid_rowconfigure(7, weight=1); root.grid_columnconfigure(0, weight=1)
+
+    def log(msg):
+        def put():
+            box.configure(state="normal"); box.insert("end", msg + "\n"); box.see("end"); box.configure(state="disabled")
+        root.after(0, put)
+
+    def work():
+        btn.configure(state="disabled")
+        anketa = {k: v.get() for k, v in vars_.items()}
+        try:
+            SETTINGS.write_text(json.dumps({"project": proj.get(), "out": outd.get(), "anketa": anketa},
+                                           ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        try:
+            build_from_ansys(proj.get(), outd.get(), anketa, log, reuse.get())
+            log("ГОТОВО. Нажмите «Открыть папку».")
+        except PermissionError:
+            log("ОШИБКА: файл открыт в Word/Excel. Закройте его и повторите.")
+        except Exception as e:  # noqa: BLE001
+            log(f"ОШИБКА: {type(e).__name__}: {e}")
+        finally:
+            root.after(0, lambda: btn.configure(state="normal"))
+
+    btn = tk.Button(root, text="СОБРАТЬ ОТЧЁТ", height=2, bg="#2e7d32", fg="white",
+                    command=lambda: threading.Thread(target=work, daemon=True).start())
+    btn.grid(row=6, column=0, sticky="we", padx=8)
+    tk.Button(root, text="Открыть папку", command=lambda: os.startfile(outd.get()) if sys.platform == "win32" else None
+              ).grid(row=6, column=1, padx=8)
+    root.mainloop()
+    return 0

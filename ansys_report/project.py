@@ -70,7 +70,8 @@ def load_project(yaml_path: str | Path) -> Project:
     if abs(n * t["belt_height"] - t["wall_height"]) > 1:
         raise ProjectError(f"{n} поясов × {t['belt_height']} мм ≠ высоте стенки {t['wall_height']} мм")
     s = raw["survey"]
-    full = _load_survey(root / s["full"], n, s["points_per_belt"])
+    full_file = s.get("full")
+    full = _load_survey(root / full_file, n, s["points_per_belt"]) if full_file and (root / str(full_file)).exists() else None
     if md is not None and (s.get("empty") in (None, "auto") or not (root / str(s["empty"])).exists()):
         from . import ansys_import as ai
         empty = ai.survey_from_rings(md, t["diameter"] / 2000, s["points_per_belt"], s.get("start_angle", 85))
@@ -78,6 +79,8 @@ def load_project(yaml_path: str | Path) -> Project:
             raise ProjectError(f"Из Ansys получено колец: {len(empty)}, поясов в модели: {n} (запустите export_model_data.py заново)")
     else:
         empty = _load_survey(root / s["empty"], n, s["points_per_belt"])
+    if full is None:      # замеров «полного» нет — форма как у пустого (без дополнительной деформации)
+        full = [row[:] for row in empty]
     rr = raw.get("results") or {}
     res = _load_belts(root / rr["full"], n) if rr.get("full") and (root / rr["full"]).exists() else []
     res_empty = _load_belts(root / rr["empty"], n) if rr.get("empty") and (root / rr["empty"]).exists() else None

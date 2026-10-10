@@ -84,3 +84,17 @@ def test_report_from_ansys_model_data(tmp_path):
     path, _ = build_report(p, tmp_path / "a.docx")
     text = "\n".join(x.text for x in docx.Document(path).paragraphs)
     assert "60694" in text and "734643,9" in text and "62907" not in text
+
+
+def test_wizard_project_folder(tmp_path):
+    """Папка выгрузки + анкета из мастера → project.yaml → Excel/Word (без запуска Ansys)."""
+    import shutil
+    from ansys_report.ansys_connect import make_project_folder
+    from ansys_report.gui import build_all
+    src = Path(__file__).resolve().parent.parent / "examples" / "T001_model"
+    data = tmp_path / "data"
+    shutil.copytree(src, data, ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    yaml_path = make_project_folder(data, {"number": "ТО-777-26", "year": 2026, "tag": "Т-777", "tank_name": "РВС-1",
+                                           "roof_radius": 34200, "executor_name": "Иванов И.И."})
+    files = build_all(yaml_path, tmp_path / "out", log=lambda m: None)
+    assert any(f.suffix == ".docx" for f in files) and any(f.suffix == ".xlsx" for f in files)

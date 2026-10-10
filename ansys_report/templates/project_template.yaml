@@ -1,0 +1,75 @@
+# АНКЕТА: только то, чего нет в проекте Ansys. Геометрия, толщины, сетка, нагрузки, нивелировка
+# («пустой»), результаты и устойчивость берутся из проекта Ansys (model_data.json + CSV из скриптов).
+report:
+  number: "{{number}}"
+  year: {{year}}
+  title: "{{title}}"
+  executor_position: "{{executor_position}}"
+  executor_name: "{{executor_name}}"
+  contractor: "{{contractor}}"
+  contractor_phone: "{{phone}}"
+
+tank:                       # только описание объекта (в Ansys этого нет)
+  name: "{{tank_name}}"
+  tag: "{{tag}}"
+  site: "{{site}}"
+  site_number: "{{site_number}}"
+  purpose: "{{purpose}}"
+  product: "{{product}}"
+  hazard_class: "{{hazard_class}}"
+  roof_radius: {{roof_radius}}
+  kmd: "{{kmd}}"
+
+material:                   # в проекте Ansys задана «Structural Steel» по умолчанию; свойства стали по нормам:
+  name: "09Г2С"
+  standard: "ГОСТ 19281-2014"
+  density: 7850
+  young_modulus_mpa: 206000
+  poisson: 0.3
+  yield_mpa: 325
+  ultimate_mpa: 480
+  elongation_pct: 21
+  thickness_range: "9,01-25"
+
+ansys:
+  model_data: model_data.json            # выгрузка export_model_data.py
+  analysis_full: "Static Structural Full"
+  nominal_diameter_mm: 28500
+  load_labels:                           # пояснения к нагрузкам по их именам в Ansys (необязательно)
+    "Fкр": "вес крыши, оборудования и площадок обслуживания"
+    "Fизол ст": "вес тепловой изоляции стенки"
+    "Fизол кр": "вес тепловой изоляции крыши"
+    "Line Pressure": "снеговая нагрузка по верхней кромке стенки"
+    "Pressure": "ветровая нагрузка"
+
+survey:
+  full: survey_full.csv                  # замеры «полного» (вход макроса формы стенки; в Ansys их нет)
+  empty: auto                            # «пустой» — из радиусов колец сетки Ansys
+  start_angle: 85
+  points_per_belt: 15
+
+results:
+  full: Static_Structural_Full_belts.csv       # export_results.py
+  empty: Static_Structural_2_belts.csv
+  stability_csv: stability.csv
+  stability_modes: 2
+  stability_labels:
+    "Eigenvalue Buckling": "Направление ветра Y"
+    "Eigenvalue Buckling 2": "Направление ветра Z"
+  required_k: 1.0
+  max_fill_m: 17.2
+
+images_dir: images
+images:
+  fig06_eq_stress: Static_Structural_Full_Equivalent_Stress.png
+  fig07_membrane: Static_Structural_Full_Membrane_Stress.png
+  fig08_fiber: Static_Structural_Full_Maximum_Principal_Stress.png
+  fig09_deform: Static_Structural_Full_Total_Deformation.png
+  fig10_empty_eq: Static_Structural_2_Equivalent_Stress.png
+  fig11_empty_mem: Static_Structural_2_Membrane_Stress.png
+  fig12_empty_fiber: Static_Structural_2_Bending_Stress.png
+  fig13_empty_deform: Static_Structural_2_Total_Deformation.png
+  fig_stab1: Eigenvalue_Buckling_Total_Deformation.png
+  fig_stab2: Eigenvalue_Buckling_Total_Deformation_2.png
+  fig_stab3: Eigenvalue_Buckling_2_Total_Deformation.png
+  fig_stab4: Eigenvalue_Buckling_2_Total_Deformation_2.png

@@ -2,3 +2,4 @@ python-docx>=1.1
 openpyxl>=3.1
 PyYAML>=6.0
 pytest>=8
+ansys-mechanical-core>=0.11
