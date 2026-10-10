@@ -47,13 +47,26 @@ def tank_dims():
         return None
 
 
-def zoom_to(x, radius, scene_height):
+def zoom_to(x, radius, scene_height, log_name=""):
     """Навести камеру на точку стенки на высоте x (ближайшую к камере) и приблизить."""
-    from Ansys.ACT.Math import Point3D
     k = (1.0 + 0.36) ** 0.5
+    pt = (x, radius * 1.0 / k, radius * 0.6 / k)
     cam = Graphics.Camera
-    cam.FocalPoint = Point3D(x, radius * 1.0 / k, radius * 0.6 / k)
-    cam.SceneHeight = scene_height
+    errs = []
+    for mod, cls in (("Ansys.ACT.Math", "Vector3D"), ("Ansys.ACT.Interfaces.Common", "Point3D"),
+                     ("System.Windows.Media.Media3D", "Point3D")):
+        try:
+            if mod.startswith("System.Windows"):
+                import clr
+                clr.AddReference("PresentationCore")
+            m = __import__(mod, fromlist=[cls])
+            cam.FocalPoint = getattr(m, cls)(pt[0], pt[1], pt[2])
+            cam.SceneHeight = scene_height
+            log.append(u"приближение %s: %s.%s" % (log_name, mod, cls))
+            return
+        except Exception as e:
+            errs.append(u"%s.%s: %s" % (mod, cls, e))
+    raise Exception(u"; ".join(errs))
 
 
 def snap(obj, name, focus=None):
@@ -62,7 +75,7 @@ def snap(obj, name, focus=None):
         fit_view()
         if focus:
             try:
-                zoom_to(*focus)
+                zoom_to(focus[0], focus[1], focus[2], name)
             except Exception as e:
                 log.append(u"приближение %s не вышло: %s" % (name, e))
         Graphics.ExportImage(os.path.join(out, name + ".png"))

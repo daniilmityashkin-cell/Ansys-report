@@ -5,6 +5,7 @@ from pathlib import Path
 from .project import load_project, ProjectError
 from .excel_gen import build_excel, export_points_txt
 from .word_gen import build_report
+from .util import out_names, slug
 
 
 def main(argv=None) -> int:
@@ -26,18 +27,19 @@ def main(argv=None) -> int:
     except (ProjectError, FileNotFoundError, KeyError) as e:
         print(f"Ошибка исходных данных: {e}", file=sys.stderr); return 2
     out, tag = Path(a.out), p.tank["tag"]
+    nm = out_names(tag, p.report["number"])
     if a.command == "apdl":
         from .apdl_gen import write_apdl
-        print("APDL:", write_apdl(p, out / f"deform_{tag}_full.inp"))
+        print("APDL:", write_apdl(p, out / f"deform_{slug(tag)}_full.inp"))
         return 0
     if a.command in ("excel", "all"):
-        print("Excel:", build_excel(p, out / f"Нивелировка {tag}.xlsx"))
-        print("Точки:", export_points_txt(p, p.survey_full, out / f"points_{tag}_full.txt"))
-        print("Точки:", export_points_txt(p, p.survey_empty, out / f"points_{tag}_empty.txt"))
+        print("Excel:", build_excel(p, out / nm["excel"]))
+        print("Точки:", export_points_txt(p, p.survey_full, out / nm["full"]))
+        print("Точки:", export_points_txt(p, p.survey_empty, out / nm["empty"]))
     if a.command in ("word", "all") and not p.has_results:
         print("Word-отчёт пропущен: нет результатов Ansys (results.full). Выгрузите их скриптом export_results.py.")
     elif a.command in ("word", "all"):
-        path, missing = build_report(p, out / f"ТО_{p.report['number']}_{tag}.docx")
+        path, missing = build_report(p, out / nm["word"])
         print("Word:", path)
         if missing: print(f"Нет {len(missing)} рисунков (вставлены заглушки): {', '.join(missing)}")
     return 0

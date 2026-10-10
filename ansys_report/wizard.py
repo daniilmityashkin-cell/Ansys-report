@@ -41,8 +41,8 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False)
     from .ansys_connect import extract, make_project_folder
     from .gui import build_all
     # отчёт всегда в отдельной подпапке "Отчёт <позиция>", чтобы не смешиваться с другими файлами
-    safe = "".join(c for c in str(anketa.get("tag") or "РВС") if c not in '\\/:*?"<>|').strip() or "РВС"
-    out_dir = Path(out_dir) / f"Отчёт {safe}"
+    from .util import out_names
+    out_dir = Path(out_dir) / out_names(anketa.get("tag") or "tank", "x")["folder"]
     out_dir.mkdir(parents=True, exist_ok=True)
     data = out_dir / "_ansys_data"
     if not (reuse_data and (data / "model_data.json").exists()):

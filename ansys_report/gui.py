@@ -8,20 +8,22 @@ from pathlib import Path
 from .project import load_project, ProjectError
 from .excel_gen import build_excel, export_points_txt
 from .word_gen import build_report
+from .util import out_names
 
 
 def build_all(project_yaml: str | Path, out_dir: str | Path, log=print) -> list[Path]:
     """Собирает Excel, файлы точек и Word. log(строка) вызывается по ходу работы. Возвращает список файлов."""
     p = load_project(project_yaml)
     out, tag = Path(out_dir), p.tank["tag"]
+    nm = out_names(tag, p.report["number"])
     files = []
-    files.append(build_excel(p, out / f"Нивелировка {tag}.xlsx")); log(f"Excel: {files[-1]}")
+    files.append(build_excel(p, out / nm["excel"])); log(f"Excel: {files[-1]}")
     for name, dev in (("full", p.survey_full), ("empty", p.survey_empty)):
-        files.append(export_points_txt(p, dev, out / f"points_{tag}_{name}.txt")); log(f"Точки: {files[-1]}")
+        files.append(export_points_txt(p, dev, out / nm[name])); log(f"Точки: {files[-1]}")
     if not p.has_results:
         log("Word-отчёт пропущен: нет результатов Ansys (файл results.full не найден). Excel и точки готовы.")
         return files
-    path, missing = build_report(p, out / f"ТО_{p.report['number']}_{tag}.docx")
+    path, missing = build_report(p, out / nm["word"])
     files.append(path); log(f"Word: {path}")
     if missing:
         log(f"ВНИМАНИЕ: нет {len(missing)} рисунков (в отчёте красные заглушки): {', '.join(missing)}")
