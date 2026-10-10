@@ -1,4 +1,4 @@
-"""Генерация технического отчёта (Word) в стиле образца «ТО_Прочностной_расчет_…docx»."""
+"""Генерация технического отчёта (Word) по принятой форме технического отчёта."""
 from __future__ import annotations
 from pathlib import Path
 import docx

@@ -39,7 +39,7 @@ def main() -> int:
     root = tk.Tk()
     root.title("Автоматизация отчётов Ansys (РВС)")
     root.geometry("760x520")
-    proj = tk.StringVar(value=str(Path("examples/T001_ansys/project.yaml")))
+    proj = tk.StringVar(value=str(Path("examples/demo/project.yaml")))
     outd = tk.StringVar(value=str(Path("out")))
 
     def row(r, label, var, pick):
