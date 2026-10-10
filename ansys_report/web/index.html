@@ -97,7 +97,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
 <body>
 <div class="shell">
   <aside class="side">
-    <div class="brand"><div class="logo"></div><div><b>Ansys Report</b><span>Отчёты по РВС</span></div></div>
+    <div class="brand"><div class="logo"></div><div><b>Ansys Report</b><span>Технические отчёты</span></div></div>
     <button class="nav on" data-v="report"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg>Отчёт</button>
     <button class="nav" data-v="map"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Соответствия</button>
     <button class="nav" data-v="about"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>О программе</button>
@@ -109,7 +109,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
     <!-- ОТЧЁТ -->
     <section id="v-report">
       <header>
-        <h1>Отчёт по расчёту<br>резервуара<small>Выберите проект Ansys — остальное программа сделает сама</small></h1>
+        <h1>Отчёт<br>по расчёту<small>Выберите проект Ansys — остальное программа сделает сама</small></h1>
         <div class="pill"><span class="dot" id="pdot"></span><span id="ptxt">Готово к работе</span></div>
       </header>
       <div class="grid">
@@ -133,7 +133,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
           <div class="card">
             <h2>Запуск</h2>
             <label class="tog"><input type="checkbox" id="solve" checked><span class="sw"></span><span>Дорешать расчёты<small>Если в проекте расчёт не решён (дольше, проект не меняется)</small></span></label>
-            <label class="tog"><input type="checkbox" id="reuse"><span class="sw"></span><span>Не запускать Ansys заново<small>Взять уже выгруженные данные этого резервуара</small></span></label>
+            <label class="tog"><input type="checkbox" id="reuse"><span class="sw"></span><span>Не запускать Ansys заново<small>Взять уже выгруженные данные этого объекта</small></span></label>
             <button class="go" id="go"><span id="gotxt">Собрать отчёт</span><i><svg viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></svg></i></button>
             <ul class="steps" id="steps">
               <li data-s="1"><span class="c"></span>Подключение к Ansys</li>
@@ -159,7 +159,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
 
     <!-- СООТВЕТСТВИЯ -->
     <section id="v-map" class="hide">
-      <header><h1>Соответствия<small>Если ваш проект оформлен иначе — укажите, как в нём называются тела и расчёты</small></h1></header>
+      <header><h1>Соответствия<small>Если ваш проект оформлен иначе — укажите, как в нём называются тела и расчёты (сейчас поддерживаются вертикальные резервуары)</small></h1></header>
       <div class="card" style="max-width:760px">
         <div class="fields" style="grid-template-columns:1fr">
           <div><label class="f">Имя тела-пояса (регулярное выражение, группа 1 — номер снизу вверх)</label><input type="text" id="m_belt_regex"></div>
@@ -175,7 +175,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
 
     <!-- О ПРОГРАММЕ -->
     <section id="v-about" class="hide">
-      <header><h1>О программе<small>Ansys Report · автоматизация технических отчётов</small></h1></header>
+      <header><h1>О программе<small>Ansys Report · автоматизация технических отчётов по расчётам в Ansys</small></h1></header>
       <div class="card" style="max-width:760px">
         <p class="hint" style="font-size:14px;color:#2a2c30">Программа берёт геометрию, нагрузки, напряжения по поясам, коэффициенты устойчивости и рисунки
         прямо из вашего проекта Ansys и собирает технический отчёт Word, нивелировку Excel и файлы точек.</p>
