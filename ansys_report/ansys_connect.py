@@ -168,10 +168,11 @@ def _pyrepr(text: str) -> str:
     return repr(text)
 
 
-def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None) -> Path:
+def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None, solve: bool = True) -> Path:
     """Запускает Mechanical в фоне, открывает проект, выгружает данные в out_dir. Возвращает out_dir."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    os.environ["ANSYS_REPORT_SOLVE"] = "1" if solve else "0"
     for old in list(out.iterdir()):          # убираем файлы прошлой выгрузки, чтобы не принять их за новые
         if old.is_file():
             old.unlink()
@@ -228,6 +229,11 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
 
 def _report_problems(out: Path, log):
     """Показывает ошибки скриптов и предупреждает, если напряжения по поясам выгрузились нулями."""
+    f0 = out / "log.txt"
+    if f0.exists():
+        for line in f0.read_text(encoding="utf-8").splitlines():
+            if "SolveRequired" in line and "папка" not in line:
+                log(f"  ! {line.strip()} - в проекте Ansys этот расчёт не решён (нужно Solve)")
     for name in ("log.txt", "model_data_log.txt", "log_images.txt"):
         f = out / name
         if f.exists():

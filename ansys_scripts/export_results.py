@@ -60,6 +60,13 @@ stab = [u"analysis,mode,k"]
 for a in model.Analyses:
     sol = a.Solution
     aname = a.Name.replace(" ", "_")
+    try:                                   # расчёт не решён в проекте - при включённой опции решаем сейчас (проект не сохраняется)
+        if os.environ.get("ANSYS_REPORT_SOLVE") == "1" and str(sol.Status) == "SolveRequired":
+            log.append(u"%s: расчёт не решён, запускаю решение (может занять несколько минут)" % a.Name)
+            sol.Solve(True)
+            log.append(u"%s: после решения статус: %s" % (a.Name, sol.Status))
+    except Exception as e:
+        log.append(u"%s: ОШИБКА решения: %s" % (a.Name, e))
     try:                                   # в фоне результаты не вычислены, пока их не потребуют - вычисляем сразу
         sol.EvaluateAllResults()
     except Exception as e:
