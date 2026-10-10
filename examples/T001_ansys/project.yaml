@@ -71,8 +71,8 @@ mesh:
 
 # результаты Ansys (максимум по каждому поясу, МПа)
 results:
-  full: Static_Structural_belts.csv       # данные из Ansys (export_results.py), расчёт «Static Structural»
-  empty: Static_Structural_2_belts.csv    # расчёт «Static Structural 2»
+  full: Static_Structural_Full_belts.csv  # налив 17,2 м, без ветра (анализ «Static Structural Full», export_results.py)
+  empty: Static_Structural_2_belts.csv    # пустой резервуар с ветром (анализ «Static Structural 2»)
   stability_csv: stability.csv
   stability_modes: 2                      # сколько мод брать из stability.csv
   stability_labels:                       # соответствие анализов ветру (по совпадению k с образцом отчёта)
@@ -87,10 +87,10 @@ images_dir: images
 # Соответствие рисунков отчёта файлам из export_results.py (<анализ>_<результат>.png).
 # Лишние строки можно удалять, недостающие рисунки заменяются красной заглушкой.
 images:
-  fig06_eq_stress: Static_Structural_Equivalent_Stress.png
-  fig07_membrane: Static_Structural_Membrane_Stress.png
-  fig08_fiber: Static_Structural_Maximum_Principal_Stress.png
-  fig09_deform: Static_Structural_Total_Deformation.png
+  fig06_eq_stress: Static_Structural_Full_Equivalent_Stress.png
+  fig07_membrane: Static_Structural_Full_Membrane_Stress.png
+  fig08_fiber: Static_Structural_Full_Maximum_Principal_Stress.png
+  fig09_deform: Static_Structural_Full_Total_Deformation.png
   fig10_empty_eq: Static_Structural_2_Equivalent_Stress.png
   fig11_empty_mem: Static_Structural_2_Membrane_Stress.png
   fig12_empty_fiber: Static_Structural_2_Bending_Stress.png
