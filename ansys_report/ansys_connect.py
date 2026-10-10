@@ -241,6 +241,28 @@ def _report_problems(out: Path, log):
                 "Откройте проект в Ansys, убедитесь что расчёт выполнен (зелёные галочки), сохраните и повторите.")
 
 
+# доли кадра (x0, y0, x1, y1): где в общем виде резервуара (камера: X вверх, вид сбоку сверху) нижний и верхний край стенки
+_CROPS = {"fig02_mesh_wall_bottom": (0.22, 0.58, 0.62, 0.92), "fig03_mesh_wall_roof": (0.22, 0.10, 0.62, 0.42)}
+
+
+def crop_mesh_views(img_dir: Path, log=print) -> None:
+    """Из крупных снимков сетки вырезает фрагменты (стенка+днище, стенка+кровля). Нужен Pillow."""
+    try:
+        from PIL import Image
+    except ImportError:
+        log("  ! Нет пакета Pillow (pip install Pillow): рисунки сетки останутся общим видом")
+        return
+    for name, (x0, y0, x1, y1) in _CROPS.items():
+        f = Path(img_dir) / (name + ".png")
+        if not f.exists():
+            continue
+        with Image.open(f) as im:
+            w, h = im.size
+            if w < 2500:                      # снимок высокого разрешения не получился - не режем
+                continue
+            im.crop((int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h))).save(f)
+
+
 def make_project_folder(data_dir: str | Path, anketa: dict | None = None) -> Path:
     """Из папки выгрузки делает папку проекта отчёта с project.yaml (анкета — из шаблона + переданные поля)."""
     d = Path(data_dir)
@@ -248,6 +270,7 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None) -> Pat
     img.mkdir(exist_ok=True)
     for f in d.glob("*.png"):
         shutil.move(str(f), img / f.name)
+    crop_mesh_views(img)
     text = TEMPLATE_YAML.read_text(encoding="utf-8")
     for key, val in (anketa or {}).items():
         text = text.replace("{{" + key + "}}", str(val))

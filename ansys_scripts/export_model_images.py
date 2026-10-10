@@ -33,72 +33,34 @@ def fit_view():
     except Exception:
         pass
 
-def tank_dims():
-    """Высота (по X) и радиус стенки по узлам сетки, в метрах. None - если определить не удалось."""
-    try:
-        md = ExtAPI.DataModel.MeshDataByName("Global")
-        xs, rs = [], []
-        for n in md.Nodes:
-            xs.append(n.X)
-            rs.append((n.Y * n.Y + n.Z * n.Z) ** 0.5)
-        return min(xs), max(xs), max(rs)
-    except Exception as e:
-        log.append(u"размеры резервуара не определены: %s" % e)
-        return None
-
-
-def zoom_to(x, radius, scene_height, log_name=""):
-    """Навести камеру на точку стенки на высоте x (ближайшую к камере) и приблизить."""
-    k = (1.0 + 0.36) ** 0.5
-    pt = (x, radius * 1.0 / k, radius * 0.6 / k)
-    cam = Graphics.Camera
-    errs = []
-    fp = cam.FocalPoint
-    ptype = type(fp)
-    log.append(u"тип FocalPoint: %s" % ptype)
-    for args in ((pt[0], pt[1], pt[2]),):
+def export_png(path, hires=False):
+    """Экспорт картинки. hires - крупный снимок 4000x2500 (из него программа вырезает фрагменты сетки)."""
+    if hires:
         try:
-            cam.FocalPoint = ptype(*args)
-            cam.SceneHeight = scene_height
-            log.append(u"приближение %s: тип Point, высота сцены %s" % (log_name, scene_height))
+            st = Ansys.Mechanical.Graphics.GraphicsImageExportSettings()
+            st.CurrentGraphicsDisplay = False
+            st.Resolution = GraphicsResolutionType.EnhancedResolution
+            st.Width = 4000
+            st.Height = 2500
+            Graphics.ExportImage(path, GraphicsImageExportFormat.PNG, st)
             return
         except Exception as e:
-            errs.append(u"Point(%s): %s" % (args, e))
-    try:                                  # запасной путь: менять координаты существующей точки
-        fp.X, fp.Y, fp.Z = pt
-        cam.FocalPoint = fp
-        cam.SceneHeight = scene_height
-        log.append(u"приближение %s: через X/Y/Z" % log_name)
-        return
-    except Exception as e:
-        errs.append(u"X/Y/Z: %s" % e)
-    raise Exception(u"; ".join(errs))
+            log.append(u"снимок высокого разрешения не вышел (%s), делаю обычный" % e)
+    Graphics.ExportImage(path)
 
 
-def snap(obj, name, focus=None):
+def snap(obj, name, hires=False):
     try:
         obj.Activate()
         fit_view()
-        if focus:
-            try:
-                zoom_to(focus[0], focus[1], focus[2], name)
-            except Exception as e:
-                log.append(u"приближение %s не вышло: %s" % (name, e))
-        Graphics.ExportImage(os.path.join(out, name + ".png"))
+        export_png(os.path.join(out, name + ".png"), hires)
         log.append(u"ok: " + name)
     except Exception as e:
         log.append(u"ОШИБКА %s: %s" % (name, e))
 
-dims = tank_dims()
-if dims:
-    xmin, xmax, rad = dims
-    bottom = (xmin + 0.6, rad, 3.5)      # нижний край стенки у днища
-    top = (xmax - 0.6, rad, 3.5)         # верхний край стенки у кровли
-else:
-    bottom = top = None
 snap(model.Geometry, "fig01_general")
-snap(model.Mesh, "fig02_mesh_wall_bottom", bottom)
-snap(model.Mesh, "fig03_mesh_wall_roof", top)
+snap(model.Mesh, "fig02_mesh_wall_bottom", True)
+snap(model.Mesh, "fig03_mesh_wall_roof", True)
 for a in model.Analyses:
     if a.Name.startswith("Static"):
         for c in a.Children:
