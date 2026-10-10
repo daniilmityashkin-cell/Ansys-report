@@ -93,7 +93,10 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
     exe = install / "Framework" / "bin" / "Win64" / "RunWB2.exe"
     if not exe.exists():
         raise ConnectError(f"Не найден {exe}")
+    final_out = out
     work = Path(tempfile.mkdtemp(prefix="ansys_report_wb_"))
+    out = work / "out"                      # в журнале Workbench только латинские пути
+    out.mkdir()
     try:
         sysname = _system_name(mechdb).replace(" ", "").replace("-", "")
         status = out / "wb_status.txt"
@@ -152,6 +155,11 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
                     log("  готово: " + line[5:])
         else:
             log("  ! Workbench не оставил отчёта о работе (журнал не выполнился)")
+        for item in out.iterdir():          # переносим результат в папку отчёта (там могут быть русские буквы)
+            if item.name in ("wb_status.txt", "wb_run.log") or item.is_file():
+                shutil.copy2(item, final_out / item.name)
+            elif item.is_dir():
+                shutil.copytree(item, final_out / item.name, dirs_exist_ok=True)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
