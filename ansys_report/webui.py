@@ -162,7 +162,9 @@ def _run(job: Job, d: dict, build):
     app_log(f"Старт сборки: проект={d.get('project')} папка={d.get('out')} reuse={d.get('reuse')} solve={d.get('solve')}")
     try:
         anketa = d["anketa"]
-        empty = [k for k in ("number", "executor_name", "site") if not str(anketa.get(k, "")).strip()]
+        from .wizard import FIELDS
+        names = {k: label for k, label, _ in FIELDS}
+        empty = [names[k] for k in ("number", "executor_name", "site") if not str(anketa.get(k, "")).strip()]
         if empty:
             job.log("Внимание: не заполнены поля отчёта (" + ", ".join(empty) + ") — в отчёте останется пустое место.")
         files = build(str(d["project"]).strip().strip('"'), str(d["out"]).strip().strip('"'), anketa, job.log,
