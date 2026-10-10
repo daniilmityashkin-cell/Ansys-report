@@ -91,7 +91,23 @@ for a in model.Analyses:
                 mem.Location = sel
                 mem.Position = type(mem.Position).Middle
                 created.append((i, eq, fb, mem))
+            try:
+                log.append(u"%s: статус решения: %s; папка: %s" % (a.Name, sol.Status, a.WorkingDir))
+            except Exception as e:
+                log.append(u"%s: диагностика: %s" % (a.Name, e))
             sol.EvaluateAllResults()
+            vals = [mpa(t[1].Maximum) for t in created]
+            if not any(vals):
+                # запасной путь: активировать каждый результат (заставляет Mechanical прочитать файл результатов)
+                log.append(u"%s: после EvaluateAllResults значения нулевые, пробую Activate" % a.Name)
+                for t in created:
+                    for r in t[1:]:
+                        try:
+                            r.Activate()
+                            r.EvaluateResult()
+                        except Exception as e:
+                            log.append(u"  Activate/Evaluate: %s" % e)
+                            break
             lines = [u"belt,fiber,equivalent,membrane"]
             for i, eq, fb, mem in created:
                 lines.append(u"%d,%.2f,%.2f,%.2f" % (i, mpa(fb.Maximum), mpa(eq.Maximum), mpa(mem.Maximum)))
