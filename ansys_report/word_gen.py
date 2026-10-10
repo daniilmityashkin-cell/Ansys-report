@@ -336,7 +336,7 @@ class Report:
         self.h1("6 Результаты расчета РВС на устойчивость")
         self.h1("6.1 Результаты расчета РВС на устойчивость искривленного резервуара без гидростатического давления и с ветровой нагрузкой")
         for i, s in enumerate(self.c["stability"], 1):
-            self.figure(f"fig_stab{i}", f"Коэффициент запаса устойчивости Fкр/F = k = {fmt(s['k'])}, {s['case'].lower()}")
+            self.figure(f"fig_stab{i}", f"Коэффициент запаса устойчивости Fкр/F = k = {fmt(s['k'])}, {s['case'][0].lower() + s['case'][1:]}")
         rows = [[s["case"], fmt(s["k"]), "Выполнен" if s["k"] >= self.p.raw["results"]["required_k"] else "Не выполнен"]
                 for s in self.c["stability"]]
         self.table(["Расчетный случай", "Коэффициент запаса k", "Оценка"], rows, caption="Коэффициенты запаса устойчивости")
