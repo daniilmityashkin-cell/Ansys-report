@@ -54,12 +54,42 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False)
     return files
 
 
+def enable_clipboard(root):
+    """Ctrl+V/C/X/A и меню правой кнопки во всех полях ввода, в том числе при русской раскладке."""
+    import tkinter as tk
+
+    def ev(w, name):
+        w.event_generate(name)
+        return "break"
+
+    def on_key(e):
+        if not (e.state & 0x4):          # Ctrl не нажат
+            return None
+        name = {86: "<<Paste>>", 67: "<<Copy>>", 88: "<<Cut>>"}.get(e.keycode)   # коды клавиш V, C, X
+        if name:
+            return ev(e.widget, name)
+        if e.keycode == 65:
+            e.widget.select_range(0, "end"); return "break"
+        return None
+
+    def menu(e):
+        m = tk.Menu(root, tearoff=0)
+        for label, name in (("Вставить", "<<Paste>>"), ("Копировать", "<<Copy>>"), ("Вырезать", "<<Cut>>")):
+            m.add_command(label=label, command=lambda n=name: e.widget.event_generate(n))
+        e.widget.focus_set()
+        m.tk_popup(e.x_root, e.y_root)
+
+    root.bind_class("Entry", "<Control-KeyPress>", on_key)
+    root.bind_class("Entry", "<Button-3>", menu)
+
+
 def main() -> int:
     import tkinter as tk
     from tkinter import filedialog, scrolledtext
 
     st = _load()
     root = tk.Tk()
+    enable_clipboard(root)
     root.title("Автоматизация отчётов Ansys")
     root.geometry("820x760")
     proj = tk.StringVar(value=st.get("project", ""))
@@ -111,7 +141,7 @@ def main() -> int:
         except Exception:
             pass
         try:
-            files = build_from_ansys(proj.get(), outd.get(), anketa, log, reuse.get())
+            files = build_from_ansys(proj.get().strip().strip('"'), outd.get().strip().strip('"'), anketa, log, reuse.get())
             last[0] = next((f for f in files if f.suffix == ".docx"), files[0] if files else None)
             log("ГОТОВО. Нажмите «Открыть папку».")
         except PermissionError:
