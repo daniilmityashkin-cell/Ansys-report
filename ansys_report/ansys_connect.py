@@ -95,40 +95,53 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
         raise ConnectError(f"Не найден {exe}")
     work = Path(tempfile.mkdtemp(prefix="ansys_report_wb_"))
     try:
-        cmds = []
+        sysname = _system_name(mechdb).replace(" ", "").replace("-", "")
+        status = out / "wb_status.txt"
+        body = []
         for name in SCRIPT_ORDER:
-            cmds.append(f'model.SendCommand(Language="Python", Command={_pyrepr(chr(10).join(["import io", "exec(io.open(r" + repr(str(SCRIPTS / name)) + ", encoding=" + repr("utf-8") + ").read())"]))})')
-            cmds.append(f'print("DONE {name}")')
+            code = "import io\nexec(io.open(r" + repr(str(SCRIPTS / name)) + ", encoding='utf-8').read())"
+            body.append('    model.SendCommand(Language="Python", Command=' + repr(code) + ')')
+            body.append('    st("DONE ' + name + '")')
         journal = work / "run.wbjn"
         journal.write_text(
-            "import os\n"
+            "import os, traceback\n"
             f'os.environ["ANSYS_REPORT_OUT"] = r"{out}"\n'
-            f'Open(FilePath=r"{project}")\n'
-            "target = None\n"
-            "for s in GetAllSystems():\n"
-            '    print("SYSTEM " + s.Name)\n'
-            f'    if s.Name.replace(" ", "").replace("-", "") == "{_system_name(mechdb).replace(" ", "").replace("-", "")}":\n'
-            "        target = s\n"
-            "if target is None:\n"
-            '    raise Exception("system not found")\n'
-            'model = target.GetContainer(ComponentName="Model")\n'
-            "model.Edit()\n"
-            + "\n".join(cmds) + "\n"
-            "model.Exit()\n",
+            f'status = r"{status}"\n'
+            "def st(m):\n"
+            '    f = open(status, "a")\n'
+            '    f.write(m + "\\n")\n'
+            "    f.close()\n"
+            "try:\n"
+            f'    Open(FilePath=r"{project}")\n'
+            "    target = None\n"
+            "    for s in GetAllSystems():\n"
+            '        st("SYSTEM " + s.Name)\n'
+            f'        if s.Name.replace(" ", "").replace("-", "") == "{sysname}":\n'
+            "            target = s\n"
+            "    if target is None:\n"
+            '        raise Exception("system not found")\n'
+            '    model = target.GetContainer(ComponentName="Model")\n'
+            "    model.Edit()\n"
+            '    st("MECHANICAL OPEN")\n'
+            + "\n".join(body) + "\n"
+            "    model.Exit()\n"
+            "except:\n"
+            '    st("ERROR " + traceback.format_exc().replace("\\n", " | "))\n',
             encoding="utf-8")
         env = dict(os.environ, ANSYS_REPORT_OUT=str(out))
         log("Запускаю Workbench в фоне и открываю проект (несколько минут)…")
-        proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding="utf-8", errors="replace", env=env)
-        for line in proc.stdout:
-            line = line.strip()
-            if line.startswith("SYSTEM "):
-                log("  система в проекте: " + line[7:])
-            elif line.startswith("ERROR") or "Exception" in line:
-                log("  ! " + line[:200])
-            if line.startswith("DONE "):
-                log("  готово: " + line[5:])
+        proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
         proc.wait()
+        if status.exists():
+            for line in status.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("ERROR"):
+                    log("  ! Workbench: " + line[:300])
+                elif line.startswith("SYSTEM"):
+                    log("  система в проекте: " + line[7:])
+                elif line.startswith("DONE"):
+                    log("  готово: " + line[5:])
+        else:
+            log("  ! Workbench не оставил отчёта о работе (журнал не выполнился)")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -141,6 +154,11 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
     """Запускает Mechanical в фоне, открывает проект, выгружает данные в out_dir. Возвращает out_dir."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    for old in list(out.iterdir()):          # убираем файлы прошлой выгрузки, чтобы не принять их за новые
+        if old.is_file():
+            old.unlink()
+        elif old.name == "images":
+            shutil.rmtree(old, ignore_errors=True)
     installs = find_ansys()
     if not installs:
         raise ConnectError("Ansys не найден на этом компьютере (нет переменной AWP_ROOT###). Установите Ansys Mechanical.")
