@@ -177,6 +177,9 @@ def main() -> int:
     def work():
         btn.configure(state="disabled")
         anketa = {k: v.get() for k, v in vars_.items()}
+        empty = [lbl for k, lbl, _ in FIELDS if k in ("number", "executor_name", "site") and not anketa[k].strip()]
+        if empty:
+            log("Внимание: не заполнено — " + ", ".join(empty) + ". В отчёте останется пустое место, это можно заполнить в Word.")
         try:
             SETTINGS.write_text(json.dumps({"project": proj.get(), "out": outd.get(), "anketa": anketa, "solve": solve.get(), "model": read_model_settings().to_dict()},
                                            ensure_ascii=False), encoding="utf-8")

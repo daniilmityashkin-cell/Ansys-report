@@ -171,7 +171,9 @@ class Report:
         left, right = tb.rows[0].cells
         left.text = ""; right.text = ""
         self._run(left.paragraphs[0], "Выполнил:", 14)
-        lines = [r["executor_position"], f"__________ / {r['executor_name']}/", f"«___» ___________ {r['year']} г."]
+        name = (r.get("executor_name") or "").strip()
+        lines = [(r.get("executor_position") or "").strip(), f"__________ / {name or '____________'} /",
+                 f"«___» ___________ {r['year']} г."]
         right.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
         self._run(right.paragraphs[0], lines[0], 14)
         for ln in lines[1:]:
@@ -207,9 +209,11 @@ class Report:
         self.h1("1 Вводная часть")
         self.para("1.1. Прочностной расчет проведен в соответствии с нормативными документами:", bold=True)
         self.bullets(T.NORMS_SHORT)
-        self.para("1.2 Сведения о подрядчике, проводившем прочностной расчет", bold=True)
-        self.body(r["contractor"].strip())
-        if r.get("contractor_phone"): self.body(f"Тел. {r['contractor_phone']}.")
+        if (r.get("contractor") or "").strip() or r.get("contractor_phone"):     # без сведений раздел не выводим
+            self.para("1.2 Сведения о подрядчике, проводившем прочностной расчет", bold=True)
+            if (r.get("contractor") or "").strip():
+                self.body(r["contractor"].strip())
+            if r.get("contractor_phone"): self.body(f"Тел. {r['contractor_phone']}.")
 
     def sec2(self):
         t, m, L, c = self.p.tank, self.p.material, self.p.loads, self.c

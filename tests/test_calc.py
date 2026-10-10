@@ -108,3 +108,70 @@ def test_roles_and_custom_belt_regex(tmp_path):
     st = ModelSettings(buckling_labels={"Eigenvalue Buckling": "Ветер A", "Eigenvalue Buckling 2": "Ветер B"})
     p = load_project(make_project_folder(data, {"number": "N", "year": 2026, "tag": "T-1", "roof_radius": 1}, st))
     assert p.has_results and p.results_empty and "Ветер A" in p.stability[0]["case"]
+
+
+def _renamed_demo(tmp_path):
+    """Копия примера с другими именами: пояса «Ring_01…», расчёты «Strength …/Buckle …» (проверка автоматики соответствий)."""
+    import json
+    import re
+    import shutil
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    data = tmp_path / "renamed"
+    shutil.copytree(src, data, ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    ren = {"Static Structural Full": "Strength Full", "Static Structural 2": "Strength Empty",
+           "Static Structural": "Strength Wind", "Eigenvalue Buckling 2": "Buckle Z", "Eigenvalue Buckling": "Buckle Y"}
+
+    def new(name):
+        for old in sorted(ren, key=len, reverse=True):      # сначала длинные имена
+            if name == old:
+                return ren[old]
+        return name
+
+    md = json.loads((data / "model_data.json").read_text(encoding="utf-8"))
+    for b in md["bodies"]:
+        m = re.match(r"^p\s*(\d+)$", b["name"])
+        if m:
+            b["name"] = "Ring_%02d" % int(m.group(1))
+    md["belt_regex"] = r"^Ring_(\d+)$"
+    for a in md["analyses"]:
+        a["name"] = new(a["name"])
+    (data / "model_data.json").write_text(json.dumps(md), encoding="utf-8")
+    for f in list(data.glob("*_belts.csv")):
+        base = f.stem[: -len("_belts")].replace("_", " ")
+        f.rename(data / (new(base).replace(" ", "_") + "_belts.csv"))
+    rows = (data / "stability.csv").read_text(encoding="utf-8").splitlines()
+    (data / "stability.csv").write_text("\n".join([rows[0]] + [new(r.split(",")[0]) + "," + ",".join(r.split(",")[1:]) for r in rows[1:]]),
+                                         encoding="utf-8")
+    img = data / "images"
+    img.mkdir()
+    from docx.shared import Pt  # noqa: F401  (python-docx уже нужен)
+    import struct, zlib
+    png = (b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0) +
+           struct.pack(">I", zlib.crc32(b"IHDR" + struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))) + struct.pack(">I", 12) + b"IDAT" +
+           zlib.compress(b"\x00\x00\x00\x00") + struct.pack(">I", zlib.crc32(b"IDAT" + zlib.compress(b"\x00\x00\x00\x00"))) +
+           struct.pack(">I", 0) + b"IEND" + struct.pack(">I", zlib.crc32(b"IEND")))
+    for n in ("Strength_Full_Equivalent_Stress", "Strength_Empty_Equivalent_Stress", "Buckle_Y_Total_Deformation",
+              "Buckle_Z_Total_Deformation_2"):
+        (img / (n + ".png")).write_bytes(png)
+    return data
+
+
+def test_renamed_project_gives_same_report(tmp_path):
+    from ansys_report.settings import ModelSettings
+    from ansys_report.ansys_connect import make_project_folder
+    from ansys_report.gui import build_all
+    orig = calc_all(load_project(YAML))
+    data = _renamed_demo(tmp_path)
+    st = ModelSettings(belt_regex=r"^Ring_(\d+)$", static_prefix="Strength", buckling_prefix="Buckle",
+                       buckling_labels={"Buckle Y": "Направление ветра Y", "Buckle Z": "Направление ветра Z"})
+    y = make_project_folder(data, {"number": "N", "year": 2026, "tag": "T-2", "roof_radius": 1}, st)
+    p = load_project(y)
+    c = calc_all(p)
+    assert c["max_eq"] == orig["max_eq"] and c["max_fiber"] == orig["max_fiber"] and c["kmin"] == orig["kmin"]
+    assert [s["case"] for s in c["stability"]][0].startswith("Направление ветра Y")
+    assert p.raw["ansys"]["analysis_full"] == "Strength Full"
+    assert p.raw["images"]["fig06_eq_stress"] == "Strength_Full_Equivalent_Stress.png"
+    assert p.raw["images"]["fig10_empty_eq"] == "Strength_Empty_Equivalent_Stress.png"
+    assert p.raw["images"]["fig_stab1"] == "Buckle_Y_Total_Deformation.png"
+    files = build_all(y, tmp_path / "out", log=lambda m: None)
+    assert any(f.suffix == ".docx" for f in files)
