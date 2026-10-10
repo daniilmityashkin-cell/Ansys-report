@@ -1,4 +1,4 @@
-"""Генерация технического отчёта (Word) в стиле образца «ТО_Прочностной_расчет_…docx»."""
+"""Генерация технического отчёта (Word) по принятой форме технического отчёта."""
 from __future__ import annotations
 from pathlib import Path
 import docx
@@ -24,24 +24,54 @@ class Report:
         self.tab = 0
         self.missing: list[str] = []
 
-    # ---------- примитивы ----------
-    def para(self, text="", style="Normal", bold=False, align=None, italic=False, size=None, indent=True):
+    # ---------- примитивы (оформление как в образце ТО-019-26: TNR 12, по ширине, отступ 1 см) ----------
+    FONT = "Times New Roman"
+
+    @classmethod
+    def _run(cls, par, text, size=12, bold=False, italic=False):
+        r = par.add_run(text)
+        r.font.name = cls.FONT
+        r._element.rPr.rFonts.set(qn("w:eastAsia"), cls.FONT)
+        r.font.size = Pt(size); r.bold = bold; r.italic = italic
+        r.font.color.rgb = RGBColor(0, 0, 0)
+        return r
+
+    def para(self, text="", style="Normal", bold=False, align=WD_ALIGN_PARAGRAPH.JUSTIFY, italic=False,
+             size=12, indent=1.0, keep_next=False, space_before=0, space_after=0):
         par = self.d.add_paragraph(style=style)
         if text:
-            r = par.add_run(text); r.bold = bold; r.italic = italic
-            if size: r.font.size = Pt(size)
-        if align is not None: par.alignment = align
+            self._run(par, text, size, bold, italic)
+        pf = par.paragraph_format
+        par.alignment = align
+        pf.first_line_indent = Cm(indent) if indent else None
+        pf.space_before, pf.space_after = Pt(space_before), Pt(space_after)
+        pf.line_spacing = 1.0
+        pf.keep_with_next = keep_next
         return par
 
     def h1(self, text, new_page=False):
-        h = self.d.add_paragraph(text, style="Heading 1")
+        """Заголовок раздела: полужирный 12 пт, абзацный отступ, отбивка 12/6 пт."""
+        h = self.d.add_paragraph(style="Heading 1")
+        self._run(h, text, 12, bold=True)
+        h.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        h.paragraph_format.first_line_indent = Cm(1.0)
+        h.paragraph_format.space_before, h.paragraph_format.space_after = Pt(12), Pt(6)
+        h.paragraph_format.keep_with_next = True
         h.paragraph_format.page_break_before = new_page
         return h
 
-    def body(self, text): return self.d.add_paragraph(text, style="Normal")
+    def h2(self, text):
+        """Подраздел (1.1, 2.1 …): полужирный 12 пт по ширине."""
+        return self.para(text, bold=True, keep_next=True, space_before=6, space_after=3)
+
+    def body(self, text): return self.para(text)
 
     def bullets(self, items):
-        for it in items: self.d.add_paragraph("- " + it, style="Normal")
+        for it in items:
+            self.para("- " + it, indent=1.25)
+
+    def caption(self, text):
+        return self.para(text, align=CENTER, indent=0, space_before=3, space_after=9)
 
     def page_break(self): self.d.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
@@ -49,8 +79,8 @@ class Report:
               fills: dict | None = None):
         if caption:
             self.tab += 1
-            cap = self.para(f"Таблица {self.tab} – {caption}", style="Normal", align=WD_ALIGN_PARAGRAPH.LEFT)
-            cap.paragraph_format.keep_with_next = True
+            self.para(f"Таблица {self.tab} – {caption}", align=WD_ALIGN_PARAGRAPH.LEFT, indent=0,
+                      keep_next=True, space_before=6, space_after=3)
         t = self.d.add_table(rows=1, cols=len(header))
         t.style = "Table Grid"; t.alignment = WD_TABLE_ALIGNMENT.CENTER
         for i, h in enumerate(header):
@@ -62,9 +92,11 @@ class Report:
                 self._cell(cells[i], str(v), align=CENTER if i else WD_ALIGN_PARAGRAPH.LEFT,
                            red=(str(v) == "Не выполнен"))
         if widths:
+            t.autofit = False
+            for i, w in enumerate(widths): t.columns[i].width = Cm(w)
             for r in t.rows:
                 for i, w in enumerate(widths): r.cells[i].width = Cm(w)
-        self.d.add_paragraph()
+        self.para(indent=0)
         return t
 
     @staticmethod
@@ -73,7 +105,7 @@ class Report:
         par = cell.paragraphs[0]
         par.paragraph_format.space_after = Pt(0); par.paragraph_format.first_line_indent = Cm(0)
         if align is not None: par.alignment = align
-        r = par.add_run(text); r.bold = bold; r.font.size = Pt(11)
+        r = Report._run(par, text, 12, bold)
         if red: r.font.color.rgb = RGBColor(0xC0, 0, 0)
 
     @staticmethod
@@ -81,19 +113,19 @@ class Report:
         trPr = row._tr.get_or_add_trPr()
         el = OxmlElement("w:tblHeader"); el.set(qn("w:val"), "true"); trPr.append(el)
 
-    def figure(self, key: str, caption: str, width_cm=15):
+    def figure(self, key: str, caption: str, width_cm=12.5):
         """Вставляет картинку из images_dir (файл <key>.png|jpg); иначе — заметная заглушка."""
         self.fig += 1
         img = self._find_image(key)
         if img:
-            self.d.add_paragraph(style="Normal").add_run().add_picture(str(img), width=Cm(width_cm))
-            self.d.paragraphs[-1].alignment = CENTER
+            pp = self.para(indent=0, align=CENTER, keep_next=True, space_before=6)
+            pp.add_run().add_picture(str(img), width=Cm(width_cm))
         else:
             self.missing.append(key)
             par = self.para(f"[Рисунок не найден: {key}.png — положите экспорт из Ansys в папку images]",
-                            align=CENTER, italic=True)
+                            align=CENTER, italic=True, indent=0)
             par.runs[0].font.color.rgb = RGBColor(0xC0, 0, 0)
-        self.para(f"Рисунок {self.fig}. {caption}", align=CENTER)
+        self.caption(f"Рисунок {self.fig}. {caption}")
 
     def _find_image(self, key):
         folder = self.p.root / self.p.raw.get("images_dir", "images")
@@ -106,7 +138,7 @@ class Report:
         return None
 
     def math(self, text):
-        par = self.para(text, align=CENTER, italic=True); return par
+        return self.para(text, align=CENTER, italic=True, indent=0, space_before=3, space_after=3)
 
     # ---------- части отчёта ----------
     def header_footer(self):
@@ -126,26 +158,36 @@ class Report:
         for x in runs[1:]: x.text = ""
 
     def title_page(self):
+        """Титульный лист как в образце: всё 14 пт, по центру; заголовок полужирный."""
         r, t = self.p.report, self.p.tank
-        for _ in range(5): self.d.add_paragraph()
-        self.para(f"ТЕХНИЧЕСКИЙ ОТЧЕТ №{r['number']}", bold=True, align=CENTER, size=14)
-        self.para("по результатам расчета методом конечных элементов", align=CENTER)
-        self.d.add_paragraph()
-        self.para(r["title"], bold=True, align=CENTER)
-        for _ in range(6): self.d.add_paragraph()
+        C = dict(align=CENTER, indent=0, size=14)
+        for _ in range(6): self.para(**C)
+        self.para(f"ТЕХНИЧЕСКИЙ ОТЧЕТ №{r['number']}", bold=True, **C)
+        self.para("по результатам расчета методом конечных элементов", **C)
+        self.para(**C)
+        self.para(r["title"], bold=True, **C)
+        for _ in range(9): self.para(**C)
         tb = self.d.add_table(rows=1, cols=2)
-        tb.rows[0].cells[0].text = "Выполнил:"
-        c = tb.rows[0].cells[1]; c.text = ""
-        c.paragraphs[0].text = r["executor_position"]
-        c.add_paragraph(f"__________ / {r['executor_name']}/")
-        c.add_paragraph(f"«___» ___________ {r['year']} г.")
-        for par in c.paragraphs: par.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        for _ in range(4): self.d.add_paragraph()
-        self.para(f"{r['year']} г.", align=CENTER)
+        left, right = tb.rows[0].cells
+        left.text = ""; right.text = ""
+        self._run(left.paragraphs[0], "Выполнил:", 14)
+        lines = [r["executor_position"], f"__________ / {r['executor_name']}/", f"«___» ___________ {r['year']} г."]
+        right.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        self._run(right.paragraphs[0], lines[0], 14)
+        for ln in lines[1:]:
+            pp = right.add_paragraph(); pp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            self._run(pp, ln, 14)
+        # год — в рамке, прижатой к нижнему краю страницы (не зависит от числа строк выше)
+        yp = self.para(f"{r['year']} г.", **C)
+        fr = OxmlElement("w:framePr")
+        for k, v in (("w:w", "9000"), ("w:hSpace", "0"), ("w:wrap", "around"), ("w:vAnchor", "margin"),
+                     ("w:hAnchor", "margin"), ("w:xAlign", "center"), ("w:yAlign", "bottom")):
+            fr.set(qn(k), v)
+        yp._p.get_or_add_pPr().insert(0, fr)
         self.page_break()
 
     def toc(self):
-        self.para("СОДЕРЖАНИЕ", bold=True, align=CENTER)
+        self.para("СОДЕРЖАНИЕ", bold=True, align=CENTER, indent=0, size=14, space_after=6)
         par = self.d.add_paragraph()
         run = par.add_run()
         for typ, txt in (("begin", None), (None, 'TOC \\o "1-2" \\h \\z \\u'), ("separate", None)):
@@ -173,13 +215,14 @@ class Report:
         t, m, L, c = self.p.tank, self.p.material, self.p.loads, self.c
         n = len(t["belts_thickness"])
         self.h1("2 Информация об объекте моделирования")
-        self.body(f"Резервуар {t['name']} установлен на объекте: «{t['site']}» (№ {t['site_number']}) "
-                  f"и предназначен для {t['purpose']}.")
+        where = f" установлен на объекте: «{t['site']}»" + (f" (№ {t['site_number']})" if t.get("site_number") else "") if t.get("site") else ""
+        self.body(f"Резервуар {t['name']}{where}" + (f" и предназначен для {t['purpose']}." if t.get("purpose") else "."))
         self.body("Габариты резервуара:")
         self.bullets([f"диаметр {t['diameter']} мм;", f"высота стенки {t['wall_height']} мм."])
         self.body("Общий вид резервуара показан на рисунке 1.")
-        self.body(f"Расчётный уровень налива продукта – {fmt(t['fill_level']/1000)} м. "
-                  f"Плотность хранимого продукта составляет {fmt(t['product_density']/1000)} т/м3.")
+        if t.get("fill_level"):
+            self.body(f"Расчётный уровень налива продукта – {fmt(t['fill_level']/1000)} м. "
+                      f"Плотность хранимого продукта составляет {fmt(t['product_density']/1000)} т/м3.")
         th = t["belts_thickness"]
         self.body("Номинальные толщины стенки по поясам: " + T.thickness_groups(th) + ".")
         self.body("Предельное отклонение от вертикали каждого листа любого пояса стенки ограничивается величиной "
@@ -187,24 +230,13 @@ class Report:
                   f"для I – {ROMAN[n-1]} поясов: " + " – ".join(fmt(x) for x in c["limits_dev"]) + " мм.")
         self.body("Отклонения стенки от вертикали в каждом поясе замерялись в плоскостях x = "
                   + " – ".join(str(h) for h in c["heights"]) + " мм. "
-                  f"Толщины поясов приняты по {t['kmd']}")
+                  + (f"Толщины поясов приняты по {t['kmd']}" if t.get("kmd") else "Толщины поясов приняты по расчётной модели."))
         self.figure("fig01_general", "Общий вид объекта исследования")
-        rows = [["Высота стенки резервуара, мм", t["wall_height"]], ["Радиус стенки резервуара, мм", fmt(t["diameter"]/2, 0)],
-                ["Радиус сферической крыши, мм", t["roof_radius"]], ["Наименование хранимого продукта", t["product"]],
-                ["Плотность продукта, кг/м3", t["product_density"]], ["Расчетный уровень налива продукта, мм", t["fill_level"]],
-                ["Нормативное внутреннее избыточное давление, кПа", fmt(L["overpressure_kpa"], 0)],
-                ["Коэффициент надежности по нагрузке", fmt(L["load_factor"])],
-                ["Собственный фактический вес крыши, оборудования и ограждений, кг", fmt(L["roof_mass_kg"] + sum(L["equipment_masses_kg"]), 1)],
-                ["Коэффициент надежности по нагрузке (крыша)", fmt(L["roof_load_factor"], 2)],
-                ["Нагрузка от веса теплоизоляции крыши, кг", L["roof_insulation_kg"]],
-                ["Нагрузка от веса теплоизоляции стенки, кг", L["wall_insulation_kg"]],
-                ["Нормативный вес от снегового покрова, кПа", fmt(L["snow_kpa"])],
-                ["Коэффициент надежности по снеговой нагрузке", fmt(L["snow_factor"])],
-                ["Учет сдувания снега с крыши", L["snow_blowoff"]], ["Тип местности", L["terrain"]],
-                ["Расчетное ветровое давление, кПа", fmt(L["wind_kpa"])],
-                ["Класс опасности резервуара по ГОСТ 31385", t["hazard_class"]]]
+        rows = self.object_rows()
         self.table(["Наименование величин", "Значение"], rows, widths=[11, 5], caption="Характеристика объекта исследования")
         rows = [[f"{ROMAN[i]} пояс", fmt(x), fmt(x)] for i, x in enumerate(th)]
+        if t.get("edge_thickness"):
+            rows.append(["Окрайка днища", fmt(t["edge_thickness"]), fmt(t["edge_thickness"])])
         rows.append(["Днище резервуара", fmt(t["bottom_thickness"]), fmt(t["bottom_thickness"])])
         self.table(["Обозначение элемента", "Номинальная толщина стенки, мм", "Расчетная толщина стенки, мм"], rows,
                    caption="Толщина элементов")
@@ -214,7 +246,8 @@ class Report:
         self.table(["Сталь", "Плотность, кг/м3", "Модуль Юнга, МПа", "Коэффициент Пуассона", "Предел прочности, МПа",
                     "Предел текучести, МПа", "Для толщин стенок, мм"],
                    [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m["thickness_range"]]],
-                   caption="Механические характеристики используемых материалов")
+                   caption="Механические характеристики используемых материалов",
+                   widths=[1.6, 2.3, 2.6, 2.7, 2.6, 2.6, 2.4])
         sy = m["yield_mpa"]
         self.body("Согласно ГОСТ 31385-2023 и СП 16.13330.2020 расчетные сопротивления:")
         self.math(f"1-й пояс: R = {sy}·0,7·1,0 / (1,05·1,05) = {fmt(c['R1'],2)} МПа")
@@ -235,29 +268,99 @@ class Report:
         me, t, L, c = self.p.raw["mesh"], self.p.tank, self.p.loads, self.c
         self.h1("3 Сетка конструкции")
         self.body(f"Количество узлов сетки после ее разбиения: {me['nodes']} шт., количество конечных элементов: {me['elements']} шт. "
-                  f"Размер конечных элементов {me['element_size_mm']} мм, тип элемента {me['element_type']}.")
+                  f"Размер конечных элементов {fmt(me['element_size_mm'], 0)} мм, тип элемента {me['element_type']}.")
         self.figure("fig02_mesh_wall_bottom", "Сетка элементов стенки и днища")
         self.figure("fig03_mesh_wall_roof", "Сетка элементов стенки и кровли")
         self.h1("4 Граничные условия и нагрузки")
         self.body("На конструкцию действует:")
-        self.bullets([
+        la = self.p.raw.get("loads_ansys")
+        if la:
+            self.bullets(self.describe_loads(la))
+        else:
+            self.bullets(self.legacy_load_bullets())
+        self.body("Допущения, принятые в модели:")
+        self.bullets(T.ASSUMPTIONS)
+        self.figure("fig04_loads", "Нагрузки")
+        self.figure("fig05_hydrostatic", "Гидростатическое давление")
+
+    # ---------- нагрузки и свойства объекта ----------
+    AXIS = {"X": "оси X (вертикаль)", "Y": "оси Y", "Z": "оси Z"}
+    DIRS = {"NegativeXAxis": "по оси −X, вертикально вниз", "PositiveXAxis": "по оси +X",
+            "NegativeYAxis": "по оси −Y", "PositiveYAxis": "по оси +Y",
+            "NegativeZAxis": "по оси −Z", "PositiveZAxis": "по оси +Z"}
+
+    def describe_loads(self, la: dict) -> list[str]:
+        """Список нагрузок из проекта Ansys: имя, тип, значение, направление."""
+        labels, out = la.get("labels", {}), []
+        for x in la["items"]:
+            nm, t = x["name"], x["type"]
+            lab = f" ({labels[nm]})" if nm in labels else ""
+            if t == "EarthGravity":
+                out.append(f"вес конструкций: ускорение свободного падения {fmt(x['g'], 5)} м/с2 ({self.DIRS.get(x['direction'], x['direction'])});")
+            elif t == "HydrostaticPressure" and not x["suppressed"]:
+                out.append(f"гидростатическое давление продукта плотностью {fmt(x['density'], 0)} кг/м3, уровень налива {fmt(x['level_m'])} м "
+                           f"(ускорение {fmt(x['accel'], 1)} м/с2);")
+            elif t == "HydrostaticPressure":
+                out.append("гидростатическое давление в данном расчёте не учитывается;")
+            elif t == "Force":
+                out.append(f"«{nm}»{lab}: сила {fmt(abs(x['value']), 1)} Н, направление вдоль {self.AXIS[x['axis']]};")
+            elif t == "LinePressure":
+                out.append(f"«{nm}»{lab}: линейная нагрузка {fmt(abs(x['value']), 0)} Н/м по кромке стенки;")
+            elif t == "Pressure":
+                out.append(f"«{nm}»{lab}: давление {fmt(abs(x['value']), 0)} Па" + (" (в данном расчёте не учитывается);" if x["suppressed"] else ";"))
+            elif t == "FixedSupport":
+                out.append(f"закрепление модели: «{nm}»;")
+        return out
+
+    def object_rows(self) -> list[list]:
+        t, L = self.p.tank, self.p.loads
+        la = self.p.raw.get("loads_ansys")
+        rows = [["Высота стенки резервуара, мм", t["wall_height"]], ["Радиус стенки резервуара, мм", fmt(t["diameter"] / 2, 0)]]
+        if t.get("roof_radius"): rows.append(["Радиус сферической крыши, мм", t["roof_radius"]])
+        if t.get("product"): rows.append(["Наименование хранимого продукта", t["product"]])
+        if t.get("product_density"): rows.append(["Плотность продукта, кг/м3", fmt(t["product_density"], 0)])
+        if t.get("fill_level"): rows.append(["Расчетный уровень налива продукта, мм", t["fill_level"]])
+        if la:
+            labels = la.get("labels", {})
+            for x in la["items"]:
+                if x["type"] == "Force":
+                    rows.append([f"{x['name']}" + (f" – {labels[x['name']]}" if x['name'] in labels else "") + ", Н", fmt(abs(x["value"]), 1)])
+                elif x["type"] == "LinePressure":
+                    rows.append([f"{x['name']}" + (f" – {labels[x['name']]}" if x['name'] in labels else "") + ", Н/м", fmt(abs(x["value"]), 0)])
+                elif x["type"] == "Pressure":
+                    rows.append([f"{x['name']}" + (f" – {labels[x['name']]}" if x['name'] in labels else "") + ", Па", fmt(abs(x["value"]), 0)])
+        elif L:
+            rows += [["Нормативное внутреннее избыточное давление, кПа", fmt(L["overpressure_kpa"], 0)],
+                     ["Коэффициент надежности по нагрузке", fmt(L["load_factor"])],
+                     ["Собственный фактический вес крыши, оборудования и ограждений, кг", fmt(L["roof_mass_kg"] + sum(L["equipment_masses_kg"]), 1)],
+                     ["Коэффициент надежности по нагрузке (крыша)", fmt(L["roof_load_factor"], 2)],
+                     ["Нагрузка от веса теплоизоляции крыши, кг", L["roof_insulation_kg"]],
+                     ["Нагрузка от веса теплоизоляции стенки, кг", L["wall_insulation_kg"]],
+                     ["Нормативный вес от снегового покрова, кПа", fmt(L["snow_kpa"])],
+                     ["Коэффициент надежности по снеговой нагрузке", fmt(L["snow_factor"])],
+                     ["Учет сдувания снега с крыши", L["snow_blowoff"]], ["Тип местности", L["terrain"]],
+                     ["Расчетное ветровое давление, кПа", fmt(L["wind_kpa"])]]
+        for lab, val in (t.get("extra_rows") or []):
+            rows.append([lab, val])
+        if t.get("hazard_class"): rows.append(["Класс опасности резервуара по ГОСТ 31385", t["hazard_class"]])
+        return rows
+
+    def legacy_load_bullets(self) -> list[str]:
+        t, L, c = self.p.tank, self.p.loads, self.c
+        return [
             f"гидростатическое давление продукта плотностью {t['product_density']} кг/м3, высота налива {fmt(t['fill_level']/1000)} м;",
             "вес металлоконструкций стенки, задан приложением ускорения свободного падения;",
             f"расчетная снеговая нагрузка {fmt(L['snow_kpa'])} кПа, приложенная к верхней грани стенки: Fсн = {L['snow_linear_n_per_m']} Н/м;",
             f"нагрузка от веса крыши, оборудования и площадок: F = γf·(Mкр + ψ·Моб)·g = {fmt(L['roof_load_factor'],2)}·({L['roof_mass_kg']}+{fmt(L['combination_factor'],2)}·({' + '.join(str(x) for x in L['equipment_masses_kg'])}))·9,81 = {fmt(c['roof_force'],1)} Н;",
             f"расчетное избыточное давление Ри = {fmt(L['overpressure_factor'])}·{fmt(L['overpressure_kpa'],0)} = {fmt(L['overpressure_factor']*L['overpressure_kpa']*1000,0)} Па;",
             f"вес тепловой изоляции стенки, Fизол ст = {fmt(c['wall_ins_n'],0)} Н; вес тепловой изоляции крыши, Fизол кр = {fmt(c['roof_ins_n'],0)} Н;",
-            "закрепление модели – по днищу, ограничение по всем осям."])
-        self.body("Допущения, принятые в модели:")
-        self.bullets(T.ASSUMPTIONS)
-        self.figure("fig04_loads", "Нагрузки")
-        self.figure("fig05_hydrostatic", "Гидростатическое давление")
+            "закрепление модели – по днищу, ограничение по всем осям."]
 
     def strength_table(self, caption, key, crit_name, limit, ok_key, limit_label, belts=None):
         rows = [[b["belt"], f"{b['belt']} пояс", fmt(b[key]), fmt(limit), "Выполнен" if b[ok_key] else "Не выполнен"]
                 for b in (belts or self.c["belts"])]
         self.table(["№ п/п", "Конструктивный элемент резервуара", f"{crit_name}, МПа (максимум)", limit_label,
-                    "Оценка выполнения критерия прочности"], rows, caption=caption)
+                    "Оценка выполнения критерия прочности"], rows, caption=caption, widths=[1.3, 4.4, 3.8, 3.8, 3.9])
 
     def sec5_6(self):
         c, t = self.c, self.p.tank
@@ -293,14 +396,15 @@ class Report:
         self.h1("6 Результаты расчета РВС на устойчивость")
         self.h1("6.1 Результаты расчета РВС на устойчивость искривленного резервуара без гидростатического давления и с ветровой нагрузкой")
         for i, s in enumerate(self.c["stability"], 1):
-            self.figure(f"fig_stab{i}", f"Коэффициент запаса устойчивости Fкр/F = k = {fmt(s['k'])}, {s['case'].lower()}")
-        rows = [[s["case"], fmt(s["k"]), "Выполнен" if s["k"] >= self.p.raw["results"]["required_k"] else "Не выполнен"]
+            self.figure(f"fig_stab{i}", f"Коэффициент запаса устойчивости Fкр/F = k = {fmt(s['k']) if s['k'] > 0 else 'нет данных'}, {s['case'][0].lower() + s['case'][1:]}")
+        rows = [[s["case"], fmt(s["k"]) if s["k"] > 0 else "нет данных",
+                 "Не определена" if s["k"] <= 0 else ("Выполнен" if s["k"] >= self.p.raw["results"]["required_k"] else "Не выполнен")]
                 for s in self.c["stability"]]
         self.table(["Расчетный случай", "Коэффициент запаса k", "Оценка"], rows, caption="Коэффициенты запаса устойчивости")
 
     def sec8(self):
         c, t, res = self.c, self.p.tank, self.p.raw["results"]
-        self.h1("8 Выводы и рекомендации")
+        self.h1("7 Выводы и рекомендации")
         s_ok = "прочность стенки обеспечена" if c["strength_ok"] else "прочность стенки НЕ обеспечена: критерии выполнены не по всем поясам"
         i = res.get("ideal")
         items = [
@@ -309,7 +413,9 @@ class Report:
             (f"Максимальные эквивалентные напряжения в стенке идеального РВС составили {i['equivalent']} МПа, мембранные – {i['membrane']} МПа, фибровые (меридиональные) – {i['fiber']} МПа." if i else None),
             f"Максимальные эквивалентные напряжения в стенке РВС с отклонениями от идеальной формы составили {fmt(c['max_eq'])} МПа, "
             f"мембранные – {fmt(c['max_mem'])} МПа, фибровые – {fmt(c['max_fiber'])} МПа (допускаемые: {fmt(c['allow'])} МПа для мембранных, {fmt(c['allow3'],0)} МПа для фибровых и эквивалентных).",
-            f"Минимальный запас устойчивости стенки составил k = {fmt(c['kmin'])} (требуется не менее {fmt(res['required_k'])}) – запас устойчивости " + ("достаточный." if c["stability_ok"] else "НЕДОСТАТОЧНЫЙ."),
+            (f"Минимальный запас устойчивости стенки составил k = {fmt(c['kmin'])} (требуется не менее {fmt(res['required_k'])}) – запас устойчивости " + ("достаточный." if c["stability_ok"] else "НЕДОСТАТОЧНЫЙ.")
+             + (f" Коэффициент не получен для случаев: {', '.join(c['stability_missing'])}." if c["stability_missing"] else ""))
+            if c["kmin"] is not None else "Коэффициент запаса устойчивости из проекта Ansys не получен (нет результатов расчёта на устойчивость).",
             f"Допустимый уровень налива продукта по условию прочности составил {fmt(res['max_fill_m'])} м." if c["strength_ok"] else
             "Для продолжения эксплуатации требуется снижение уровня налива или вывод резервуара в ремонт; допустимый уровень налива следует определить повторным расчетом."]
         for k, x in enumerate([x for x in items if x], 1): self.body(f"{k}. {x}")

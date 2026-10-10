@@ -18,9 +18,11 @@ def tangent_modulus(sig_u: float, sig_y: float, delta_pct: float, e_mpa: float) 
     return (sig_u - sig_y) / (delta_pct / 100 - sig_y / e_mpa)
 
 
-def roof_force(p: Project) -> float:
-    """F = γf (Mкр + ψ·Моб)·g, Н."""
+def roof_force(p: Project):
+    """F = γf (Mкр + ψ·Моб)·g, Н (только если массы заданы в анкете; при загрузке из Ansys сила берётся из проекта)."""
     L = p.loads
+    if "roof_mass_kg" not in L:
+        return None
     return L["roof_load_factor"] * (L["roof_mass_kg"] + L["combination_factor"] * sum(L["equipment_masses_kg"])) * G
 
 
@@ -39,7 +41,9 @@ def calc_all(p: Project) -> dict:
     belts = evaluate(p.results)
     belts_empty = evaluate(p.results_empty) if p.results_empty else None
     stab = p.stability
-    kmin = min(s["k"] for s in stab)
+    valid = [s["k"] for s in stab if s["k"] > 0]       # k = 0 - результат не прочитан, это не «нулевой запас»
+    kmin = min(valid) if valid else None
+    missing = [s["case"] for s in stab if s["k"] <= 0]
     step = t["belt_height"]
     return {
         "R1": design_resistance(sy, GAMMA_C["wall1"]),
@@ -48,12 +52,13 @@ def calc_all(p: Project) -> dict:
         "allow": allow, "allow3": 3 * allow,
         "E2": tangent_modulus(m["ultimate_mpa"], sy, m["elongation_pct"], m["young_modulus_mpa"]),
         "roof_force": roof_force(p),
-        "wall_ins_n": L["wall_insulation_kg"] * 10, "roof_ins_n": L["roof_insulation_kg"] * 10,
+        "wall_ins_n": L.get("wall_insulation_kg", 0) * 10, "roof_ins_n": L.get("roof_insulation_kg", 0) * 10,
         "limits_dev": [step * k / 200 for k in range(1, len(belts) + 1)],
         "heights": [step * k for k in range(1, len(belts) + 1)],
         "belts": belts, "belts_empty": belts_empty,
         "strength_ok": all(b["ok_fiber"] and b["ok_eq"] and b["ok_mem"] for b in belts),
-        "kmin": kmin, "stability_ok": kmin >= p.raw["results"]["required_k"],
+        "kmin": kmin, "stability_missing": missing,
+        "stability_ok": kmin is not None and kmin >= p.raw["results"]["required_k"],
         "stability": stab,
         "max_eq": max(b["equivalent"] for b in belts),
         "max_mem": max(b["membrane"] for b in belts),

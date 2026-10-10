@@ -10,7 +10,7 @@
 import os, io, re
 import System
 
-out = os.path.join(os.environ["TEMP"], "ansys_report_out")
+out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 log = []
 
@@ -18,6 +18,29 @@ def write(name, lines):
     f = io.open(os.path.join(out, name), "w", encoding="utf-8")
     f.write(u"\n".join(lines))
     f.close()
+
+def fit_view():
+    # В фоновом режиме камера по умолчанию сильно приближена и стоит "на боку".
+    # Вертикаль резервуара - ось X (гравитация по -X): ставим X "вверх", смотрим сбоку сверху, затем "показать всё".
+    ok = False
+    try:
+        from Ansys.ACT.Math import Vector3D
+        cam = Graphics.Camera
+        cam.UpVector = Vector3D(1, 0, 0)
+        cam.ViewVector = Vector3D(-0.5, -1, -0.6)
+        ok = True
+    except Exception:
+        pass
+    if not ok:
+        try:
+            Graphics.Camera.SetSpecificViewOrientation(ViewOrientationType.Iso)
+        except Exception:
+            pass
+    try:
+        Graphics.Camera.SetFit()
+    except Exception:
+        pass
+
 
 def mpa(q):
     v = q.Value
@@ -37,12 +60,28 @@ stab = [u"analysis,mode,k"]
 for a in model.Analyses:
     sol = a.Solution
     aname = a.Name.replace(" ", "_")
+    try:                                   # расчёт не решён в проекте - при включённой опции решаем сейчас (проект не сохраняется)
+        if os.environ.get("ANSYS_REPORT_SOLVE") == "1" and str(sol.Status) == "SolveRequired":
+            log.append(u"%s: расчёт не решён, запускаю решение (может занять несколько минут)" % a.Name)
+            sol.Solve(True)
+            log.append(u"%s: после решения статус: %s" % (a.Name, sol.Status))
+    except Exception as e:
+        log.append(u"%s: ОШИБКА решения: %s" % (a.Name, e))
+    try:                                   # в фоне результаты не вычислены, пока их не потребуют - вычисляем сразу
+        sol.EvaluateAllResults()
+    except Exception as e:
+        log.append(u"%s: EvaluateAllResults: %s" % (a.Name, e))
+    try:
+        log.append(u"%s: статус решения: %s" % (a.Name, sol.Status))
+    except Exception:
+        pass
     # 1. картинки существующих результатов
     for r in sol.Children:
         if r.Name.startswith("Solution Information"):
             continue
         try:
             r.Activate()
+            fit_view()
             Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
@@ -67,7 +106,27 @@ for a in model.Analyses:
                 mem.Location = sel
                 mem.Position = type(mem.Position).Middle
                 created.append((i, eq, fb, mem))
+            try:
+                log.append(u"%s: статус решения: %s; папка: %s" % (a.Name, sol.Status, a.WorkingDir))
+                try:
+                    fl = [os.path.basename(x) for x in System.IO.Directory.GetFiles(a.WorkingDir)]
+                    log.append(u"  файлов в папке: %d: %s" % (len(fl), u", ".join(fl[:15])))
+                except Exception as e:
+                    log.append(u"  папка недоступна: %s" % e)
+            except Exception as e:
+                log.append(u"%s: диагностика: %s" % (a.Name, e))
             sol.EvaluateAllResults()
+            vals = [mpa(t[1].Maximum) for t in created]
+            if not any(vals):
+                # запасной путь: активировать каждый результат (заставляет Mechanical прочитать файл результатов)
+                log.append(u"%s: после EvaluateAllResults значения нулевые, пробую Activate" % a.Name)
+                for t in created:
+                    for r in t[1:]:
+                        try:
+                            r.Activate()
+                        except Exception as e:
+                            log.append(u"  Activate/Evaluate: %s" % e)
+                            break
             lines = [u"belt,fiber,equivalent,membrane"]
             for i, eq, fb, mem in created:
                 lines.append(u"%d,%.2f,%.2f,%.2f" % (i, mpa(fb.Maximum), mpa(eq.Maximum), mpa(mem.Maximum)))
