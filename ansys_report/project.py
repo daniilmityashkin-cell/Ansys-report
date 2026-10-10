@@ -28,6 +28,10 @@ class Project:
     stability: list[dict] | None = None       # [{case, k}] — из yaml или stability.csv
 
     @property
+    def has_results(self) -> bool:
+        return bool(self.results)
+
+    @property
     def report(self): return self.raw["report"]
     @property
     def tank(self): return self.raw["tank"]
@@ -57,7 +61,7 @@ def load_project(yaml_path: str | Path) -> Project:
     yaml_path = Path(yaml_path)
     root = yaml_path.parent
     raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    for sec in ("report", "tank", "material", "loads", "survey", "results"):
+    for sec in ("report", "tank", "material", "loads", "survey"):
         if sec not in raw:
             raise ProjectError(f"В project.yaml нет раздела '{sec}'")
     t = raw["tank"]
@@ -67,9 +71,10 @@ def load_project(yaml_path: str | Path) -> Project:
     s = raw["survey"]
     full = _load_survey(root / s["full"], n, s["points_per_belt"])
     empty = _load_survey(root / s["empty"], n, s["points_per_belt"])
-    res = _load_belts(root / raw["results"]["full"], n)
-    res_empty = _load_belts(root / raw["results"]["empty"], n) if raw["results"].get("empty") else None
-    return Project(root, raw, full, empty, res, res_empty, _load_stability(root, raw["results"]))
+    rr = raw.get("results") or {}
+    res = _load_belts(root / rr["full"], n) if rr.get("full") and (root / rr["full"]).exists() else []
+    res_empty = _load_belts(root / rr["empty"], n) if rr.get("empty") and (root / rr["empty"]).exists() else None
+    return Project(root, raw, full, empty, res, res_empty, _load_stability(root, rr) if res else [])
 
 
 def _num(x) -> float:

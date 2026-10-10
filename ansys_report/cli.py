@@ -27,7 +27,9 @@ def main(argv=None) -> int:
         print("Excel:", build_excel(p, out / f"Нивелировка {tag}.xlsx"))
         print("Точки:", export_points_txt(p, p.survey_full, out / f"points_{tag}_full.txt"))
         print("Точки:", export_points_txt(p, p.survey_empty, out / f"points_{tag}_empty.txt"))
-    if a.command in ("word", "all"):
+    if a.command in ("word", "all") and not p.has_results:
+        print("Word-отчёт пропущен: нет результатов Ansys (results.full). Выгрузите их скриптом export_results.py.")
+    elif a.command in ("word", "all"):
         path, missing = build_report(p, out / f"ТО_{p.report['number']}_{tag}.docx")
         print("Word:", path)
         if missing: print(f"Нет {len(missing)} рисунков (вставлены заглушки): {', '.join(missing)}")

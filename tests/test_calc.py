@@ -40,3 +40,14 @@ def test_gui_core(tmp_path):
     msgs = []
     files = build_all(YAML, tmp_path, msgs.append)
     assert len(files) == 4 and all(f.exists() for f in files) and any("Word" in m for m in msgs)
+
+
+def test_other_tanks_excel_only(tmp_path):
+    """Т-002…Т-004: замеры из образца, результатов Ansys ещё нет — собираются Excel и точки, Word пропускается."""
+    from ansys_report.gui import build_all
+    for tag, n in (("T002", 16), ("T003", 15), ("T004", 16)):
+        y = Path(__file__).parent.parent / f"examples/{tag}_ansys/project.yaml"
+        p = load_project(y)
+        assert not p.has_results and len(p.survey_full) == 12 and len(p.survey_full[0]) == n
+        files = build_all(y, tmp_path / tag, lambda m: None)
+        assert len(files) == 3 and files[0].suffix == ".xlsx"

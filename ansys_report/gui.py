@@ -18,6 +18,9 @@ def build_all(project_yaml: str | Path, out_dir: str | Path, log=print) -> list[
     files.append(build_excel(p, out / f"Нивелировка {tag}.xlsx")); log(f"Excel: {files[-1]}")
     for name, dev in (("full", p.survey_full), ("empty", p.survey_empty)):
         files.append(export_points_txt(p, dev, out / f"points_{tag}_{name}.txt")); log(f"Точки: {files[-1]}")
+    if not p.has_results:
+        log("Word-отчёт пропущен: нет результатов Ansys (файл results.full не найден). Excel и точки готовы.")
+        return files
     path, missing = build_report(p, out / f"ТО_{p.report['number']}_{tag}.docx")
     files.append(path); log(f"Word: {path}")
     if missing:
