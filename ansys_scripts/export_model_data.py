@@ -3,7 +3,7 @@
 # Запуск: Automation -> Scripting -> "+" -> вставить -> Run. Ничего в проекте не меняет.
 # Результат: %TEMP%\ansys_report_out\model_data.json  (+ model_data_log.txt)
 # Если появится окно Exception на какой-то строке - закройте его и нажмите Run/Continue, скрипт продолжит.
-import os, io, json, math
+import os, io, math
 import System
 
 out = os.path.join(os.environ["TEMP"], "ansys_report_out")
@@ -17,6 +17,29 @@ def s(v):
         return unicode(v)
     except Exception:
         return u"?"
+
+
+def dumps(o, ind=0):
+    """Мини-сериализатор JSON (в IronPython нет модуля _json, стандартный json вызывает окно ошибки)."""
+    pad = u" " * (ind + 1)
+    if o is None:
+        return u"null"
+    if isinstance(o, bool):
+        return u"true" if o else u"false"
+    if isinstance(o, (int, long, float)):
+        return unicode(o)
+    if isinstance(o, dict):
+        if not o:
+            return u"{}"
+        return u"{\n" + u",\n".join(pad + dumps(unicode(k)) + u": " + dumps(v, ind + 1) for k, v in o.items()) + u"\n" + u" " * ind + u"}"
+    if isinstance(o, (list, tuple)):
+        if not o:
+            return u"[]"
+        if all(isinstance(x, (int, long, float)) for x in o):
+            return u"[" + u", ".join(unicode(x) for x in o) + u"]"
+        return u"[\n" + u",\n".join(pad + dumps(x, ind + 1) for x in o) + u"\n" + u" " * ind + u"]"
+    t = unicode(o).replace(u"\\", u"\\\\").replace(u'"', u'\\"').replace(u"\n", u"\\n").replace(u"\r", u"").replace(u"\t", u" ")
+    return u'"' + t + u'"'
 
 
 def props(obj):
@@ -98,7 +121,7 @@ for a in model.Analyses:
 data["analyses"] = ans
 
 f = io.open(os.path.join(out, "model_data.json"), "w", encoding="utf-8")
-f.write(unicode(json.dumps(data, ensure_ascii=False, indent=1, default=s)))
+f.write(dumps(data))
 f.close()
 print("Готово: %s | тел: %d | узлов: %s | колец: %d | ошибок: %d" % (
     os.path.join(out, "model_data.json"), len(bodies), data.get("node_count"), len(data.get("rings", [])), len(data["errors"])))
