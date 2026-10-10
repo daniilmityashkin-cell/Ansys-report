@@ -234,6 +234,12 @@ def _report_problems(out: Path, log):
             for line in f.read_text(encoding="utf-8").splitlines():
                 if "ОШИБКА" in line:
                     log(f"  ! {name}: {line}")
+    st = out / "stability.csv"
+    if st.exists():
+        for line in st.read_text(encoding="utf-8").splitlines()[1:]:
+            parts = line.split(",")
+            if len(parts) >= 3 and float(parts[2]) <= 0:
+                log(f"  ! stability.csv: для «{parts[0]}», мода {parts[1]} коэффициент равен 0 - результат расчёта на устойчивость не прочитан")
     for f in out.glob("*_belts.csv"):
         rows = f.read_text(encoding="utf-8").splitlines()[1:]
         if rows and all(float(x) == 0 for r in rows for x in r.split(",")[1:]):

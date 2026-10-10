@@ -60,6 +60,14 @@ stab = [u"analysis,mode,k"]
 for a in model.Analyses:
     sol = a.Solution
     aname = a.Name.replace(" ", "_")
+    try:                                   # в фоне результаты не вычислены, пока их не потребуют - вычисляем сразу
+        sol.EvaluateAllResults()
+    except Exception as e:
+        log.append(u"%s: EvaluateAllResults: %s" % (a.Name, e))
+    try:
+        log.append(u"%s: статус решения: %s" % (a.Name, sol.Status))
+    except Exception:
+        pass
     # 1. картинки существующих результатов
     for r in sol.Children:
         if r.Name.startswith("Solution Information"):

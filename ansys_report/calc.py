@@ -41,7 +41,9 @@ def calc_all(p: Project) -> dict:
     belts = evaluate(p.results)
     belts_empty = evaluate(p.results_empty) if p.results_empty else None
     stab = p.stability
-    kmin = min(s["k"] for s in stab)
+    valid = [s["k"] for s in stab if s["k"] > 0]       # k = 0 - результат не прочитан, это не «нулевой запас»
+    kmin = min(valid) if valid else None
+    missing = [s["case"] for s in stab if s["k"] <= 0]
     step = t["belt_height"]
     return {
         "R1": design_resistance(sy, GAMMA_C["wall1"]),
@@ -55,7 +57,8 @@ def calc_all(p: Project) -> dict:
         "heights": [step * k for k in range(1, len(belts) + 1)],
         "belts": belts, "belts_empty": belts_empty,
         "strength_ok": all(b["ok_fiber"] and b["ok_eq"] and b["ok_mem"] for b in belts),
-        "kmin": kmin, "stability_ok": kmin >= p.raw["results"]["required_k"],
+        "kmin": kmin, "stability_missing": missing,
+        "stability_ok": kmin is not None and kmin >= p.raw["results"]["required_k"],
         "stability": stab,
         "max_eq": max(b["equivalent"] for b in belts),
         "max_mem": max(b["membrane"] for b in belts),
