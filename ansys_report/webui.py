@@ -93,6 +93,8 @@ def make_handler(job: Job, state: dict):
             path = self.path.split("?")[0]
             if path in ("/", "/index.html"):
                 return self._send(200, _asset("index.html"), "text/html; charset=utf-8")
+            if path == "/icon.png":
+                return self._send(200, _asset("icon.png"), "image/png")
             if path == "/api/state":
                 st = _load()
                 installs = find_ansys()

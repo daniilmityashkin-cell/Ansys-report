@@ -7,7 +7,7 @@ if /i "%1"=="iss" goto :iss
 python -m pip install -r requirements.txt pyinstaller || goto :err
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
-python -m PyInstaller --noconfirm --clean --windowed --name AnsysReport ^
+python -m PyInstaller --noconfirm --clean --windowed --icon installer\app.ico --name AnsysReport ^
   --add-data "ansys_report\templates;ansys_report\templates" ^
   --add-data "ansys_report\web;ansys_report\web" ^
   --add-data "ansys_scripts;ansys_scripts" ^
