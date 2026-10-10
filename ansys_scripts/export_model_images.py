@@ -53,19 +53,25 @@ def zoom_to(x, radius, scene_height, log_name=""):
     pt = (x, radius * 1.0 / k, radius * 0.6 / k)
     cam = Graphics.Camera
     errs = []
-    for mod, cls in (("Ansys.ACT.Math", "Vector3D"), ("Ansys.ACT.Interfaces.Common", "Point3D"),
-                     ("System.Windows.Media.Media3D", "Point3D")):
+    fp = cam.FocalPoint
+    ptype = type(fp)
+    log.append(u"тип FocalPoint: %s" % ptype)
+    for args in ((pt[0], pt[1], pt[2]),):
         try:
-            if mod.startswith("System.Windows"):
-                import clr
-                clr.AddReference("PresentationCore")
-            m = __import__(mod, fromlist=[cls])
-            cam.FocalPoint = getattr(m, cls)(pt[0], pt[1], pt[2])
+            cam.FocalPoint = ptype(*args)
             cam.SceneHeight = scene_height
-            log.append(u"приближение %s: %s.%s" % (log_name, mod, cls))
+            log.append(u"приближение %s: тип Point, высота сцены %s" % (log_name, scene_height))
             return
         except Exception as e:
-            errs.append(u"%s.%s: %s" % (mod, cls, e))
+            errs.append(u"Point(%s): %s" % (args, e))
+    try:                                  # запасной путь: менять координаты существующей точки
+        fp.X, fp.Y, fp.Z = pt
+        cam.FocalPoint = fp
+        cam.SceneHeight = scene_height
+        log.append(u"приближение %s: через X/Y/Z" % log_name)
+        return
+    except Exception as e:
+        errs.append(u"X/Y/Z: %s" % e)
     raise Exception(u"; ".join(errs))
 
 
