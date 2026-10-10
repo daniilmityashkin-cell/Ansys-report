@@ -76,8 +76,8 @@ results:
   stability_csv: stability.csv
   stability_modes: 2                      # сколько мод брать из stability.csv
   stability_labels:                       # соответствие анализов ветру (по совпадению k с образцом отчёта)
-    "Eigenvalue Buckling": "Ветер Y"
-    "Eigenvalue Buckling 2": "Ветер Z"
+    "Eigenvalue Buckling": "Направление ветра Y"
+    "Eigenvalue Buckling 2": "Направление ветра Z"
   required_k: 1.0
   max_fill_m: 17.2
 
