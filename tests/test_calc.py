@@ -71,3 +71,16 @@ def test_apdl_shift_matches_survey():
     assert abs(radial_shift_mm(p, tbl, 0.0, 14.25, 0.0)) < 1e-9     # днище не двигается
     txt = build_apdl(p)
     assert "NMODIF" in txt and "*DIM,DLT,ARRAY,13,16" in txt and txt.isascii()
+
+
+def test_report_from_ansys_model_data(tmp_path):
+    """Режим «всё из Ansys»: геометрия, сетка, нагрузки и нивелировка «пустой» берутся из model_data.json."""
+    import docx
+    y = Path(__file__).parent.parent / "examples/T001_model/project.yaml"
+    p = load_project(y)
+    assert p.tank["belts_thickness"][:3] == [16.0, 14.0, 13.0] and p.tank["wall_height"] == 17880
+    assert p.raw["mesh"]["nodes"] == 60694 and p.tank["fill_level"] == 17200
+    assert len(p.survey_empty) == 12 and len(p.survey_empty[0]) == 15
+    path, _ = build_report(p, tmp_path / "a.docx")
+    text = "\n".join(x.text for x in docx.Document(path).paragraphs)
+    assert "60694" in text and "734643,9" in text and "62907" not in text

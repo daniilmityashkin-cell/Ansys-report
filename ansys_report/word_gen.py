@@ -215,13 +215,14 @@ class Report:
         t, m, L, c = self.p.tank, self.p.material, self.p.loads, self.c
         n = len(t["belts_thickness"])
         self.h1("2 Информация об объекте моделирования")
-        self.body(f"Резервуар {t['name']} установлен на объекте: «{t['site']}» (№ {t['site_number']}) "
-                  f"и предназначен для {t['purpose']}.")
+        where = f" установлен на объекте: «{t['site']}»" + (f" (№ {t['site_number']})" if t.get("site_number") else "") if t.get("site") else ""
+        self.body(f"Резервуар {t['name']}{where}" + (f" и предназначен для {t['purpose']}." if t.get("purpose") else "."))
         self.body("Габариты резервуара:")
         self.bullets([f"диаметр {t['diameter']} мм;", f"высота стенки {t['wall_height']} мм."])
         self.body("Общий вид резервуара показан на рисунке 1.")
-        self.body(f"Расчётный уровень налива продукта – {fmt(t['fill_level']/1000)} м. "
-                  f"Плотность хранимого продукта составляет {fmt(t['product_density']/1000)} т/м3.")
+        if t.get("fill_level"):
+            self.body(f"Расчётный уровень налива продукта – {fmt(t['fill_level']/1000)} м. "
+                      f"Плотность хранимого продукта составляет {fmt(t['product_density']/1000)} т/м3.")
         th = t["belts_thickness"]
         self.body("Номинальные толщины стенки по поясам: " + T.thickness_groups(th) + ".")
         self.body("Предельное отклонение от вертикали каждого листа любого пояса стенки ограничивается величиной "
@@ -229,24 +230,13 @@ class Report:
                   f"для I – {ROMAN[n-1]} поясов: " + " – ".join(fmt(x) for x in c["limits_dev"]) + " мм.")
         self.body("Отклонения стенки от вертикали в каждом поясе замерялись в плоскостях x = "
                   + " – ".join(str(h) for h in c["heights"]) + " мм. "
-                  f"Толщины поясов приняты по {t['kmd']}")
+                  + (f"Толщины поясов приняты по {t['kmd']}" if t.get("kmd") else "Толщины поясов приняты по расчётной модели."))
         self.figure("fig01_general", "Общий вид объекта исследования")
-        rows = [["Высота стенки резервуара, мм", t["wall_height"]], ["Радиус стенки резервуара, мм", fmt(t["diameter"]/2, 0)],
-                ["Радиус сферической крыши, мм", t["roof_radius"]], ["Наименование хранимого продукта", t["product"]],
-                ["Плотность продукта, кг/м3", t["product_density"]], ["Расчетный уровень налива продукта, мм", t["fill_level"]],
-                ["Нормативное внутреннее избыточное давление, кПа", fmt(L["overpressure_kpa"], 0)],
-                ["Коэффициент надежности по нагрузке", fmt(L["load_factor"])],
-                ["Собственный фактический вес крыши, оборудования и ограждений, кг", fmt(L["roof_mass_kg"] + sum(L["equipment_masses_kg"]), 1)],
-                ["Коэффициент надежности по нагрузке (крыша)", fmt(L["roof_load_factor"], 2)],
-                ["Нагрузка от веса теплоизоляции крыши, кг", L["roof_insulation_kg"]],
-                ["Нагрузка от веса теплоизоляции стенки, кг", L["wall_insulation_kg"]],
-                ["Нормативный вес от снегового покрова, кПа", fmt(L["snow_kpa"])],
-                ["Коэффициент надежности по снеговой нагрузке", fmt(L["snow_factor"])],
-                ["Учет сдувания снега с крыши", L["snow_blowoff"]], ["Тип местности", L["terrain"]],
-                ["Расчетное ветровое давление, кПа", fmt(L["wind_kpa"])],
-                ["Класс опасности резервуара по ГОСТ 31385", t["hazard_class"]]]
+        rows = self.object_rows()
         self.table(["Наименование величин", "Значение"], rows, widths=[11, 5], caption="Характеристика объекта исследования")
         rows = [[f"{ROMAN[i]} пояс", fmt(x), fmt(x)] for i, x in enumerate(th)]
+        if t.get("edge_thickness"):
+            rows.append(["Окрайка днища", fmt(t["edge_thickness"]), fmt(t["edge_thickness"])])
         rows.append(["Днище резервуара", fmt(t["bottom_thickness"]), fmt(t["bottom_thickness"])])
         self.table(["Обозначение элемента", "Номинальная толщина стенки, мм", "Расчетная толщина стенки, мм"], rows,
                    caption="Толщина элементов")
@@ -278,23 +268,93 @@ class Report:
         me, t, L, c = self.p.raw["mesh"], self.p.tank, self.p.loads, self.c
         self.h1("3 Сетка конструкции")
         self.body(f"Количество узлов сетки после ее разбиения: {me['nodes']} шт., количество конечных элементов: {me['elements']} шт. "
-                  f"Размер конечных элементов {me['element_size_mm']} мм, тип элемента {me['element_type']}.")
+                  f"Размер конечных элементов {fmt(me['element_size_mm'], 0)} мм, тип элемента {me['element_type']}.")
         self.figure("fig02_mesh_wall_bottom", "Сетка элементов стенки и днища")
         self.figure("fig03_mesh_wall_roof", "Сетка элементов стенки и кровли")
         self.h1("4 Граничные условия и нагрузки")
         self.body("На конструкцию действует:")
-        self.bullets([
+        la = self.p.raw.get("loads_ansys")
+        if la:
+            self.bullets(self.describe_loads(la))
+        else:
+            self.bullets(self.legacy_load_bullets())
+        self.body("Допущения, принятые в модели:")
+        self.bullets(T.ASSUMPTIONS)
+        self.figure("fig04_loads", "Нагрузки")
+        self.figure("fig05_hydrostatic", "Гидростатическое давление")
+
+    # ---------- нагрузки и свойства объекта ----------
+    AXIS = {"X": "оси X (вертикаль)", "Y": "оси Y", "Z": "оси Z"}
+    DIRS = {"NegativeXAxis": "по оси −X, вертикально вниз", "PositiveXAxis": "по оси +X",
+            "NegativeYAxis": "по оси −Y", "PositiveYAxis": "по оси +Y",
+            "NegativeZAxis": "по оси −Z", "PositiveZAxis": "по оси +Z"}
+
+    def describe_loads(self, la: dict) -> list[str]:
+        """Список нагрузок из проекта Ansys: имя, тип, значение, направление."""
+        labels, out = la.get("labels", {}), []
+        for x in la["items"]:
+            nm, t = x["name"], x["type"]
+            lab = f" ({labels[nm]})" if nm in labels else ""
+            if t == "EarthGravity":
+                out.append(f"вес конструкций: ускорение свободного падения {fmt(x['g'], 5)} м/с2 ({self.DIRS.get(x['direction'], x['direction'])});")
+            elif t == "HydrostaticPressure" and not x["suppressed"]:
+                out.append(f"гидростатическое давление продукта плотностью {fmt(x['density'], 0)} кг/м3, уровень налива {fmt(x['level_m'])} м "
+                           f"(ускорение {fmt(x['accel'], 1)} м/с2);")
+            elif t == "HydrostaticPressure":
+                out.append("гидростатическое давление в данном расчёте не учитывается;")
+            elif t == "Force":
+                out.append(f"«{nm}»{lab}: сила {fmt(abs(x['value']), 1)} Н, направление вдоль {self.AXIS[x['axis']]};")
+            elif t == "LinePressure":
+                out.append(f"«{nm}»{lab}: линейная нагрузка {fmt(abs(x['value']), 0)} Н/м по кромке стенки;")
+            elif t == "Pressure":
+                out.append(f"«{nm}»{lab}: давление {fmt(abs(x['value']), 0)} Па" + (" (в данном расчёте не учитывается);" if x["suppressed"] else ";"))
+            elif t == "FixedSupport":
+                out.append(f"закрепление модели: «{nm}»;")
+        return out
+
+    def object_rows(self) -> list[list]:
+        t, L = self.p.tank, self.p.loads
+        la = self.p.raw.get("loads_ansys")
+        rows = [["Высота стенки резервуара, мм", t["wall_height"]], ["Радиус стенки резервуара, мм", fmt(t["diameter"] / 2, 0)]]
+        if t.get("roof_radius"): rows.append(["Радиус сферической крыши, мм", t["roof_radius"]])
+        if t.get("product"): rows.append(["Наименование хранимого продукта", t["product"]])
+        if t.get("product_density"): rows.append(["Плотность продукта, кг/м3", fmt(t["product_density"], 0)])
+        if t.get("fill_level"): rows.append(["Расчетный уровень налива продукта, мм", t["fill_level"]])
+        if la:
+            labels = la.get("labels", {})
+            for x in la["items"]:
+                if x["type"] == "Force":
+                    rows.append([f"{x['name']}" + (f" – {labels[x['name']]}" if x['name'] in labels else "") + ", Н", fmt(abs(x["value"]), 1)])
+                elif x["type"] == "LinePressure":
+                    rows.append([f"{x['name']}" + (f" – {labels[x['name']]}" if x['name'] in labels else "") + ", Н/м", fmt(abs(x["value"]), 0)])
+                elif x["type"] == "Pressure":
+                    rows.append([f"{x['name']}" + (f" – {labels[x['name']]}" if x['name'] in labels else "") + ", Па", fmt(abs(x["value"]), 0)])
+        elif L:
+            rows += [["Нормативное внутреннее избыточное давление, кПа", fmt(L["overpressure_kpa"], 0)],
+                     ["Коэффициент надежности по нагрузке", fmt(L["load_factor"])],
+                     ["Собственный фактический вес крыши, оборудования и ограждений, кг", fmt(L["roof_mass_kg"] + sum(L["equipment_masses_kg"]), 1)],
+                     ["Коэффициент надежности по нагрузке (крыша)", fmt(L["roof_load_factor"], 2)],
+                     ["Нагрузка от веса теплоизоляции крыши, кг", L["roof_insulation_kg"]],
+                     ["Нагрузка от веса теплоизоляции стенки, кг", L["wall_insulation_kg"]],
+                     ["Нормативный вес от снегового покрова, кПа", fmt(L["snow_kpa"])],
+                     ["Коэффициент надежности по снеговой нагрузке", fmt(L["snow_factor"])],
+                     ["Учет сдувания снега с крыши", L["snow_blowoff"]], ["Тип местности", L["terrain"]],
+                     ["Расчетное ветровое давление, кПа", fmt(L["wind_kpa"])]]
+        for lab, val in (t.get("extra_rows") or []):
+            rows.append([lab, val])
+        if t.get("hazard_class"): rows.append(["Класс опасности резервуара по ГОСТ 31385", t["hazard_class"]])
+        return rows
+
+    def legacy_load_bullets(self) -> list[str]:
+        t, L, c = self.p.tank, self.p.loads, self.c
+        return [
             f"гидростатическое давление продукта плотностью {t['product_density']} кг/м3, высота налива {fmt(t['fill_level']/1000)} м;",
             "вес металлоконструкций стенки, задан приложением ускорения свободного падения;",
             f"расчетная снеговая нагрузка {fmt(L['snow_kpa'])} кПа, приложенная к верхней грани стенки: Fсн = {L['snow_linear_n_per_m']} Н/м;",
             f"нагрузка от веса крыши, оборудования и площадок: F = γf·(Mкр + ψ·Моб)·g = {fmt(L['roof_load_factor'],2)}·({L['roof_mass_kg']}+{fmt(L['combination_factor'],2)}·({' + '.join(str(x) for x in L['equipment_masses_kg'])}))·9,81 = {fmt(c['roof_force'],1)} Н;",
             f"расчетное избыточное давление Ри = {fmt(L['overpressure_factor'])}·{fmt(L['overpressure_kpa'],0)} = {fmt(L['overpressure_factor']*L['overpressure_kpa']*1000,0)} Па;",
             f"вес тепловой изоляции стенки, Fизол ст = {fmt(c['wall_ins_n'],0)} Н; вес тепловой изоляции крыши, Fизол кр = {fmt(c['roof_ins_n'],0)} Н;",
-            "закрепление модели – по днищу, ограничение по всем осям."])
-        self.body("Допущения, принятые в модели:")
-        self.bullets(T.ASSUMPTIONS)
-        self.figure("fig04_loads", "Нагрузки")
-        self.figure("fig05_hydrostatic", "Гидростатическое давление")
+            "закрепление модели – по днищу, ограничение по всем осям."]
 
     def strength_table(self, caption, key, crit_name, limit, ok_key, limit_label, belts=None):
         rows = [[b["belt"], f"{b['belt']} пояс", fmt(b[key]), fmt(limit), "Выполнен" if b[ok_key] else "Не выполнен"]
