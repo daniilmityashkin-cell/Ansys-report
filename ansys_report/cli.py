@@ -9,7 +9,7 @@ from .word_gen import build_report
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "apdl"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     a = ap.parse_args(argv)
@@ -23,6 +23,10 @@ def main(argv=None) -> int:
     except (ProjectError, FileNotFoundError, KeyError) as e:
         print(f"Ошибка исходных данных: {e}", file=sys.stderr); return 2
     out, tag = Path(a.out), p.tank["tag"]
+    if a.command == "apdl":
+        from .apdl_gen import write_apdl
+        print("APDL:", write_apdl(p, out / f"deform_{tag}_full.inp"))
+        return 0
     if a.command in ("excel", "all"):
         print("Excel:", build_excel(p, out / f"Нивелировка {tag}.xlsx"))
         print("Точки:", export_points_txt(p, p.survey_full, out / f"points_{tag}_full.txt"))

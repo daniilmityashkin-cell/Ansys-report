@@ -51,3 +51,23 @@ def test_other_tanks_excel_only(tmp_path):
         assert not p.has_results and len(p.survey_full) == 12 and len(p.survey_full[0]) == n
         files = build_all(y, tmp_path / tag, lambda m: None)
         assert len(files) == 3 and files[0].suffix == ".xlsx"
+
+
+def test_apdl_shift_matches_survey():
+    """В узлах замера (пояс k, точка j) сдвиг должен равняться (полный − пустой)."""
+    import math
+    from ansys_report.apdl_gen import delta_table, radial_shift_mm, build_apdl
+    p = load_project(Path(__file__).parent.parent / "examples/T001_ansys/project.yaml")
+    tbl = delta_table(p)
+    s, h = p.raw["survey"], p.tank["belt_height"] / 1000
+    n = s["points_per_belt"]
+    for k in (1, 5, 12):
+        for j in (0, 3, 7, 14):
+            a = math.radians(s["start_angle"] - 360 / n * j)
+            R = 14.25
+            got = radial_shift_mm(p, tbl, k * h, R * math.cos(a), R * math.sin(a))
+            want = p.survey_full[k - 1][j] - p.survey_empty[k - 1][j]
+            assert abs(got - want) < 1e-6, (k, j, got, want)
+    assert abs(radial_shift_mm(p, tbl, 0.0, 14.25, 0.0)) < 1e-9     # днище не двигается
+    txt = build_apdl(p)
+    assert "NMODIF" in txt and "*DIM,DLT,ARRAY,13,16" in txt and txt.isascii()
