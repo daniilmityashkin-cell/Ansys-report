@@ -1,4 +1,4 @@
-"""Рисует значок программы (PNG + ICO). Запуск: python tools/make_icon.py"""
+"""Прежний черновик значка (не используется: значок — assets/logo_1024.png, присланный заказчиком)."""
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 import math
