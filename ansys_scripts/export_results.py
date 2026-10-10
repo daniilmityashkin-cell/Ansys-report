@@ -20,11 +20,22 @@ def write(name, lines):
     f.close()
 
 def fit_view():
-    # в фоновом режиме камера по умолчанию сильно приближена - ставим изометрию и "показать всё"
+    # В фоновом режиме камера по умолчанию сильно приближена и стоит "на боку".
+    # Вертикаль резервуара - ось X (гравитация по -X): ставим X "вверх", смотрим сбоку сверху, затем "показать всё".
+    ok = False
     try:
-        Graphics.Camera.SetSpecificViewOrientation(ViewOrientationType.Iso)
+        from Ansys.ACT.Math import Vector3D
+        cam = Graphics.Camera
+        cam.UpVector = Vector3D(1, 0, 0)
+        cam.ViewVector = Vector3D(-0.5, -1, -0.6)
+        ok = True
     except Exception:
         pass
+    if not ok:
+        try:
+            Graphics.Camera.SetSpecificViewOrientation(ViewOrientationType.Iso)
+        except Exception:
+            pass
     try:
         Graphics.Camera.SetFit()
     except Exception:
