@@ -270,9 +270,12 @@ $("#go").onclick = async () => {
     $("#result").classList.remove("hide");
   }, 700);
 };
-const openBy = ext => () => { const f = files.find(f => ext.test(f)); if (f) api("/api/open", {path: f}); };
+const openPath = async p => { try { const r = await api("/api/open", {path: p});
+  if (!r.ok){ $("#err").textContent = "Не удалось открыть: " + (r.error || p); $("#err").classList.remove("hide"); } }
+  catch (e){ $("#err").textContent = "Нет связи с программой: " + e; $("#err").classList.remove("hide"); } };
+const openBy = ext => () => { const f = files.find(f => ext.test(f)); if (f) openPath(f); else { $("#err").textContent = "Файл не найден в результате сборки."; $("#err").classList.remove("hide"); } };
 $("#oWord").onclick = openBy(/\.docx$/i); $("#oXlsx").onclick = openBy(/\.xlsx$/i);
-$("#oDir").onclick = () => { const f = files[0]; if (f) api("/api/open", {path: f.replace(/[\\/][^\\/]*$/, "")}); };
+$("#oDir").onclick = () => { const f = files[0]; if (f) openPath(f.replace(/[\\/][^\\/]*$/, "")); };
 $("#pdot").className = "dot ok"; init();
 </script>
 </body>

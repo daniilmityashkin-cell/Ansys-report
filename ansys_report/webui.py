@@ -76,14 +76,27 @@ def _pick(kind: str) -> str:
     return r.stdout.strip()
 
 
-def _open(path: str):
-    if sys.platform == "win32":
-        if Path(path).is_file() and not path.lower().endswith((".docx", ".xlsx", ".txt")):
-            os.startfile(path)
-        elif Path(path).is_file():
-            os.startfile(path)
-        else:
-            os.startfile(path)
+def _open(path: str) -> str:
+    """Открывает файл/папку программой по умолчанию. Возвращает пустую строку или текст ошибки."""
+    if sys.platform != "win32":
+        return ""
+    path = os.path.normpath(path)
+    errors = []
+    attempts = [lambda: os.startfile(path)]
+    if os.path.isdir(path):
+        attempts.append(lambda: subprocess.Popen(["explorer", path]))
+    else:
+        attempts.append(lambda: subprocess.Popen(["cmd", "/c", "start", "", path],
+                                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)))
+    for i, fn in enumerate(attempts, 1):
+        try:
+            fn()
+            app_log(f"Открыто ({i}): {path}")
+            return ""
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{type(e).__name__}: {e}")
+            app_log(f"Не открылось способом {i}: {path} -> {errors[-1]}")
+    return "; ".join(errors)
 
 
 def make_handler(job: Job, state: dict):
@@ -138,9 +151,11 @@ def make_handler(job: Job, state: dict):
                 return self._json({"path": _pick(data.get("kind", "file"))})
             if path == "/api/open":
                 target = data.get("path", "")
-                if target and Path(target).exists():
-                    _open(target)
-                return self._json({"ok": True})
+                app_log(f"Просьба открыть: {target}")
+                if not target or not Path(target).exists():
+                    return self._json({"ok": False, "error": f"Не найден: {target}"})
+                err = _open(target)
+                return self._json({"ok": not err, "error": err})
             if path == "/api/build":
                 if job.running:
                     return self._json({"ok": False, "error": "Сборка уже идёт"})
