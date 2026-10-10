@@ -15,3 +15,7 @@ venv/
 _ansys_data/
 Report_*/
 Images/
+dist/
+build/
+installer/Output/
+*.spec

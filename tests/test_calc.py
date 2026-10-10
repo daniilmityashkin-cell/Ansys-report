@@ -175,3 +175,41 @@ def test_renamed_project_gives_same_report(tmp_path):
     assert p.raw["images"]["fig_stab1"] == "Buckle_Y_Total_Deformation.png"
     files = build_all(y, tmp_path / "out", log=lambda m: None)
     assert any(f.suffix == ".docx" for f in files)
+
+
+def test_web_ui_api(tmp_path, monkeypatch):
+    """Веб-интерфейс: состояние, сборка из готовой выгрузки (без Ansys), статус, ответ страницы."""
+    import json
+    import shutil
+    import threading
+    import time
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    from ansys_report import webui
+    monkeypatch.setattr("ansys_report.wizard.SETTINGS", tmp_path / "settings.json")
+    job, state = webui.Job(), {"last_ping": time.time()}
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), webui.make_handler(job, state))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def call(path, body=None):
+        req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        return json.loads(urllib.request.urlopen(req).read())
+
+    assert b"Ansys Report" in urllib.request.urlopen(base + "/").read()
+    assert call("/api/state")["model"]["belt_regex"].startswith("^p")
+    out = tmp_path / "out"
+    data = out / "Report_T-9" / "_ansys_data"
+    shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "demo", data,
+                    ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    anketa = {"number": "N-1", "year": "2026", "tag": "T-9", "roof_radius": "34200", "executor_name": "X", "site": "S"}
+    assert call("/api/build", {"project": "C:/x/Tank.wbpj", "out": str(out), "anketa": anketa, "solve": False,
+                               "reuse": True, "model": {}})["ok"]
+    for _ in range(100):
+        st = call("/api/status?since=0")
+        if st["done"]:
+            break
+        time.sleep(0.2)
+    assert st["done"] and not st["error"] and any(f.endswith(".docx") for f in st["files"])
+    srv.shutdown()

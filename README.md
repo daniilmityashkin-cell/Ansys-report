@@ -25,7 +25,8 @@ python -m ansys_report wizard        # или двойной щелчок по r
 * Вертикальная ось задаётся в блоке «Соответствия» (по умолчанию X).
 
 ## Режимы запуска
-* `python -m ansys_report wizard` — главное окно (Ansys → отчёт).
+* `python -m ansys_report wizard` — главное окно (Ansys → отчёт), открывается в отдельном окне Edge/Chrome.
+* `python -m ansys_report wizard-classic` — прежнее простое окно (запасное).
 * `python -m ansys_report gui` — сборка из готовой папки проекта (`project.yaml`), без запуска Ansys.
 * `python -m ansys_report all examples/demo/project.yaml -o out` — то же из командной строки (`excel`, `word`, `all`).
 * `python -m ansys_report apdl <project.yaml> -o out` — макрос APDL формы «полного» резервуара по замерам нивелировки.
@@ -40,3 +41,7 @@ python -m ansys_report wizard        # или двойной щелчок по r
 ## Допущения
 * Формулы по ГОСТ 31385 / СП 16.13330: R=σт·γc/(γm·γn) с γc=0,7/0,8/1,2, γm=γn=1,05; [σ]=σ0,2/1,5; допуск отклонения пояса k·h/200.
 * Свойства стали (09Г2С) берутся из анкеты, так как в проекте Ansys по умолчанию «Structural Steel».
+
+## Установщик для пользователей
+`installer\build_installer.bat` собирает `dist\AnsysReport\AnsysReport.exe` (PyInstaller) и, если установлен Inno Setup 6,
+`installer\Output\AnsysReport_Setup.exe`. Пользователю Python не нужен. Исправления выпускаются новой сборкой того же скрипта.

@@ -10,11 +10,14 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "apdl"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     a = ap.parse_args(argv)
     if a.command == "wizard":
+        from .webui import main as web_main
+        return web_main()
+    if a.command == "wizard-classic":
         from .wizard import main as wiz_main
         return wiz_main()
     if a.command == "gui":
