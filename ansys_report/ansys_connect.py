@@ -168,11 +168,13 @@ def _pyrepr(text: str) -> str:
     return repr(text)
 
 
-def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None, solve: bool = True) -> Path:
+def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None, solve: bool = True, settings=None) -> Path:
     """Запускает Mechanical в фоне, открывает проект, выгружает данные в out_dir. Возвращает out_dir."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     os.environ["ANSYS_REPORT_SOLVE"] = "1" if solve else "0"
+    from .settings import ModelSettings
+    os.environ.update((settings or ModelSettings()).env())      # соответствия имён и оси для скриптов в Mechanical
     for old in list(out.iterdir()):          # убираем файлы прошлой выгрузки, чтобы не принять их за новые
         if old.is_file():
             old.unlink()
@@ -275,8 +277,63 @@ def crop_mesh_views(img_dir: Path, log=print) -> None:
             im.crop((int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h))).save(f)
 
 
-def make_project_folder(data_dir: str | Path, anketa: dict | None = None) -> Path:
+def _fname(analysis: str) -> str:
+    return analysis.replace(" ", "_")
+
+
+def _blocks(d: Path, settings) -> dict[str, str]:
+    """Блоки project.yaml, зависящие от названий расчётов в проекте: роли расчётов, файлы результатов, рисунки."""
+    import json
+    from .settings import pick_roles
+    md = json.loads((d / "model_data.json").read_text(encoding="utf-8"))
+    names = [a["name"] for a in md.get("analyses", [])]
+    full, empty = pick_roles(names, settings)
+    lines = ["results:"]
+    if full:
+        lines.append(f"  full: {_fname(full)}_belts.csv")
+    if empty:
+        lines.append(f"  empty: {_fname(empty)}_belts.csv")
+    eigen = []
+    st = d / "stability.csv"
+    if st.exists():
+        for row in st.read_text(encoding="utf-8").splitlines()[1:]:
+            name = row.split(",")[0]
+            if name and name not in eigen:
+                eigen.append(name)
+    lines += ["  stability_csv: stability.csv", "  stability_modes: 2", "  stability_labels:"]
+    for n in eigen:
+        lines.append(f'    "{n}": "{(settings.buckling_labels or {}).get(n, n)}"')
+    lines += ["  required_k: 1.0", "", "images_dir: images", "images:"]
+    img = d / "images"
+
+    def add(key, aname, *results):
+        for r in results:
+            f = f"{_fname(aname)}_{r}.png"
+            if (img / f).exists():
+                lines.append(f"  {key}: {f}")
+                return
+
+    if full:
+        add("fig06_eq_stress", full, "Equivalent_Stress")
+        add("fig07_membrane", full, "Membrane_Stress")
+        add("fig08_fiber", full, "Maximum_Principal_Stress", "Bending_Stress")
+        add("fig09_deform", full, "Total_Deformation")
+    if empty:
+        add("fig10_empty_eq", empty, "Equivalent_Stress")
+        add("fig11_empty_mem", empty, "Membrane_Stress")
+        add("fig12_empty_fiber", empty, "Bending_Stress", "Maximum_Principal_Stress")
+        add("fig13_empty_deform", empty, "Total_Deformation")
+    k = 1
+    for n in eigen:
+        add(f"fig_stab{k}", n, "Total_Deformation"); k += 1
+        add(f"fig_stab{k}", n, "Total_Deformation_2"); k += 1
+    return {"analysis_full": full or "", "results_block": "\n".join(lines[:lines.index("")]),
+            "images_block": "\n".join(lines[lines.index("") + 1:])}
+
+
+def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settings=None) -> Path:
     """Из папки выгрузки делает папку проекта отчёта с project.yaml (анкета — из шаблона + переданные поля)."""
+    from .settings import ModelSettings
     d = Path(data_dir)
     img = d / "images"
     img.mkdir(exist_ok=True)
@@ -284,7 +341,9 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None) -> Pat
         shutil.move(str(f), img / f.name)
     crop_mesh_views(img)
     text = TEMPLATE_YAML.read_text(encoding="utf-8")
-    for key, val in (anketa or {}).items():
+    values = dict(anketa or {})
+    values.update(_blocks(d, settings or ModelSettings()))
+    for key, val in values.items():
         text = text.replace("{{" + key + "}}", str(val))
     text = re.sub(r"\{\{\w+\}\}", "", text)
     (d / "project.yaml").write_text(text, encoding="utf-8")

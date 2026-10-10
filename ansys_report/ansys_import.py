@@ -30,7 +30,7 @@ def load_model_data(path: Path) -> dict:
 def belt_bodies(md: dict) -> list[dict]:
     out = []
     for b in md["bodies"]:
-        m = re.match(r"^p\s*(\d+)$", b["name"])
+        m = re.match(md.get("belt_regex") or r"^p\s*(\d+)$", b["name"])
         if m:
             out.append({"n": int(m.group(1)), "thickness_mm": round(_num(b["thickness"]) * 1000, 3), "geo_id": b.get("geo_id")})
     return sorted(out, key=lambda x: x["n"])
@@ -92,16 +92,17 @@ def loads(md: dict, analysis: str | None = None) -> tuple[str, list[dict]]:
     if chosen is None:
         chosen = next((a for a in ans if any(c["type"] == "HydrostaticPressure" and c["suppressed"] != "True" for c in a["children"])), ans[0])
     out = []
+    va = (md.get("vertical_axis") or "X").upper()
     for c in chosen["children"]:
         p, t = c["props"], c["type"]
         item = {"name": c["name"], "type": t, "suppressed": c["suppressed"] == "True"}
         if t == "EarthGravity":
-            item["g"] = abs(_quantity_values(p.get("XComponent", "0"))[0]); item["direction"] = p.get("Direction", "")
+            item["g"] = abs(_quantity_values(p.get(f"{va}Component", "0"))[0]); item["direction"] = p.get("Direction", "")
         elif t == "HydrostaticPressure":
             item["density"] = _num(p.get("FluidDensity"))
-            xs = _quantity_values(p.get("XComponent", ""))
+            xs = _quantity_values(p.get(f"{va}Component", ""))
             item["accel"] = xs[-1] if xs else None
-            item["level_m"] = _num(p.get("XCoordinate"))
+            item["level_m"] = _num(p.get(f"{va}Coordinate"))
         elif t in ("Force", "Pressure", "LinePressure"):
             comps = {ax: (_quantity_values(p.get(f"{ax}Component", "0")) or [0.0])[0] for ax in "XYZ"}
             ax = max(comps, key=lambda k: abs(comps[k]))

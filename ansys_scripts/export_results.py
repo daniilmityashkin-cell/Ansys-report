@@ -14,6 +14,21 @@ out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "an
 System.IO.Directory.CreateDirectory(out)
 log = []
 
+BELT_RE = os.environ.get("ANSYS_REPORT_BELT_REGEX") or r"^p\s*(\d+)$"
+AXIS = (os.environ.get("ANSYS_REPORT_AXIS") or "X").upper()
+STATIC_PREFIX = os.environ.get("ANSYS_REPORT_STATIC") or "Static"
+EIGEN_PREFIX = os.environ.get("ANSYS_REPORT_EIGEN") or "Eigenvalue"
+
+
+def vc(x, y, z):
+    """Координаты узла -> (вертикаль, a, b): вертикаль резервуара приводится к «X» отчёта."""
+    if AXIS == "Y":
+        return (y, z, x)
+    if AXIS == "Z":
+        return (z, x, y)
+    return (x, y, z)
+
+
 def write(name, lines):
     f = io.open(os.path.join(out, name), "w", encoding="utf-8")
     f.write(u"\n".join(lines))
@@ -26,8 +41,10 @@ def fit_view():
     try:
         from Ansys.ACT.Math import Vector3D
         cam = Graphics.Camera
-        cam.UpVector = Vector3D(1, 0, 0)
-        cam.ViewVector = Vector3D(-0.5, -1, -0.6)
+        up = {"X": (1, 0, 0), "Y": (0, 1, 0), "Z": (0, 0, 1)}[AXIS]
+        view = {"X": (-0.5, -1, -0.6), "Y": (-0.6, -0.5, -1), "Z": (-1, -0.6, -0.5)}[AXIS]
+        cam.UpVector = Vector3D(up[0], up[1], up[2])
+        cam.ViewVector = Vector3D(view[0], view[1], view[2])
         ok = True
     except Exception:
         pass
@@ -51,7 +68,7 @@ def mpa(q):
 model = ExtAPI.DataModel.Project.Model
 belts = {}
 for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
-    m = re.match(r"^p\s*(\d+)$", b.Name)
+    m = re.match(BELT_RE, b.Name)
     if m:
         belts[int(m.group(1))] = b.GetGeoBody().Id
 log.append(u"Найдено поясов: %d" % len(belts))
@@ -86,12 +103,12 @@ for a in model.Analyses:
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
     # 2. устойчивость: коэффициент запаса = ReportedFrequency у результатов Eigenvalue Buckling
-    if a.Name.startswith("Eigenvalue"):
+    if a.Name.startswith(EIGEN_PREFIX):
         for r in sol.Children:
             if r.GetType().Name == "TotalDeformation":
                 stab.append(u"%s,%d,%.4f" % (a.Name, r.Mode, r.ReportedFrequency.Value))
     # 3. прочность: максимумы по поясам
-    elif a.Name.startswith("Static"):
+    elif a.Name.startswith(STATIC_PREFIX):
         created = []
         rows = {}
         try:

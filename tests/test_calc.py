@@ -78,3 +78,33 @@ def test_wizard_project_folder(tmp_path):
                                            "roof_radius": 34200, "executor_name": "Иванов И.И."})
     files = build_all(yaml_path, tmp_path / "out", log=lambda m: None)
     assert any(f.suffix == ".docx" for f in files) and any(f.suffix == ".xlsx" for f in files)
+
+
+def test_roles_and_custom_belt_regex(tmp_path):
+    """Соответствия: роли расчётов выбираются по настройке/имени, имена поясов — по регулярному выражению."""
+    import json
+    import re
+    import shutil
+    from ansys_report.settings import ModelSettings, pick_roles
+    from ansys_report.ansys_connect import make_project_folder
+    from ansys_report import ansys_import as ai
+    names = ["Static Structural", "Static Structural 2", "Eigenvalue Buckling", "Static Structural Full"]
+    assert pick_roles(names, ModelSettings()) == ("Static Structural Full", "Static Structural 2")
+    assert pick_roles(names, ModelSettings(full_analysis="Static Structural", empty_analysis="Static Structural 2")) == \
+        ("Static Structural", "Static Structural 2")
+    assert pick_roles(["Eigenvalue Buckling"], ModelSettings()) == (None, None)
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    data = tmp_path / "d"
+    shutil.copytree(src, data, ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    # пояса названы иначе: «Belt_01…Belt_12»
+    md = json.loads((data / "model_data.json").read_text(encoding="utf-8"))
+    for b in md["bodies"]:
+        m = re.match(r"^p\s*(\d+)$", b["name"])
+        if m:
+            b["name"] = "Belt_%02d" % int(m.group(1))
+    md["belt_regex"] = r"^Belt_(\d+)$"
+    (data / "model_data.json").write_text(json.dumps(md), encoding="utf-8")
+    assert len(ai.belt_bodies(md)) == 12
+    st = ModelSettings(buckling_labels={"Eigenvalue Buckling": "Ветер A", "Eigenvalue Buckling 2": "Ветер B"})
+    p = load_project(make_project_folder(data, {"number": "N", "year": 2026, "tag": "T-1", "roof_radius": 1}, st))
+    assert p.has_results and p.results_empty and "Ветер A" in p.stability[0]["case"]

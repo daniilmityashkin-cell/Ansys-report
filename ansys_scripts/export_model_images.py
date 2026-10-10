@@ -8,6 +8,21 @@ import System
 out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 log = []
+
+BELT_RE = os.environ.get("ANSYS_REPORT_BELT_REGEX") or r"^p\s*(\d+)$"
+AXIS = (os.environ.get("ANSYS_REPORT_AXIS") or "X").upper()
+STATIC_PREFIX = os.environ.get("ANSYS_REPORT_STATIC") or "Static"
+EIGEN_PREFIX = os.environ.get("ANSYS_REPORT_EIGEN") or "Eigenvalue"
+
+
+def vc(x, y, z):
+    """Координаты узла -> (вертикаль, a, b): вертикаль резервуара приводится к «X» отчёта."""
+    if AXIS == "Y":
+        return (y, z, x)
+    if AXIS == "Z":
+        return (z, x, y)
+    return (x, y, z)
+
 model = ExtAPI.DataModel.Project.Model
 
 
@@ -18,8 +33,10 @@ def fit_view():
     try:
         from Ansys.ACT.Math import Vector3D
         cam = Graphics.Camera
-        cam.UpVector = Vector3D(1, 0, 0)
-        cam.ViewVector = Vector3D(-0.5, -1, -0.6)
+        up = {"X": (1, 0, 0), "Y": (0, 1, 0), "Z": (0, 0, 1)}[AXIS]
+        view = {"X": (-0.5, -1, -0.6), "Y": (-0.6, -0.5, -1), "Z": (-1, -0.6, -0.5)}[AXIS]
+        cam.UpVector = Vector3D(up[0], up[1], up[2])
+        cam.ViewVector = Vector3D(view[0], view[1], view[2])
         ok = True
     except Exception:
         pass
@@ -62,12 +79,15 @@ snap(model.Geometry, "fig01_general")
 snap(model.Mesh, "fig02_mesh_wall_bottom", True)
 snap(model.Mesh, "fig03_mesh_wall_roof", True)
 for a in model.Analyses:
-    if a.Name.startswith("Static"):
+    if a.Name.startswith(STATIC_PREFIX):
+        loads_done = False
         for c in a.Children:
-            if c.Name == "Hydrostatic Pressure":
+            tn = c.GetType().Name
+            if tn == "HydrostaticPressure":
                 snap(c, "fig05_hydrostatic")
-            if c.Name == u"Fкр":
+            elif not loads_done and tn in ("Force", "Pressure", "LinePressure", "RemoteForce"):
                 snap(c, "fig04_loads")
+                loads_done = True
         break
 
 f = io.open(os.path.join(out, "log_images.txt"), "w", encoding="utf-8")

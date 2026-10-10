@@ -81,7 +81,10 @@ def load_project(yaml_path: str | Path) -> Project:
         empty = _load_survey(root / s["empty"], n, s["points_per_belt"])
     if full is None:      # замеров «полного» нет — форма как у пустого (без дополнительной деформации)
         full = [row[:] for row in empty]
-    rr = raw.get("results") or {}
+    rr = raw.setdefault("results", {})
+    rr.setdefault("required_k", 1.0)
+    if md is not None and "max_fill_m" not in rr and raw["tank"].get("fill_level"):
+        rr["max_fill_m"] = raw["tank"]["fill_level"] / 1000
     res = _load_belts(root / rr["full"], n) if rr.get("full") and (root / rr["full"]).exists() else []
     res_empty = _load_belts(root / rr["empty"], n) if rr.get("empty") and (root / rr["empty"]).exists() else None
     return Project(root, raw, full, empty, res, res_empty, _load_stability(root, rr) if res else [])
