@@ -33,18 +33,53 @@ def fit_view():
     except Exception:
         pass
 
-def snap(obj, name):
+def tank_dims():
+    """Высота (по X) и радиус стенки по узлам сетки, в метрах. None - если определить не удалось."""
+    try:
+        md = ExtAPI.DataModel.MeshDataByName("Global")
+        xs, rs = [], []
+        for n in md.Nodes:
+            xs.append(n.X)
+            rs.append((n.Y * n.Y + n.Z * n.Z) ** 0.5)
+        return min(xs), max(xs), max(rs)
+    except Exception as e:
+        log.append(u"размеры резервуара не определены: %s" % e)
+        return None
+
+
+def zoom_to(x, radius, scene_height):
+    """Навести камеру на точку стенки на высоте x (ближайшую к камере) и приблизить."""
+    from Ansys.ACT.Math import Point3D
+    k = (1.0 + 0.36) ** 0.5
+    cam = Graphics.Camera
+    cam.FocalPoint = Point3D(x, radius * 1.0 / k, radius * 0.6 / k)
+    cam.SceneHeight = scene_height
+
+
+def snap(obj, name, focus=None):
     try:
         obj.Activate()
         fit_view()
+        if focus:
+            try:
+                zoom_to(*focus)
+            except Exception as e:
+                log.append(u"приближение %s не вышло: %s" % (name, e))
         Graphics.ExportImage(os.path.join(out, name + ".png"))
         log.append(u"ok: " + name)
     except Exception as e:
         log.append(u"ОШИБКА %s: %s" % (name, e))
 
+dims = tank_dims()
+if dims:
+    xmin, xmax, rad = dims
+    bottom = (xmin + 0.6, rad, 3.5)      # нижний край стенки у днища
+    top = (xmax - 0.6, rad, 3.5)         # верхний край стенки у кровли
+else:
+    bottom = top = None
 snap(model.Geometry, "fig01_general")
-snap(model.Mesh, "fig02_mesh_wall_bottom")
-snap(model.Mesh, "fig03_mesh_wall_roof")
+snap(model.Mesh, "fig02_mesh_wall_bottom", bottom)
+snap(model.Mesh, "fig03_mesh_wall_roof", top)
 for a in model.Analyses:
     if a.Name.startswith("Static"):
         for c in a.Children:
