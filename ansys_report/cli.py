@@ -9,10 +9,15 @@ from .word_gen import build_report
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all"], help="что сформировать")
-    ap.add_argument("project", help="путь к project.yaml")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui"], help="что сформировать")
+    ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     a = ap.parse_args(argv)
+    if a.command == "gui":
+        from .gui import main as gui_main
+        return gui_main()
+    if not a.project:
+        ap.error("укажите путь к project.yaml")
     try:
         p = load_project(a.project)
     except (ProjectError, FileNotFoundError, KeyError) as e:

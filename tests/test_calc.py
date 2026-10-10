@@ -33,3 +33,10 @@ def test_real_ansys_example(tmp_path):
     assert len(c["belts"]) == 12 and c["belts_empty"] and c["strength_ok"]
     assert [s["k"] for s in c["stability"][:3]] == [11.6, 11.6, 10.9] and c["stability_ok"]
     build_report(p, tmp_path / "r.docx")
+
+
+def test_gui_core(tmp_path):
+    from ansys_report.gui import build_all
+    msgs = []
+    files = build_all(YAML, tmp_path, msgs.append)
+    assert len(files) == 4 and all(f.exists() for f in files) and any("Word" in m for m in msgs)
