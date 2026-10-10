@@ -177,8 +177,13 @@ class Report:
         for ln in lines[1:]:
             pp = right.add_paragraph(); pp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             self._run(pp, ln, 14)
-        for _ in range(8): self.para(**C)
-        self.para(f"{r['year']} г.", **C)
+        # год — в рамке, прижатой к нижнему краю страницы (не зависит от числа строк выше)
+        yp = self.para(f"{r['year']} г.", **C)
+        fr = OxmlElement("w:framePr")
+        for k, v in (("w:w", "9000"), ("w:hSpace", "0"), ("w:wrap", "around"), ("w:vAnchor", "margin"),
+                     ("w:hAnchor", "margin"), ("w:xAlign", "center"), ("w:yAlign", "bottom")):
+            fr.set(qn(k), v)
+        yp._p.get_or_add_pPr().insert(0, fr)
         self.page_break()
 
     def toc(self):
