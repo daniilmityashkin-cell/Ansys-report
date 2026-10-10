@@ -143,6 +143,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
               <li data-s="4"><span class="c"></span>Отчёт готов</li>
             </ul>
             <div class="bar" id="bar"><i></i></div>
+            <p class="hint" id="wait" style="margin:10px 4px 0"></p>
             <div class="err hide" id="err"></div>
           </div>
           <div class="card result hide" id="result">
@@ -257,12 +258,15 @@ $("#go").onclick = async () => {
   const r = await api("/api/build", collect());
   if (!r.ok){ $("#err").textContent = r.error; $("#err").classList.remove("hide"); return; }
   $("#go").disabled = true; $("#gotxt").textContent = "Идёт сборка…"; $("#pdot").className = "dot"; $("#ptxt").textContent = "Работаем…";
-  let stage = 1; clearInterval(timer);
+  let stage = 1; clearInterval(timer); const t0 = Date.now(); clearInterval(window.tick);
+  const mmss = ms => { const s = Math.floor(ms/1000); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); };
+  window.tick = setInterval(() => { $("#gotxt").textContent = "Идёт сборка… " + mmss(Date.now()-t0);
+    $("#wait").textContent = stage === 2 ? "Workbench открывает проект и при необходимости решает расчёты — это может занять 5–15 минут. Окно не зависло." : ""; }, 1000);
   timer = setInterval(async () => {
     const s = await api("/api/status?since=" + seen); seen = s.total;
     for (const l of s.lines){ addLog(l); stage = Math.max(stage, stageOf(l) || stage); }
     if (!s.done){ setStage(stage); return; }
-    clearInterval(timer); $("#go").disabled = false; $("#gotxt").textContent = "Собрать отчёт";
+    clearInterval(timer); clearInterval(window.tick); $("#wait").textContent = ""; $("#go").disabled = false; $("#gotxt").textContent = "Собрать отчёт";
     if (s.error){ setStage(stage, true); $("#err").textContent = s.error; $("#err").classList.remove("hide");
       $("#pdot").className = "dot bad"; $("#ptxt").textContent = "Есть ошибка"; return; }
     files = s.files; setStage(4); $("#pdot").className = "dot ok"; $("#ptxt").textContent = "Отчёт готов";

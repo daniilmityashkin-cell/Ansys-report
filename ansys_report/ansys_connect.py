@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -137,7 +138,18 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
         runlog = out / "wb_run.log"
         with open(runlog, "w", encoding="utf-8", errors="replace") as lf:
             proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=lf, stderr=subprocess.STDOUT, env=env)
-            proc.wait()
+            started = time.time()
+            while True:                      # сообщаем, что программа жива: Workbench работает без окна
+                try:
+                    proc.wait(timeout=45)
+                    break
+                except subprocess.TimeoutExpired:
+                    mins = int((time.time() - started) // 60)
+                    seen = ""
+                    if status.exists():
+                        last = [l for l in status.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+                        seen = f" (последний шаг: {last[-1][:60]})" if last else ""
+                    log(f"  Workbench работает… {mins} мин{seen}")
         log(f"  Workbench завершился с кодом {proc.returncode}")
         try:
             tail = [l for l in runlog.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()][:8]
