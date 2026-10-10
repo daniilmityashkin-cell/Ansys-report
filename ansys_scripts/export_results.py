@@ -93,6 +93,11 @@ for a in model.Analyses:
                 created.append((i, eq, fb, mem))
             try:
                 log.append(u"%s: статус решения: %s; папка: %s" % (a.Name, sol.Status, a.WorkingDir))
+                try:
+                    fl = [os.path.basename(x) for x in System.IO.Directory.GetFiles(a.WorkingDir)]
+                    log.append(u"  файлов в папке: %d: %s" % (len(fl), u", ".join(fl[:15])))
+                except Exception as e:
+                    log.append(u"  папка недоступна: %s" % e)
             except Exception as e:
                 log.append(u"%s: диагностика: %s" % (a.Name, e))
             sol.EvaluateAllResults()
@@ -104,7 +109,6 @@ for a in model.Analyses:
                     for r in t[1:]:
                         try:
                             r.Activate()
-                            r.EvaluateResult()
                         except Exception as e:
                             log.append(u"  Activate/Evaluate: %s" % e)
                             break
