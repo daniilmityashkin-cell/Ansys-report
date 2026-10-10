@@ -111,6 +111,7 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             '    f = open(status, "a")\n'
             '    f.write(m + "\\n")\n'
             "    f.close()\n"
+            'st("JOURNAL START")\n'
             "try:\n"
             f'    Open(FilePath=r"{project}")\n'
             "    target = None\n"
@@ -130,8 +131,17 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             encoding="utf-8")
         env = dict(os.environ, ANSYS_REPORT_OUT=str(out))
         log("Запускаю Workbench в фоне и открываю проект (несколько минут)…")
-        proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
-        proc.wait()
+        runlog = out / "wb_run.log"
+        with open(runlog, "w", encoding="utf-8", errors="replace") as lf:
+            proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=lf, stderr=subprocess.STDOUT, env=env)
+            proc.wait()
+        log(f"  Workbench завершился с кодом {proc.returncode}")
+        try:
+            tail = [l for l in runlog.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()][:8]
+            for l in tail:
+                log("  wb> " + l[:200])
+        except Exception:
+            pass
         if status.exists():
             for line in status.read_text(encoding="utf-8", errors="replace").splitlines():
                 if line.startswith("ERROR"):
