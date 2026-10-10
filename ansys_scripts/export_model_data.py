@@ -3,7 +3,7 @@
 # Запуск: Automation -> Scripting -> "+" -> вставить -> Run. Ничего в проекте не меняет.
 # Результат: %TEMP%\ansys_report_out\model_data.json  (+ model_data_log.txt)
 # Если появится окно Exception на какой-то строке - закройте его и нажмите Run/Continue, скрипт продолжит.
-import os, io, math
+import os, io, math, re
 import System
 
 out = os.path.join(os.environ["TEMP"], "ansys_report_out")
@@ -81,12 +81,22 @@ try:
     nodes = [(n.X, n.Y, n.Z) for n in md.Nodes]
     rmax = max(math.sqrt(y * y + z * z) for x, y, z in nodes)
     data["bbox"] = {"xmax": max(n[0] for n in nodes), "xmin": min(n[0] for n in nodes), "rmax": rmax}
-    rings = {}
-    for x, y, z in nodes:
-        r = math.sqrt(y * y + z * z)
-        if r > rmax - 0.3:
-            rings.setdefault(round(x, 3), []).append((round(math.degrees(math.atan2(z, y)), 2), round(r, 5)))
-    data["rings"] = [{"x": k, "points": sorted(v)} for k, v in sorted(rings.items()) if len(v) >= 100]
+    # верхнее кольцо каждого пояса p1..p12 только по узлам этого тела (без швеллера и других тел)
+    belt_rings = []
+    for b in bodies:
+        mm = re.match(r"^p\s*(\d+)$", b["name"])
+        if not mm or b["geo_id"] is None:
+            continue
+        try:
+            reg = md.MeshRegionById(b["geo_id"])
+            pts = [(md.NodeById(i).X, md.NodeById(i).Y, md.NodeById(i).Z) for i in reg.NodeIds]
+            xt = max(p[0] for p in pts)
+            top = [(round(math.degrees(math.atan2(z, y)), 2), round(math.sqrt(y * y + z * z), 5))
+                   for x, y, z in pts if abs(x - xt) < 1e-3]
+            belt_rings.append({"belt": int(mm.group(1)), "x_top": round(xt, 4), "points": sorted(top)})
+        except Exception as e:
+            data["errors"].append(u"кольцо %s: %s" % (b["name"], e))
+    data["belt_rings"] = belt_rings
 except Exception as e:
     data["errors"].append(u"сетка/узлы: %s" % e)
 
@@ -124,6 +134,6 @@ f = io.open(os.path.join(out, "model_data.json"), "w", encoding="utf-8")
 f.write(dumps(data))
 f.close()
 print("Готово: %s | тел: %d | узлов: %s | колец: %d | ошибок: %d" % (
-    os.path.join(out, "model_data.json"), len(bodies), data.get("node_count"), len(data.get("rings", [])), len(data["errors"])))
+    os.path.join(out, "model_data.json"), len(bodies), data.get("node_count"), len(data.get("belt_rings", [])), len(data["errors"])))
 for e in data["errors"]:
     print(e)
