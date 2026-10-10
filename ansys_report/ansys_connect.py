@@ -242,7 +242,7 @@ def _report_problems(out: Path, log):
 
 
 # доли кадра (x0, y0, x1, y1): где в общем виде резервуара (камера: X вверх, вид сбоку сверху) нижний и верхний край стенки
-_CROPS = {"fig02_mesh_wall_bottom": (0.22, 0.58, 0.62, 0.92), "fig03_mesh_wall_roof": (0.22, 0.10, 0.62, 0.42)}
+_CROPS = {"fig02_mesh_wall_bottom": (0.18, 0.66, 0.58, 0.98), "fig03_mesh_wall_roof": (0.22, 0.10, 0.62, 0.42)}
 
 
 def crop_mesh_views(img_dir: Path, log=print) -> None:
