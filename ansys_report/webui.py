@@ -145,6 +145,10 @@ def make_handler(job: Job, state: dict):
             data = json.loads(self.rfile.read(n) or b"{}")
             path = self.path
             state["last_ping"] = time.time()
+            if path == "/api/bye":                 # окно закрывается: выходим через несколько секунд, если страница не вернётся
+                state["bye"] = time.time() + 8
+                return self._json({"ok": True})
+            state["bye"] = None                     # любой другой запрос = страница жива (например, перезагрузка)
             if path == "/api/ping":
                 return self._json({"ok": True})
             if path == "/api/pick":
@@ -226,7 +230,11 @@ def main(open_window: bool = True, port: int = 0) -> int:
         try:
             while True:
                 time.sleep(1)
-                if time.time() - started > 20 and time.time() - state["last_ping"] > 15 and not job.running:
+                if job.running or time.time() - started < 20:
+                    continue
+                closed = state.get("bye") and time.time() > state["bye"]                 # окно закрыто пользователем
+                idle = time.time() - state["last_ping"] > 600                            # свёрнутое окно Edge присылает сигналы редко
+                if closed or idle:
                     break
         except KeyboardInterrupt:
             pass
