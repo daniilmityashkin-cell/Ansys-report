@@ -98,8 +98,10 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
     try:
         mechdb = find_mechdb(project, work)
         # Mechanical меняет файл при открытии — работаем с копией, исходный проект не трогаем
-        local = work / "model.mechdb"
-        shutil.copy2(mechdb, local)
+        # копируем всю папку MECH: рядом с .mechdb лежат файлы результатов расчёта (.rst), без них новые результаты = 0
+        mdir = work / "MECH"
+        shutil.copytree(mechdb.parent, mdir)
+        local = mdir / mechdb.name
         log(f"Проект: {mechdb.name}. Запускаю Mechanical в фоне (1–3 минуты)…")
         os.environ["ANSYS_REPORT_OUT"] = str(out)
         mech = launch_mechanical(batch=True, version=ver, cleanup_on_exit=True)
@@ -118,7 +120,23 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
         shutil.rmtree(work, ignore_errors=True)
     if not (out / "model_data.json").exists():
         raise ConnectError("Выгрузка не создала model_data.json. Смотрите model_data_log.txt в папке " + str(out))
+    _report_problems(out, log)
     return out
+
+
+def _report_problems(out: Path, log):
+    """Показывает ошибки скриптов и предупреждает, если напряжения по поясам выгрузились нулями."""
+    for name in ("log.txt", "model_data_log.txt", "log_images.txt"):
+        f = out / name
+        if f.exists():
+            for line in f.read_text(encoding="utf-8").splitlines():
+                if "ОШИБКА" in line:
+                    log(f"  ! {name}: {line}")
+    for f in out.glob("*_belts.csv"):
+        rows = f.read_text(encoding="utf-8").splitlines()[1:]
+        if rows and all(float(x) == 0 for r in rows for x in r.split(",")[1:]):
+            log(f"  ! {f.name}: все напряжения равны 0 - результаты расчёта не прочитаны. "
+                "Откройте проект в Ansys, убедитесь что расчёт выполнен (зелёные галочки), сохраните и повторите.")
 
 
 def make_project_folder(data_dir: str | Path, anketa: dict | None = None) -> Path:

@@ -10,9 +10,22 @@ System.IO.Directory.CreateDirectory(out)
 log = []
 model = ExtAPI.DataModel.Project.Model
 
+
+def fit_view():
+    # в фоновом режиме камера по умолчанию сильно приближена - ставим изометрию и "показать всё"
+    try:
+        Graphics.Camera.SetSpecificViewOrientation(ViewOrientationType.Iso)
+    except Exception:
+        pass
+    try:
+        Graphics.Camera.SetFit()
+    except Exception:
+        pass
+
 def snap(obj, name):
     try:
         obj.Activate()
+        fit_view()
         Graphics.ExportImage(os.path.join(out, name + ".png"))
         log.append(u"ok: " + name)
     except Exception as e:

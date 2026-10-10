@@ -19,6 +19,18 @@ def write(name, lines):
     f.write(u"\n".join(lines))
     f.close()
 
+def fit_view():
+    # в фоновом режиме камера по умолчанию сильно приближена - ставим изометрию и "показать всё"
+    try:
+        Graphics.Camera.SetSpecificViewOrientation(ViewOrientationType.Iso)
+    except Exception:
+        pass
+    try:
+        Graphics.Camera.SetFit()
+    except Exception:
+        pass
+
+
 def mpa(q):
     v = q.Value
     if str(q.Unit) == "Pa":
@@ -43,6 +55,7 @@ for a in model.Analyses:
             continue
         try:
             r.Activate()
+            fit_view()
             Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
