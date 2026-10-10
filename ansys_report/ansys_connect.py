@@ -81,6 +81,62 @@ def _open_project(mech, path: Path, log):
     raise ConnectError("Не удалось открыть проект в Mechanical в фоновом режиме")
 
 
+def _system_name(mechdb: Path) -> str:
+    """Имя системы Workbench по файлу .mechdb (например SYS-2.mechdb -> SYS-2)."""
+    return mechdb.stem
+
+
+def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path, mechdb: Path) -> None:
+    """Основной способ: Workbench в фоне открывает проект (со всеми файлами результатов) и запускает
+    наши скрипты внутри Mechanical через журнал (SendCommand)."""
+    import subprocess
+    exe = install / "Framework" / "bin" / "Win64" / "RunWB2.exe"
+    if not exe.exists():
+        raise ConnectError(f"Не найден {exe}")
+    work = Path(tempfile.mkdtemp(prefix="ansys_report_wb_"))
+    try:
+        cmds = []
+        for name in SCRIPT_ORDER:
+            cmds.append(f'model.SendCommand(Language="Python", Command={_pyrepr(chr(10).join(["import io", "exec(io.open(r" + repr(str(SCRIPTS / name)) + ", encoding=" + repr("utf-8") + ").read())"]))})')
+            cmds.append(f'print("DONE {name}")')
+        journal = work / "run.wbjn"
+        journal.write_text(
+            "import os\n"
+            f'os.environ["ANSYS_REPORT_OUT"] = r"{out}"\n'
+            f'Open(FilePath=r"{project}")\n'
+            "target = None\n"
+            "for s in GetAllSystems():\n"
+            '    print("SYSTEM " + s.Name)\n'
+            f'    if s.Name.replace(" ", "").replace("-", "") == "{_system_name(mechdb).replace(" ", "").replace("-", "")}":\n'
+            "        target = s\n"
+            "if target is None:\n"
+            '    raise Exception("system not found")\n'
+            'model = target.GetContainer(ComponentName="Model")\n'
+            "model.Edit()\n"
+            + "\n".join(cmds) + "\n"
+            "model.Exit()\n",
+            encoding="utf-8")
+        env = dict(os.environ, ANSYS_REPORT_OUT=str(out))
+        log("Запускаю Workbench в фоне и открываю проект (несколько минут)…")
+        proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace", env=env)
+        for line in proc.stdout:
+            line = line.strip()
+            if line.startswith("SYSTEM "):
+                log("  система в проекте: " + line[7:])
+            elif line.startswith("ERROR") or "Exception" in line:
+                log("  ! " + line[:200])
+            if line.startswith("DONE "):
+                log("  готово: " + line[5:])
+        proc.wait()
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _pyrepr(text: str) -> str:
+    return repr(text)
+
+
 def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None) -> Path:
     """Запускает Mechanical в фоне, открывает проект, выгружает данные в out_dir. Возвращает out_dir."""
     out = Path(out_dir)
@@ -90,13 +146,23 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
         raise ConnectError("Ansys не найден на этом компьютере (нет переменной AWP_ROOT###). Установите Ansys Mechanical.")
     ver = version or next(iter(installs))
     log(f"Найден Ansys версии {ver}")
-    try:
-        from ansys.mechanical.core import launch_mechanical
-    except ImportError as e:
-        raise ConnectError("Не установлен пакет ansys-mechanical-core (pip install ansys-mechanical-core)") from e
     work = Path(tempfile.mkdtemp(prefix="ansys_report_"))
     try:
         mechdb = find_mechdb(project, work)
+        wbpj = Path(project)
+        if wbpj.suffix.lower() == ".wbpj" and ver in installs:
+            try:
+                extract_via_workbench(wbpj, out, log, ver, installs[ver], mechdb)
+                if (out / "model_data.json").exists():
+                    _report_problems(out, log)
+                    return out
+                log("Через Workbench не вышло, пробую запасной способ…")
+            except Exception as e:  # noqa: BLE001
+                log(f"Workbench-способ не сработал ({e}), пробую запасной способ…")
+        try:
+            from ansys.mechanical.core import launch_mechanical
+        except ImportError as e:
+            raise ConnectError("Не установлен пакет ansys-mechanical-core (pip install ansys-mechanical-core)") from e
         # Mechanical меняет файл при открытии — работаем с копией, исходный проект не трогаем
         # копируем всю папку MECH: рядом с .mechdb лежат файлы результатов расчёта (.rst), без них новые результаты = 0
         mdir = work / "MECH"
