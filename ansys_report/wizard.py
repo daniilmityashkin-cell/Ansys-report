@@ -40,12 +40,18 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False)
     """Полный цикл: Ansys → выгрузка → project.yaml → Word/Excel. Возвращает список файлов."""
     from .ansys_connect import extract, make_project_folder
     from .gui import build_all
-    data = Path(out_dir) / "_ansys_data"
+    # отчёт всегда в отдельной подпапке "Отчёт <позиция>", чтобы не смешиваться с другими файлами
+    safe = "".join(c for c in str(anketa.get("tag") or "РВС") if c not in '\\/:*?"<>|').strip() or "РВС"
+    out_dir = Path(out_dir) / f"Отчёт {safe}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    data = out_dir / "_ansys_data"
     if not (reuse_data and (data / "model_data.json").exists()):
         extract(project_file, data, log)
     yaml_path = make_project_folder(data, anketa)
     log("Собираю отчёт…")
-    return build_all(yaml_path, out_dir, log)
+    files = build_all(yaml_path, out_dir, log)
+    log(f"Отчёт лежит в папке: {out_dir}")
+    return files
 
 
 def main() -> int:
@@ -85,6 +91,17 @@ def main() -> int:
             box.configure(state="normal"); box.insert("end", msg + "\n"); box.see("end"); box.configure(state="disabled")
         root.after(0, put)
 
+    last = [None]
+
+    def open_folder():
+        if sys.platform != "win32":
+            return
+        if last[0]:
+            import subprocess
+            subprocess.Popen(["explorer", "/select,", str(Path(last[0]))])   # открыть папку и выделить Word-файл
+        else:
+            os.startfile(outd.get())
+
     def work():
         btn.configure(state="disabled")
         anketa = {k: v.get() for k, v in vars_.items()}
@@ -94,7 +111,8 @@ def main() -> int:
         except Exception:
             pass
         try:
-            build_from_ansys(proj.get(), outd.get(), anketa, log, reuse.get())
+            files = build_from_ansys(proj.get(), outd.get(), anketa, log, reuse.get())
+            last[0] = next((f for f in files if f.suffix == ".docx"), files[0] if files else None)
             log("ГОТОВО. Нажмите «Открыть папку».")
         except PermissionError:
             log("ОШИБКА: файл открыт в Word/Excel. Закройте его и повторите.")
@@ -106,7 +124,7 @@ def main() -> int:
     btn = tk.Button(root, text="СОБРАТЬ ОТЧЁТ", height=2, bg="#2e7d32", fg="white",
                     command=lambda: threading.Thread(target=work, daemon=True).start())
     btn.grid(row=6, column=0, sticky="we", padx=8)
-    tk.Button(root, text="Открыть папку", command=lambda: os.startfile(outd.get()) if sys.platform == "win32" else None
+    tk.Button(root, text="Открыть папку", command=open_folder
               ).grid(row=6, column=1, padx=8)
     root.mainloop()
     return 0
