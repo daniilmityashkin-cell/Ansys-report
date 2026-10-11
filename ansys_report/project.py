@@ -1,6 +1,7 @@
 """Загрузка и проверка исходных данных проекта (project.yaml + CSV)."""
 from __future__ import annotations
 import csv
+import re
 from dataclasses import dataclass
 from pathlib import Path
 import yaml
@@ -81,7 +82,10 @@ def load_project(yaml_path: str | Path) -> Project:
         empty = _load_survey(root / s["empty"], n, s["points_per_belt"])
     if full is None:      # замеров «полного» нет — форма как у пустого (без дополнительной деформации)
         full = [row[:] for row in empty]
-    rr = raw.get("results") or {}
+    rr = raw.setdefault("results", {})
+    rr.setdefault("required_k", 1.0)
+    if md is not None and "max_fill_m" not in rr and raw["tank"].get("fill_level"):
+        rr["max_fill_m"] = raw["tank"]["fill_level"] / 1000
     res = _load_belts(root / rr["full"], n) if rr.get("full") and (root / rr["full"]).exists() else []
     res_empty = _load_belts(root / rr["empty"], n) if rr.get("empty") and (root / rr["empty"]).exists() else None
     return Project(root, raw, full, empty, res, res_empty, _load_stability(root, rr) if res else [])
@@ -114,10 +118,35 @@ def _apply_ansys(raw: dict, root: Path):
     if hydro:
         t["fill_level"] = round(hydro["level_m"] * 1000)
         t["product_density"] = hydro["density"]
+    _apply_material(raw, root, md, ai)
     mi = ai.mesh_info(md)
     raw["mesh"] = {"nodes": mi["nodes"], "elements": mi["elements"], "element_size_mm": mi["element_size_mm"],
                    "element_type": a.get("element_type") or ("SHELL181" if mi["order"] == "Linear" else "SHELL281")}
     return md
+
+
+def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
+    """Свойства стали берём из Engineering Data проекта Ansys (engineering_data.xml рядом с model_data.json);
+    марка и стандарт из анкеты имеют приоритет по названию. Нет файла - остаются значения анкеты."""
+    f = root / "engineering_data.xml"
+    m = raw.setdefault("material", {})
+    if not f.exists():
+        return
+    try:
+        mats = ai.read_engineering_data(f)
+    except Exception:       # noqa: BLE001  - повреждённый файл не должен ронять отчёт
+        return
+    belts = [b for b in md["bodies"] if re.match(md.get("belt_regex") or r"^p\s*(\d+)$", b["name"])]
+    names = [b.get("material") for b in belts if b.get("material") in mats]
+    name = names[0] if names else None
+    if name is None:
+        return
+    summ = ai.material_summary(mats[name])
+    m.update(summ)
+    m["ansys_name"] = name
+    m["source"] = "Ansys"
+    if not (m.get("name") or "").strip():
+        m["name"] = name
 
 
 def _num(x) -> float:

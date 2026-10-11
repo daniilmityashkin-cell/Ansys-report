@@ -9,6 +9,21 @@ import System
 out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 data = {"errors": []}
+
+BELT_RE = os.environ.get("ANSYS_REPORT_BELT_REGEX") or r"^p\s*(\d+)$"
+AXIS = (os.environ.get("ANSYS_REPORT_AXIS") or "X").upper()
+STATIC_PREFIX = os.environ.get("ANSYS_REPORT_STATIC") or "Static"
+EIGEN_PREFIX = os.environ.get("ANSYS_REPORT_EIGEN") or "Eigenvalue"
+
+
+def vc(x, y, z):
+    """Координаты узла -> (вертикаль, a, b): вертикаль резервуара приводится к «X» отчёта."""
+    if AXIS == "Y":
+        return (y, z, x)
+    if AXIS == "Z":
+        return (z, x, y)
+    return (x, y, z)
+
 model = ExtAPI.DataModel.Project.Model
 
 
@@ -69,6 +84,8 @@ for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
                    "suppressed": s(getattr(b, "Suppressed", "?")),
                    "geo_id": getattr(b.GetGeoBody(), "Id", None) if hasattr(b, "GetGeoBody") else None})
 data["bodies"] = bodies
+data["belt_regex"] = BELT_RE
+data["vertical_axis"] = AXIS
 data["beam_count"] = len([1 for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True) if s(b.Name).startswith("Beam")])
 
 # ---- сетка
@@ -78,18 +95,18 @@ try:
     md = ExtAPI.DataModel.MeshDataByName("Global")
     data["node_count"] = md.NodeCount
     data["element_count"] = md.ElementCount
-    nodes = [(n.X, n.Y, n.Z) for n in md.Nodes]
+    nodes = [vc(n.X, n.Y, n.Z) for n in md.Nodes]
     rmax = max(math.sqrt(y * y + z * z) for x, y, z in nodes)
     data["bbox"] = {"xmax": max(n[0] for n in nodes), "xmin": min(n[0] for n in nodes), "rmax": rmax}
     # верхнее кольцо каждого пояса p1..p12 только по узлам этого тела (без швеллера и других тел)
     belt_rings = []
     for b in bodies:
-        mm = re.match(r"^p\s*(\d+)$", b["name"])
+        mm = re.match(BELT_RE, b["name"])
         if not mm or b["geo_id"] is None:
             continue
         try:
             reg = md.MeshRegionById(b["geo_id"])
-            pts = [(md.NodeById(i).X, md.NodeById(i).Y, md.NodeById(i).Z) for i in reg.NodeIds]
+            pts = [vc(md.NodeById(i).X, md.NodeById(i).Y, md.NodeById(i).Z) for i in reg.NodeIds]
             xt = max(p[0] for p in pts)
             top = [(round(math.degrees(math.atan2(z, y)), 2), round(math.sqrt(y * y + z * z), 5))
                    for x, y, z in pts if abs(x - xt) < 1e-3]

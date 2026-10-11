@@ -171,7 +171,9 @@ class Report:
         left, right = tb.rows[0].cells
         left.text = ""; right.text = ""
         self._run(left.paragraphs[0], "Выполнил:", 14)
-        lines = [r["executor_position"], f"__________ / {r['executor_name']}/", f"«___» ___________ {r['year']} г."]
+        name = (r.get("executor_name") or "").strip()
+        lines = [(r.get("executor_position") or "").strip(), f"__________ / {name or '____________'} /",
+                 f"«___» ___________ {r['year']} г."]
         right.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
         self._run(right.paragraphs[0], lines[0], 14)
         for ln in lines[1:]:
@@ -207,9 +209,11 @@ class Report:
         self.h1("1 Вводная часть")
         self.para("1.1. Прочностной расчет проведен в соответствии с нормативными документами:", bold=True)
         self.bullets(T.NORMS_SHORT)
-        self.para("1.2 Сведения о подрядчике, проводившем прочностной расчет", bold=True)
-        self.body(r["contractor"].strip())
-        if r.get("contractor_phone"): self.body(f"Тел. {r['contractor_phone']}.")
+        if (r.get("contractor") or "").strip() or r.get("contractor_phone"):     # без сведений раздел не выводим
+            self.para("1.2 Сведения о подрядчике, проводившем прочностной расчет", bold=True)
+            if (r.get("contractor") or "").strip():
+                self.body(r["contractor"].strip())
+            if r.get("contractor_phone"): self.body(f"Тел. {r['contractor_phone']}.")
 
     def sec2(self):
         t, m, L, c = self.p.tank, self.p.material, self.p.loads, self.c
@@ -242,12 +246,14 @@ class Report:
                    caption="Толщина элементов")
         # 2.1 материал
         self.para("2.1 Механические характеристики материалов, используемых в расчете", bold=True)
-        self.body(f"Материал резервуара – сталь {m['name']}. Характеристики материала согласно {m['standard']} приведены в таблице {self.tab+1}.")
+        src = "приняты по данным проекта Ansys (Engineering Data)" if m.get("source") == "Ansys" else "приведены"
+        std = f" согласно {m['standard']}" if (m.get("standard") or "").strip() else ""
+        self.body(f"Материал резервуара – сталь {m['name']}. Характеристики материала{std} {src} в таблице {self.tab+1}.")
         self.table(["Сталь", "Плотность, кг/м3", "Модуль Юнга, МПа", "Коэффициент Пуассона", "Предел прочности, МПа",
                     "Предел текучести, МПа", "Для толщин стенок, мм"],
-                   [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m["thickness_range"]]],
+                   [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m.get("thickness_range") or "–"]],
                    caption="Механические характеристики используемых материалов",
-                   widths=[1.6, 2.3, 2.6, 2.7, 2.6, 2.6, 2.4])
+                   widths=[1.5, 2.7, 2.4, 2.9, 2.5, 2.5, 2.3])
         sy = m["yield_mpa"]
         self.body("Согласно ГОСТ 31385-2023 и СП 16.13330.2020 расчетные сопротивления:")
         self.math(f"1-й пояс: R = {sy}·0,7·1,0 / (1,05·1,05) = {fmt(c['R1'],2)} МПа")

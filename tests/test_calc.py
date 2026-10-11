@@ -78,3 +78,178 @@ def test_wizard_project_folder(tmp_path):
                                            "roof_radius": 34200, "executor_name": "Иванов И.И."})
     files = build_all(yaml_path, tmp_path / "out", log=lambda m: None)
     assert any(f.suffix == ".docx" for f in files) and any(f.suffix == ".xlsx" for f in files)
+
+
+def test_roles_and_custom_belt_regex(tmp_path):
+    """Соответствия: роли расчётов выбираются по настройке/имени, имена поясов — по регулярному выражению."""
+    import json
+    import re
+    import shutil
+    from ansys_report.settings import ModelSettings, pick_roles
+    from ansys_report.ansys_connect import make_project_folder
+    from ansys_report import ansys_import as ai
+    names = ["Static Structural", "Static Structural 2", "Eigenvalue Buckling", "Static Structural Full"]
+    assert pick_roles(names, ModelSettings()) == ("Static Structural Full", "Static Structural 2")
+    assert pick_roles(names, ModelSettings(full_analysis="Static Structural", empty_analysis="Static Structural 2")) == \
+        ("Static Structural", "Static Structural 2")
+    assert pick_roles(["Eigenvalue Buckling"], ModelSettings()) == (None, None)
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    data = tmp_path / "d"
+    shutil.copytree(src, data, ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    # пояса названы иначе: «Belt_01…Belt_12»
+    md = json.loads((data / "model_data.json").read_text(encoding="utf-8"))
+    for b in md["bodies"]:
+        m = re.match(r"^p\s*(\d+)$", b["name"])
+        if m:
+            b["name"] = "Belt_%02d" % int(m.group(1))
+    md["belt_regex"] = r"^Belt_(\d+)$"
+    (data / "model_data.json").write_text(json.dumps(md), encoding="utf-8")
+    assert len(ai.belt_bodies(md)) == 12
+    st = ModelSettings(buckling_labels={"Eigenvalue Buckling": "Ветер A", "Eigenvalue Buckling 2": "Ветер B"})
+    p = load_project(make_project_folder(data, {"number": "N", "year": 2026, "tag": "T-1", "roof_radius": 1}, st))
+    assert p.has_results and p.results_empty and "Ветер A" in p.stability[0]["case"]
+
+
+def _renamed_demo(tmp_path):
+    """Копия примера с другими именами: пояса «Ring_01…», расчёты «Strength …/Buckle …» (проверка автоматики соответствий)."""
+    import json
+    import re
+    import shutil
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    data = tmp_path / "renamed"
+    shutil.copytree(src, data, ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    ren = {"Static Structural Full": "Strength Full", "Static Structural 2": "Strength Empty",
+           "Static Structural": "Strength Wind", "Eigenvalue Buckling 2": "Buckle Z", "Eigenvalue Buckling": "Buckle Y"}
+
+    def new(name):
+        for old in sorted(ren, key=len, reverse=True):      # сначала длинные имена
+            if name == old:
+                return ren[old]
+        return name
+
+    md = json.loads((data / "model_data.json").read_text(encoding="utf-8"))
+    for b in md["bodies"]:
+        m = re.match(r"^p\s*(\d+)$", b["name"])
+        if m:
+            b["name"] = "Ring_%02d" % int(m.group(1))
+    md["belt_regex"] = r"^Ring_(\d+)$"
+    for a in md["analyses"]:
+        a["name"] = new(a["name"])
+    (data / "model_data.json").write_text(json.dumps(md), encoding="utf-8")
+    for f in list(data.glob("*_belts.csv")):
+        base = f.stem[: -len("_belts")].replace("_", " ")
+        f.rename(data / (new(base).replace(" ", "_") + "_belts.csv"))
+    rows = (data / "stability.csv").read_text(encoding="utf-8").splitlines()
+    (data / "stability.csv").write_text("\n".join([rows[0]] + [new(r.split(",")[0]) + "," + ",".join(r.split(",")[1:]) for r in rows[1:]]),
+                                         encoding="utf-8")
+    img = data / "images"
+    img.mkdir()
+    from docx.shared import Pt  # noqa: F401  (python-docx уже нужен)
+    import struct, zlib
+    png = (b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0) +
+           struct.pack(">I", zlib.crc32(b"IHDR" + struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))) + struct.pack(">I", 12) + b"IDAT" +
+           zlib.compress(b"\x00\x00\x00\x00") + struct.pack(">I", zlib.crc32(b"IDAT" + zlib.compress(b"\x00\x00\x00\x00"))) +
+           struct.pack(">I", 0) + b"IEND" + struct.pack(">I", zlib.crc32(b"IEND")))
+    for n in ("Strength_Full_Equivalent_Stress", "Strength_Empty_Equivalent_Stress", "Buckle_Y_Total_Deformation",
+              "Buckle_Z_Total_Deformation_2"):
+        (img / (n + ".png")).write_bytes(png)
+    return data
+
+
+def test_renamed_project_gives_same_report(tmp_path):
+    from ansys_report.settings import ModelSettings
+    from ansys_report.ansys_connect import make_project_folder
+    from ansys_report.gui import build_all
+    orig = calc_all(load_project(YAML))
+    data = _renamed_demo(tmp_path)
+    st = ModelSettings(belt_regex=r"^Ring_(\d+)$", static_prefix="Strength", buckling_prefix="Buckle",
+                       buckling_labels={"Buckle Y": "Направление ветра Y", "Buckle Z": "Направление ветра Z"})
+    y = make_project_folder(data, {"number": "N", "year": 2026, "tag": "T-2", "roof_radius": 1}, st)
+    p = load_project(y)
+    c = calc_all(p)
+    assert c["max_eq"] == orig["max_eq"] and c["max_fiber"] == orig["max_fiber"] and c["kmin"] == orig["kmin"]
+    assert [s["case"] for s in c["stability"]][0].startswith("Направление ветра Y")
+    assert p.raw["ansys"]["analysis_full"] == "Strength Full"
+    assert p.raw["images"]["fig06_eq_stress"] == "Strength_Full_Equivalent_Stress.png"
+    assert p.raw["images"]["fig10_empty_eq"] == "Strength_Empty_Equivalent_Stress.png"
+    assert p.raw["images"]["fig_stab1"] == "Buckle_Y_Total_Deformation.png"
+    files = build_all(y, tmp_path / "out", log=lambda m: None)
+    assert any(f.suffix == ".docx" for f in files)
+
+
+def test_web_ui_api(tmp_path, monkeypatch):
+    """Веб-интерфейс: состояние, сборка из готовой выгрузки (без Ansys), статус, ответ страницы."""
+    import json
+    import shutil
+    import threading
+    import time
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    from ansys_report import webui
+    monkeypatch.setattr("ansys_report.wizard.SETTINGS", tmp_path / "settings.json")
+    job, state = webui.Job(), {"last_ping": time.time()}
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), webui.make_handler(job, state))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def call(path, body=None):
+        req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        return json.loads(urllib.request.urlopen(req).read())
+
+    assert b"Ansys Report" in urllib.request.urlopen(base + "/").read()
+    assert call("/api/state")["model"]["belt_regex"].startswith("^p")
+    out = tmp_path / "out"
+    data = out / "Report_T-9" / "_ansys_data"
+    shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "demo", data,
+                    ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    anketa = {"number": "N-1", "year": "2026", "tag": "T-9", "roof_radius": "34200", "executor_name": "X", "site": "S"}
+    assert call("/api/build", {"project": "C:/x/Tank.wbpj", "out": str(out), "anketa": anketa, "solve": False,
+                               "reuse": True, "model": {}})["ok"]
+    for _ in range(100):
+        st = call("/api/status?since=0")
+        if st["done"]:
+            break
+        time.sleep(0.2)
+    assert st["done"] and not st["error"] and any(f.endswith(".docx") for f in st["files"])
+    srv.shutdown()
+
+
+_ENGDATA = """<?xml version="1.0" encoding="utf-8"?>
+<EngineeringData version="2026 R1"><Materials><MatML_Doc>
+<Material><BulkDetails><Name>Structural Steel</Name>
+<PropertyData property="pr0"><Data format="string">-</Data><ParameterValue parameter="pa0" format="float"><Data format="string">7850</Data></ParameterValue></PropertyData>
+<PropertyData property="pr1"><Data format="string">-</Data><ParameterValue parameter="pa1" format="float"><Data format="string">2E+11</Data></ParameterValue>
+<ParameterValue parameter="pa2" format="float"><Data format="string">0.3</Data></ParameterValue></PropertyData>
+<PropertyData property="pr2"><Data format="string">-</Data><ParameterValue parameter="pa3" format="float"><Data format="string">250000000</Data></ParameterValue></PropertyData>
+<PropertyData property="pr3"><Data format="string">-</Data><ParameterValue parameter="pa4" format="float"><Data format="string">460000000</Data></ParameterValue></PropertyData>
+</BulkDetails></Material>
+<Metadata><ParameterDetails id="pa0"><Name>Density</Name></ParameterDetails>
+<ParameterDetails id="pa1"><Name>Young's Modulus</Name></ParameterDetails>
+<ParameterDetails id="pa2"><Name>Poisson's Ratio</Name></ParameterDetails>
+<ParameterDetails id="pa3"><Name>Tensile Yield Strength</Name></ParameterDetails>
+<ParameterDetails id="pa4"><Name>Tensile Ultimate Strength</Name></ParameterDetails>
+<PropertyDetails id="pr0"><Name>Density</Name></PropertyDetails></Metadata>
+</MatML_Doc></Materials></EngineeringData>
+"""
+
+
+def test_material_from_ansys_engineering_data(tmp_path):
+    import shutil
+    from ansys_report import ansys_import as ai
+    f = tmp_path / "EngineeringData.xml"
+    f.write_text(_ENGDATA, encoding="utf-8")
+    mats = ai.read_engineering_data(f)
+    assert ai.material_summary(mats["Structural Steel"]) == {"density": 7850.0, "young_modulus_mpa": 200000.0,
+                                                           "poisson": 0.3, "yield_mpa": 250.0, "ultimate_mpa": 460.0}
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    d = tmp_path / "p"
+    shutil.copytree(src, d, ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    shutil.copy(f, d / "engineering_data.xml")
+    from ansys_report.ansys_connect import make_project_folder
+    p = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1}))
+    assert p.material["yield_mpa"] == 250.0 and p.material["young_modulus_mpa"] == 200000.0
+    assert p.material["name"] == "Structural Steel" and p.material["source"] == "Ansys"
+    p2 = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1, "steel_name": "09Г2С"}))
+    assert p2.material["name"] == "09Г2С"
+    assert abs(calc_all(p)["allow"] - 250 / 1.5) < 0.01
