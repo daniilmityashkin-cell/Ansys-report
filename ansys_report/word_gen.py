@@ -246,10 +246,12 @@ class Report:
                    caption="Толщина элементов")
         # 2.1 материал
         self.para("2.1 Механические характеристики материалов, используемых в расчете", bold=True)
-        self.body(f"Материал резервуара – сталь {m['name']}. Характеристики материала согласно {m['standard']} приведены в таблице {self.tab+1}.")
+        src = "приняты по данным проекта Ansys (Engineering Data)" if m.get("source") == "Ansys" else "приведены"
+        std = f" согласно {m['standard']}" if (m.get("standard") or "").strip() else ""
+        self.body(f"Материал резервуара – сталь {m['name']}. Характеристики материала{std} {src} в таблице {self.tab+1}.")
         self.table(["Сталь", "Плотность, кг/м3", "Модуль Юнга, МПа", "Коэффициент Пуассона", "Предел прочности, МПа",
                     "Предел текучести, МПа", "Для толщин стенок, мм"],
-                   [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m["thickness_range"]]],
+                   [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m.get("thickness_range") or "–"]],
                    caption="Механические характеристики используемых материалов",
                    widths=[1.5, 2.7, 2.4, 2.9, 2.5, 2.5, 2.3])
         sy = m["yield_mpa"]

@@ -20,16 +20,16 @@ tank:                       # только описание объекта (в A
   roof_radius: {{roof_radius}}
   kmd: "{{kmd}}"
 
-material:                   # в проекте Ansys задана «Structural Steel» по умолчанию; свойства стали по нормам:
-  name: "09Г2С"
-  standard: "ГОСТ 19281-2014"
-  density: 7850
+material:                   # свойства стали берутся из Engineering Data проекта Ansys; здесь — марка, стандарт и то, чего в Ansys нет
+  name: "{{steel_name}}"        # пусто = название материала в Ansys
+  standard: "{{steel_standard}}"
+  density: 7850                 # запасные значения (09Г2С), если файла Engineering Data нет
   young_modulus_mpa: 206000
   poisson: 0.3
   yield_mpa: 325
   ultimate_mpa: 480
-  elongation_pct: 21
-  thickness_range: "9,01-25"
+  elongation_pct: {{elongation_pct}}
+  thickness_range: "{{steel_thickness_range}}"
 
 ansys:
   model_data: model_data.json            # выгрузка export_model_data.py

@@ -213,3 +213,43 @@ def test_web_ui_api(tmp_path, monkeypatch):
         time.sleep(0.2)
     assert st["done"] and not st["error"] and any(f.endswith(".docx") for f in st["files"])
     srv.shutdown()
+
+
+_ENGDATA = """<?xml version="1.0" encoding="utf-8"?>
+<EngineeringData version="2026 R1"><Materials><MatML_Doc>
+<Material><BulkDetails><Name>Structural Steel</Name>
+<PropertyData property="pr0"><Data format="string">-</Data><ParameterValue parameter="pa0" format="float"><Data format="string">7850</Data></ParameterValue></PropertyData>
+<PropertyData property="pr1"><Data format="string">-</Data><ParameterValue parameter="pa1" format="float"><Data format="string">2E+11</Data></ParameterValue>
+<ParameterValue parameter="pa2" format="float"><Data format="string">0.3</Data></ParameterValue></PropertyData>
+<PropertyData property="pr2"><Data format="string">-</Data><ParameterValue parameter="pa3" format="float"><Data format="string">250000000</Data></ParameterValue></PropertyData>
+<PropertyData property="pr3"><Data format="string">-</Data><ParameterValue parameter="pa4" format="float"><Data format="string">460000000</Data></ParameterValue></PropertyData>
+</BulkDetails></Material>
+<Metadata><ParameterDetails id="pa0"><Name>Density</Name></ParameterDetails>
+<ParameterDetails id="pa1"><Name>Young's Modulus</Name></ParameterDetails>
+<ParameterDetails id="pa2"><Name>Poisson's Ratio</Name></ParameterDetails>
+<ParameterDetails id="pa3"><Name>Tensile Yield Strength</Name></ParameterDetails>
+<ParameterDetails id="pa4"><Name>Tensile Ultimate Strength</Name></ParameterDetails>
+<PropertyDetails id="pr0"><Name>Density</Name></PropertyDetails></Metadata>
+</MatML_Doc></Materials></EngineeringData>
+"""
+
+
+def test_material_from_ansys_engineering_data(tmp_path):
+    import shutil
+    from ansys_report import ansys_import as ai
+    f = tmp_path / "EngineeringData.xml"
+    f.write_text(_ENGDATA, encoding="utf-8")
+    mats = ai.read_engineering_data(f)
+    assert ai.material_summary(mats["Structural Steel"]) == {"density": 7850.0, "young_modulus_mpa": 200000.0,
+                                                           "poisson": 0.3, "yield_mpa": 250.0, "ultimate_mpa": 460.0}
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    d = tmp_path / "p"
+    shutil.copytree(src, d, ignore=shutil.ignore_patterns("project.yaml", "survey_full.csv", "images"))
+    shutil.copy(f, d / "engineering_data.xml")
+    from ansys_report.ansys_connect import make_project_folder
+    p = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1}))
+    assert p.material["yield_mpa"] == 250.0 and p.material["young_modulus_mpa"] == 200000.0
+    assert p.material["name"] == "Structural Steel" and p.material["source"] == "Ansys"
+    p2 = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1, "steel_name": "09Г2С"}))
+    assert p2.material["name"] == "09Г2С"
+    assert abs(calc_all(p)["allow"] - 250 / 1.5) < 0.01

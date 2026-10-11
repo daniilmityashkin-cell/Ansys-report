@@ -116,3 +116,59 @@ def mesh_info(md: dict) -> dict:
     return {"nodes": md.get("node_count"), "elements": md.get("element_count") or int(_num(mo.get("Elements"), 0)),
             "element_size_mm": round((_num(mo.get("ElementSize"), 0) or 0) * 1000, 3),
             "order": mo.get("ElementOrder", ""), "mesher": mo.get("DefaultShellMesher", "")}
+
+
+# ---- свойства материалов из Engineering Data (файл EngineeringData.xml проекта Workbench)
+def _local(tag: str) -> str:
+    return tag.split("}")[-1]
+
+
+def read_engineering_data(path: Path) -> dict[str, dict[str, float]]:
+    """{имя материала: {имя параметра: значение}} из EngineeringData.xml (разметка MatML Workbench).
+    Значения в единицах СИ, как в файле (Па, кг/м3). Берётся первое число из списка значений."""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(path).getroot()
+    pnames, prnames = {}, {}
+    for el in root.iter():
+        t = _local(el.tag)
+        if t in ("ParameterDetails", "PropertyDetails") and el.get("id"):
+            name = next((_text(c) for c in el if _local(c.tag) == "Name"), "")
+            (pnames if t == "ParameterDetails" else prnames)[el.get("id")] = name
+    out: dict[str, dict[str, float]] = {}
+    for mat in (e for e in root.iter() if _local(e.tag) == "Material"):
+        bulk = next((c for c in mat if _local(c.tag) == "BulkDetails"), None)
+        if bulk is None:
+            continue
+        mname = next((_text(c) for c in bulk if _local(c.tag) == "Name"), "")
+        props: dict[str, float] = {}
+        for pd in (c for c in bulk if _local(c.tag) == "PropertyData"):
+            for pv in (c for c in pd if _local(c.tag) == "ParameterValue"):
+                param = pnames.get(pv.get("parameter"), pv.get("parameter") or "")
+                data = next((_text(c) for c in pv if _local(c.tag) == "Data"), "")
+                m = re.search(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", data or "")
+                if m and param not in props:
+                    props[param] = float(m.group(0))
+        if mname:
+            out[mname] = props
+    return out
+
+
+def _text(el) -> str:
+    return (el.text or "").strip()
+
+
+def material_summary(props: dict[str, float]) -> dict:
+    """Свойства для отчёта (МПа, кг/м3) из параметров Engineering Data. Чего нет в проекте - не включается."""
+    def mpa(v):                       # Workbench хранит напряжения в Па
+        return round(v / 1e6, 3) if v > 1e5 else round(v, 3)
+    res = {}
+    for key, names in (("density", ("Density",)), ("young_modulus_mpa", ("Young's Modulus", "Youngs Modulus")),
+                       ("poisson", ("Poisson's Ratio", "Poissons Ratio")),
+                       ("yield_mpa", ("Tensile Yield Strength", "Yield Strength")),
+                       ("ultimate_mpa", ("Tensile Ultimate Strength",))):
+        for n in names:
+            if n in props:
+                v = props[n]
+                res[key] = v if key in ("density", "poisson") else mpa(v)
+                break
+    return res

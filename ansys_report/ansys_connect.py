@@ -180,6 +180,37 @@ def _pyrepr(text: str) -> str:
     return repr(text)
 
 
+def copy_engineering_data(mechdb: Path, out: Path, log) -> None:
+    """Копирует EngineeringData.xml проекта Workbench (свойства материалов) в папку выгрузки как engineering_data.xml."""
+    root = next((p for p in [mechdb, *mechdb.parents] if p.name.endswith("_files")), None)
+    if root is None:
+        log("  Свойства материалов: папка проекта _files не найдена, берутся значения из анкеты")
+        return
+    wanted = set()
+    try:
+        import json
+        md = json.loads((out / "model_data.json").read_text(encoding="utf-8"))
+        wanted = {b.get("material") for b in md.get("bodies", [])}
+    except Exception:       # noqa: BLE001
+        pass
+    from . import ansys_import as ai
+    best = None
+    for f in sorted(root.rglob("EngineeringData.xml"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            mats = ai.read_engineering_data(f)
+        except Exception:   # noqa: BLE001
+            continue
+        if wanted & set(mats):
+            best = f
+            break
+        best = best or f
+    if best is None:
+        log("  Свойства материалов: файл Engineering Data не найден, берутся значения из анкеты")
+        return
+    shutil.copy2(best, out / "engineering_data.xml")
+    log(f"  Свойства материалов взяты из проекта Ansys ({best.name})")
+
+
 def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None, solve: bool = True, settings=None) -> Path:
     """Запускает Mechanical в фоне, открывает проект, выгружает данные в out_dir. Возвращает out_dir."""
     out = Path(out_dir)
@@ -205,6 +236,7 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
             try:
                 extract_via_workbench(wbpj, out, log, ver, installs[ver], mechdb)
                 if (out / "model_data.json").exists():
+                    copy_engineering_data(mechdb, out, log)
                     _report_problems(out, log)
                     return out
                 log("Через Workbench не вышло, пробую запасной способ…")
@@ -237,6 +269,10 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
         shutil.rmtree(work, ignore_errors=True)
     if not (out / "model_data.json").exists():
         raise ConnectError("Выгрузка не создала model_data.json. Смотрите model_data_log.txt в папке " + str(out))
+    try:
+        copy_engineering_data(mechdb, out, log)
+    except NameError:
+        pass
     _report_problems(out, log)
     return out
 
@@ -353,7 +389,8 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
         shutil.move(str(f), img / f.name)
     crop_mesh_views(img)
     text = TEMPLATE_YAML.read_text(encoding="utf-8")
-    values = dict(anketa or {})
+    values = {"elongation_pct": 21, "roof_radius": 0}       # запасные значения полей, без которых расчёт невозможен
+    values.update({k: v for k, v in (anketa or {}).items() if str(v).strip() != ""})
     values.update(_blocks(d, settings or ModelSettings()))
     for key, val in values.items():
         text = text.replace("{{" + key + "}}", str(val))

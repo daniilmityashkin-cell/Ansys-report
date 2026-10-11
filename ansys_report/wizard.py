@@ -25,6 +25,10 @@ FIELDS = [  # ключ шаблона, подпись, значение по у�
     ("executor_name", "Исполнитель (Ф.И.О.)", ""),
     ("contractor", "Сведения об исполнителе", ""),
     ("phone", "Телефон", ""),
+    ("steel_name", "Марка стали (пусто = как в Ansys)", ""),
+    ("steel_standard", "Стандарт на сталь", ""),
+    ("elongation_pct", "Относительное удлинение, % (нет в Ansys)", "21"),
+    ("steel_thickness_range", "Толщины проката, мм (для таблицы)", ""),
 ]
 SETTINGS = Path.home() / ".ansys_report_settings.json"
 
