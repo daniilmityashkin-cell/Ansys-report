@@ -65,6 +65,9 @@ def _pick(kind: str) -> str:
         return ""
     if kind == "folder":
         body = "$d = New-Object System.Windows.Forms.FolderBrowserDialog; if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }"
+    elif kind == "csv":
+        body = ("$d = New-Object System.Windows.Forms.OpenFileDialog; "
+                "$d.Filter = 'Замеры (*.csv)|*.csv|Все файлы (*.*)|*.*'; if ($d.ShowDialog() -eq 'OK') { $d.FileName }")
     else:
         body = ("$d = New-Object System.Windows.Forms.OpenFileDialog; "
                 "$d.Filter = 'Проект Ansys (*.wbpj;*.wbpz;*.mechdb)|*.wbpj;*.wbpz;*.mechdb|Все файлы (*.*)|*.*'; "
@@ -132,7 +135,7 @@ def make_handler(job: Job, state: dict):
                     "project": st.get("project", ""), "out": st.get("out", str(Path.home() / "Documents" / "AnsysReport")),
                     "anketa": {k: st.get("anketa", {}).get(k, d) for k, _, d in FIELDS},
                     "fields": [{"key": k, "label": l} for k, l, _ in FIELDS],
-                    "solve": st.get("solve", True), "model": ModelSettings.from_dict(st.get("model")).to_dict(),
+                    "survey": st.get("survey") or "", "solve": st.get("solve", True), "model": ModelSettings.from_dict(st.get("model")).to_dict(),
                     "ansys": {"found": bool(installs), "version": ver}})
             if path == "/api/status":
                 since = int(self.path.split("since=")[-1]) if "since=" in self.path else 0
@@ -164,7 +167,7 @@ def make_handler(job: Job, state: dict):
                 if job.running:
                     return self._json({"ok": False, "error": "Сборка уже идёт"})
                 try:
-                    SETTINGS.write_text(json.dumps({k: data[k] for k in ("project", "out", "anketa", "solve", "model")},
+                    SETTINGS.write_text(json.dumps({k: data.get(k) for k in ("project", "out", "anketa", "solve", "model", "survey")},
                                                    ensure_ascii=False), encoding="utf-8")
                 except Exception:
                     pass
@@ -187,7 +190,8 @@ def _run(job: Job, d: dict, build):
         if empty:
             job.log("Внимание: не заполнены поля отчёта (" + ", ".join(empty) + ") — в отчёте останется пустое место.")
         files = build(str(d["project"]).strip().strip('"'), str(d["out"]).strip().strip('"'), anketa, job.log,
-                      bool(d.get("reuse")), bool(d.get("solve", True)), ModelSettings.from_dict(d.get("model")))
+                      bool(d.get("reuse")), bool(d.get("solve", True)), ModelSettings.from_dict(d.get("model")),
+                      d.get("survey") or None)
         job.files = [str(f) for f in files]
         job.log("ГОТОВО.")
     except PermissionError:

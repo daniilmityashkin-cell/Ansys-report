@@ -87,7 +87,8 @@ def _system_name(mechdb: Path) -> str:
     return mechdb.stem
 
 
-def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path, mechdb: Path) -> None:
+def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path, mechdb: Path,
+                          scripts: list[str] | None = None, extra_files: dict | None = None, extra_env: dict | None = None) -> None:
     """Основной способ: Workbench в фоне открывает проект (со всеми файлами результатов) и запускает
     наши скрипты внутри Mechanical через журнал (SendCommand)."""
     import subprocess
@@ -98,11 +99,16 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
     work = Path(tempfile.mkdtemp(prefix="ansys_report_wb_"))
     out = work / "out"                      # в журнале Workbench только латинские пути
     out.mkdir()
+    env_extra = dict(extra_env or {})
+    for key, src in (extra_files or {}).items():       # файлы для скриптов кладём во временную латинскую папку
+        dst = out / Path(src).name
+        shutil.copy2(src, dst)
+        env_extra[key] = str(dst)
     try:
         sysname = _system_name(mechdb).replace(" ", "").replace("-", "")
         status = out / "wb_status.txt"
         body = []
-        for name in SCRIPT_ORDER:
+        for name in (scripts or SCRIPT_ORDER):
             code = "import io\nexec(io.open(r" + repr(str(SCRIPTS / name)) + ", encoding='utf-8').read())"
             body.append('    model.SendCommand(Language="Python", Command=' + repr(code) + ')')
             body.append('    st("DONE ' + name + '")')
@@ -133,7 +139,7 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             "except:\n"
             '    st("ERROR " + traceback.format_exc().replace("\\n", " | "))\n',
             encoding="utf-8")
-        env = dict(os.environ, ANSYS_REPORT_OUT=str(out))
+        env = dict(os.environ, ANSYS_REPORT_OUT=str(out), **env_extra)
         log("Запускаю Workbench в фоне и открываю проект (несколько минут)…")
         runlog = out / "wb_run.log"
         with open(runlog, "w", encoding="utf-8", errors="replace") as lf:
@@ -211,7 +217,31 @@ def copy_engineering_data(mechdb: Path, out: Path, log) -> None:
     log(f"  Свойства материалов взяты из проекта Ansys ({best.name})")
 
 
-def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None, solve: bool = True, settings=None) -> Path:
+def extract_with_shape(wbpj: Path, out: Path, log, ver: int, install: Path, mechdb: Path, survey_full: Path, settings) -> None:
+    """Форма «полного» резервуара: 1) выгрузка модели; 2) макрос APDL по замерам; 3) вставка макроса в расчёт, решение, результаты."""
+    from .settings import ModelSettings, pick_roles
+    from .project import load_project
+    from .apdl_gen import write_apdl
+    import json
+    st = settings or ModelSettings()
+    shutil.copy2(survey_full, out / "survey_full.csv")
+    log("Этап 1 из 2: выгрузка модели для расчёта формы стенки…")
+    extract_via_workbench(wbpj, out, log, ver, install, mechdb, scripts=["export_model_data.py"])
+    md = json.loads((out / "model_data.json").read_text(encoding="utf-8"))
+    full, _ = pick_roles([a["name"] for a in md.get("analyses", [])], st)
+    if not full:
+        raise ConnectError("В проекте не найден расчёт прочности для «полного» резервуара")
+    yaml_path = make_project_folder(out, None, st)
+    apdl = write_apdl(load_project(yaml_path), out / "full_shape.inp")
+    log(f"Макрос формы стенки построен по замерам; будет применён к расчёту «{full}»")
+    log("Этап 2 из 2: применение формы, решение и выгрузка результатов (дольше обычного)…")
+    extract_via_workbench(wbpj, out, log, ver, install, mechdb,
+                          scripts=["apply_full_shape.py", "export_results.py", "export_model_images.py"],
+                          extra_files={"ANSYS_REPORT_APDL": apdl}, extra_env={"ANSYS_REPORT_FULL_NAME": full})
+
+
+def extract(project: str | Path, out_dir: str | Path, log=print, version: int | None = None, solve: bool = True, settings=None,
+            survey_full: str | Path | None = None) -> Path:
     """Запускает Mechanical в фоне, открывает проект, выгружает данные в out_dir. Возвращает out_dir."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -234,7 +264,10 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
         wbpj = Path(project)
         if wbpj.suffix.lower() == ".wbpj" and ver in installs:
             try:
-                extract_via_workbench(wbpj, out, log, ver, installs[ver], mechdb)
+                if survey_full:
+                    extract_with_shape(wbpj, out, log, ver, installs[ver], mechdb, Path(survey_full), settings)
+                else:
+                    extract_via_workbench(wbpj, out, log, ver, installs[ver], mechdb)
                 if (out / "model_data.json").exists():
                     copy_engineering_data(mechdb, out, log)
                     _report_problems(out, log)
@@ -284,11 +317,11 @@ def _report_problems(out: Path, log):
         for line in f0.read_text(encoding="utf-8").splitlines():
             if "SolveRequired" in line and "папка" not in line:
                 log(f"  ! {line.strip()} - в проекте Ansys этот расчёт не решён (нужно Solve)")
-    for name in ("log.txt", "model_data_log.txt", "log_images.txt"):
+    for name in ("log.txt", "model_data_log.txt", "log_images.txt", "log_shape.txt"):
         f = out / name
         if f.exists():
             for line in f.read_text(encoding="utf-8").splitlines():
-                if "ОШИБКА" in line:
+                if "ОШИБКА" in line or "ПРОПУЩЕНО" in line:
                     log(f"  ! {name}: {line}")
     st = out / "stability.csv"
     if st.exists():

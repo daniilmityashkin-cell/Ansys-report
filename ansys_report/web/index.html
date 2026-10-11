@@ -125,7 +125,13 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
             <div class="row"><input type="text" id="out" placeholder="Куда сохранить"><button class="btn dark" id="pickOut">Выбрать</button></div>
           </div>
           <div class="card">
-            <h2><span class="num">3</span>Сведения для отчёта</h2>
+            <h2><span class="num">3</span>Замеры «полного» резервуара <span style="font-weight:400;color:var(--muted);font-size:12.5px">— необязательно</span></h2>
+            <div class="row"><input type="text" id="survey" placeholder="CSV с отклонениями стенки (мм)"><button class="btn dark" id="pickSurvey">Выбрать</button></div>
+            <p class="hint" style="margin:10px 4px 0">Если указать файл, программа сама вставит форму «полного» резервуара в расчёт Ansys и решит его.
+            Шаблон файла (<b>survey_full_template.csv</b>) создаётся в папке отчёта после первой сборки: заполните его реальными замерами.</p>
+          </div>
+          <div class="card">
+            <h2><span class="num">4</span>Сведения для отчёта</h2>
             <p class="hint">Это то, чего нет в Ansys. Пустые поля останутся пустыми в Word.</p>
             <div class="fields" id="fields"></div>
           </div>
@@ -222,7 +228,7 @@ function addLog(line){
 async function init(){
   const s = await api("/api/state");
   fields = s.fields;
-  $("#project").value = s.project; $("#out").value = s.out; $("#solve").checked = s.solve;
+  $("#project").value = s.project; $("#survey").value = s.survey || ""; $("#out").value = s.out; $("#solve").checked = s.solve;
   const box = $("#fields");
   for (const f of fields){
     const w = document.createElement("div");
@@ -243,13 +249,14 @@ async function init(){
 function collect(){
   const anketa = {}; for (const f of fields) anketa[f.key] = $("#f_"+f.key).value;
   const labels = {}; $("#m_labels").value.split(";").forEach(p => { if (p.includes("=")){ const [k,...v] = p.split("="); labels[k.trim()] = v.join("=").trim(); }});
-  return {project:$("#project").value, out:$("#out").value, anketa, solve:$("#solve").checked, reuse:$("#reuse").checked,
+  return {project:$("#project").value, survey:$("#survey").value, out:$("#out").value, anketa, solve:$("#solve").checked, reuse:$("#reuse").checked,
     model:{belt_regex:$("#m_belt_regex").value || "^p\\s*(\\d+)$", vertical_axis:($("#m_vertical_axis").value || "X").toUpperCase(),
       static_prefix:$("#m_static_prefix").value || "Static", buckling_prefix:$("#m_buckling_prefix").value || "Eigenvalue",
       full_analysis:$("#m_full_analysis").value, empty_analysis:$("#m_empty_analysis").value, buckling_labels:labels}};
 }
 
 $("#pickProject").onclick = async () => { const r = await api("/api/pick", {kind:"file"}); if (r.path) $("#project").value = r.path; };
+$("#pickSurvey").onclick = async () => { const r = await api("/api/pick", {kind:"csv"}); if (r.path) $("#survey").value = r.path; };
 $("#pickOut").onclick = async () => { const r = await api("/api/pick", {kind:"folder"}); if (r.path) $("#out").value = r.path; };
 
 $("#go").onclick = async () => {

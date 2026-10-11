@@ -30,7 +30,7 @@ def test_gui_core(tmp_path):
     from ansys_report.gui import build_all
     msgs = []
     files = build_all(YAML, tmp_path, msgs.append)
-    assert len(files) == 4 and all(f.exists() for f in files) and any("Word" in m for m in msgs)
+    assert len(files) == 5 and all(f.exists() for f in files) and any("Word" in m for m in msgs)
 
 
 def test_apdl_shift_matches_survey():
@@ -253,3 +253,24 @@ def test_material_from_ansys_engineering_data(tmp_path):
     p2 = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1, "steel_name": "09Г2С"}))
     assert p2.material["name"] == "09Г2С"
     assert abs(calc_all(p)["allow"] - 250 / 1.5) < 0.01
+
+
+def test_full_shape_apdl_from_survey_csv(tmp_path):
+    """Замеры «полного» (CSV) + выгрузка модели -> макрос APDL с ненулевыми сдвигами; шаблон замеров читается обратно."""
+    import shutil
+    from ansys_report.apdl_gen import build_apdl
+    from ansys_report.ansys_connect import make_project_folder
+    from ansys_report.project import write_survey_csv
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    d = tmp_path / "d"
+    shutil.copytree(src, d, ignore=shutil.ignore_patterns("project.yaml", "images"))
+    p = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-5", "roof_radius": 1}))
+    txt = build_apdl(p)
+    import re
+    assert "NMODIF" in txt and re.search(r"^DLT\(\d+,\d+\) = ", txt, re.M) and txt.isascii()
+    t = write_survey_csv(tmp_path / "tpl.csv", p.survey_empty)       # шаблон = «пустой»: после чтения сдвиги нулевые
+    d2 = tmp_path / "d2"
+    shutil.copytree(src, d2, ignore=shutil.ignore_patterns("project.yaml", "images"))
+    shutil.copy(t, d2 / "survey_full.csv")
+    p2 = load_project(make_project_folder(d2, {"number": "N", "year": 2026, "tag": "T-5", "roof_radius": 1}))
+    assert not re.search(r"^DLT\(\d+,\d+\) = ", build_apdl(p2), re.M)

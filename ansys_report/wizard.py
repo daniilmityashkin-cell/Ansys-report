@@ -40,7 +40,7 @@ def _load():
         return {}
 
 
-def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False, solve=True, settings=None):
+def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False, solve=True, settings=None, survey_full=None):
     """Полный цикл: Ansys → выгрузка → project.yaml → Word/Excel. Возвращает список файлов."""
     from .ansys_connect import extract, make_project_folder
     from .gui import build_all
@@ -49,8 +49,15 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
     out_dir = Path(out_dir) / out_names(anketa.get("tag") or "tank", "x")["folder"]
     out_dir.mkdir(parents=True, exist_ok=True)
     data = out_dir / "_ansys_data"
+    survey_full = (str(survey_full).strip().strip('"') or None) if survey_full else None
+    if survey_full and not Path(survey_full).exists():
+        raise FileNotFoundError(f"Файл замеров «полного» резервуара не найден: {survey_full}")
     if not (reuse_data and (data / "model_data.json").exists()):
-        extract(project_file, data, log, solve=solve, settings=settings)
+        extract(project_file, data, log, solve=solve, settings=settings, survey_full=survey_full)
+    elif survey_full:
+        import shutil
+        shutil.copy2(survey_full, data / "survey_full.csv")
+        log("Замеры «полного» обновлены для Excel и файлов точек (расчёт Ansys не перезапускался)")
     yaml_path = make_project_folder(data, anketa, settings)
     try:
         import yaml
