@@ -1,3 +1,4 @@
+import json
 """Тесты на обезличенном примере examples/demo (данные получены из реального проекта Ansys)."""
 from pathlib import Path
 import openpyxl
@@ -275,3 +276,22 @@ def test_full_shape_apdl_from_survey_csv(tmp_path):
     shutil.copy(t, d2 / "survey_full.csv")
     p2 = load_project(make_project_folder(d2, {"number": "N", "year": 2026, "tag": "T-5", "roof_radius": 1}))
     assert not re.search(r"^DLT\(\d+,\d+\) = ", build_apdl(p2), re.M)
+
+
+def test_universal_report_for_acoustic_project(tmp_path):
+    """Проект без поясов (Modal Acoustics): универсальный отчёт собирается без ошибок."""
+    import docx
+    from ansys_report.universal import build_universal
+    md = {"vertical_axis": "X", "belt_rings": [], "belt_regex": r"^p\s*(\d+)$", "node_count": 10, "element_count": 5,
+          "bbox": {"xmax": 2.5, "xmin": -2.5, "rmax": 6.3},
+          "mesh_object": {"ElementSize": "0.25 [m]", "ElementOrder": "Linear"},
+          "bodies": [{"name": "Solid", "material": "Structural Steel", "thickness": "0 [m]", "dimension": "?", "suppressed": "False"}],
+          "materials": [{"name": "Structural Steel", "props": {"AssignedBodies": "1"}}],
+          "analyses": [{"name": "Modal Acoustics", "type": "Modal", "results": [], "children": [
+              {"name": "Analysis Settings", "type": "ANSYSAnalysisSettings", "props": {"MaximumModesToFind": "6"}},
+              {"name": "Physics Region", "type": "PhysicsRegion", "props": {"Acoustics": "True"}}]}]}
+    (tmp_path / "model_data.json").write_text(json.dumps(md), encoding="utf-8")
+    (tmp_path / "modes.csv").write_text("analysis,type,mode,value,unit\nModal Acoustics,Modal,1,12.5,Hz\n", encoding="utf-8")
+    out, _ = build_universal(tmp_path, tmp_path / "r.docx", {"tank_name": "Башня"})
+    text = "\n".join(p.text for p in docx.Document(out).paragraphs)
+    assert "Modal Acoustics" in text and "5 Результаты расчёта" in text

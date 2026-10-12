@@ -5,6 +5,7 @@
 from __future__ import annotations
 import os
 import re
+import json
 import shutil
 import tempfile
 import time
@@ -412,6 +413,14 @@ def _blocks(d: Path, settings) -> dict[str, str]:
             "images_block": "\n".join(lines[lines.index("") + 1:])}
 
 
+def _has_belts(d: Path) -> bool:
+    try:
+        from . import ansys_import as ai
+        return bool(ai.belt_bodies(json.loads((d / "model_data.json").read_text(encoding="utf-8"))))
+    except Exception:       # noqa: BLE001
+        return True
+
+
 def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settings=None) -> Path:
     """Из папки выгрузки делает папку проекта отчёта с project.yaml (анкета — из шаблона + переданные поля)."""
     from .settings import ModelSettings
@@ -420,7 +429,8 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
     img.mkdir(exist_ok=True)
     for f in d.glob("*.png"):
         shutil.move(str(f), img / f.name)
-    crop_mesh_views(img)
+    if (d / "model_data.json").exists() and _has_belts(d):
+        crop_mesh_views(img)
     text = TEMPLATE_YAML.read_text(encoding="utf-8")
     values = {"elongation_pct": 21, "roof_radius": 0}       # запасные значения полей, без которых расчёт невозможен
     values.update({k: v for k, v in (anketa or {}).items() if str(v).strip() != ""})

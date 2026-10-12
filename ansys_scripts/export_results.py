@@ -74,6 +74,8 @@ for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
 log.append(u"Найдено поясов: %d" % len(belts))
 
 stab = [u"analysis,mode,k"]
+modes = [u"analysis,type,mode,value,unit"]
+summary = [u"analysis,result,max,min,unit"]
 for a in model.Analyses:
     sol = a.Solution
     aname = a.Name.replace(" ", "_")
@@ -102,6 +104,22 @@ for a in model.Analyses:
             Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
+    # 1b. универсальная сводка: частоты мод и максимумы/минимумы существующих результатов
+    for r in sol.Children:
+        if r.Name.startswith("Solution Information"):
+            continue
+        try:
+            tn = r.GetType().Name
+            if tn == "TotalDeformation" and not a.Name.startswith(EIGEN_PREFIX):
+                try:
+                    f = r.ReportedFrequency
+                    modes.append(u"%s,%s,%s,%.6g,%s" % (a.Name, a.AnalysisType, r.Mode, f.Value, f.Unit))
+                except Exception:
+                    pass
+            mx, mn = r.Maximum, r.Minimum
+            summary.append(u"%s,%s,%.6g,%.6g,%s" % (a.Name, r.Name, mx.Value, mn.Value, mx.Unit))
+        except Exception:
+            pass
     # 2. устойчивость: коэффициент запаса = ReportedFrequency у результатов Eigenvalue Buckling
     if a.Name.startswith(EIGEN_PREFIX):
         for r in sol.Children:
@@ -156,6 +174,10 @@ for a in model.Analyses:
                 r.Delete()
 
 write("stability.csv", stab)
+if len(modes) > 1:
+    write("modes.csv", modes)
+if len(summary) > 1:
+    write("results_summary.csv", summary)
 write("log.txt", log)
 print(u"\n".join(log))
 print("Готово: " + out)
