@@ -248,7 +248,8 @@ def test_material_from_ansys_engineering_data(tmp_path):
     shutil.copy(f, d / "engineering_data.xml")
     from ansys_report.ansys_connect import make_project_folder
     p = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1}))
-    assert p.material["yield_mpa"] == 250.0 and p.material["young_modulus_mpa"] == 200000.0
+    assert p.material["yield_mpa"] == 250 and p.material["young_modulus_mpa"] == 200000
+    assert isinstance(p.material["yield_mpa"], int) and isinstance(p.material["density"], int)
     assert p.material["name"] == "Structural Steel" and p.material["source"] == "Ansys"
     p2 = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1, "steel_name": "09Г2С"}))
     assert p2.material["name"] == "09Г2С"

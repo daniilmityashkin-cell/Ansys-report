@@ -152,7 +152,7 @@ def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
     if name is None:
         return
     summ = ai.material_summary(mats[name])
-    m.update(summ)
+    m.update({k: (int(v) if float(v).is_integer() else round(float(v), 3)) for k, v in summ.items()})   # 250.0 -> 250
     m["ansys_name"] = name
     m["source"] = "Ansys"
     if not (m.get("name") or "").strip():
