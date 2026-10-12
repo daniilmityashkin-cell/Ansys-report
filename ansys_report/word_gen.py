@@ -220,7 +220,7 @@ class Report:
         n = len(t["belts_thickness"])
         self.h1("2 Информация об объекте моделирования")
         where = f" установлен на объекте: «{t['site']}»" + (f" (№ {t['site_number']})" if t.get("site_number") else "") if t.get("site") else ""
-        self.body(f"Резервуар {t['name']}{where}" + (f" и предназначен для {t['purpose']}." if t.get("purpose") else "."))
+        self.body(f"Резервуар {t['name']}{where}" + ((f" и предназначен для {t['purpose']}." if where else f" предназначен для {t['purpose']}.") if t.get("purpose") else "."))
         self.body("Габариты резервуара:")
         self.bullets([f"диаметр {t['diameter']} мм;", f"высота стенки {t['wall_height']} мм."])
         self.body("Общий вид резервуара показан на рисунке 1.")
