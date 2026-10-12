@@ -64,6 +64,12 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
         raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         log(f"Соответствия: «полный» расчёт — {raw['ansys']['analysis_full'] or 'не найден'}; "
             f"результаты: {raw['results'].get('full', '-')}, {raw['results'].get('empty', '-')}")
+        mt = raw.get("material", {})
+        if mt.get("source") == "Ansys":
+            log(f"Материал из Ansys: {mt.get('ansys_name')} (текучесть {mt.get('yield_mpa')} МПа, прочность {mt.get('ultimate_mpa')} МПа, "
+                f"E = {mt.get('young_modulus_mpa')} МПа, плотность {mt.get('density')} кг/м3)")
+        else:
+            log("Материал: свойства из запасных значений анкеты (в проекте Ansys данные материала не найдены)")
     except Exception:
         pass
     log("Собираю отчёт…")

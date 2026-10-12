@@ -76,7 +76,7 @@ class Report:
     def page_break(self): self.d.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
     def table(self, header: list[str], rows: list[list], widths=None, caption: str | None = None,
-              fills: dict | None = None):
+              fills: dict | None = None, size: int = 12):
         if caption:
             self.tab += 1
             self.para(f"Таблица {self.tab} – {caption}", align=WD_ALIGN_PARAGRAPH.LEFT, indent=0,
@@ -84,13 +84,13 @@ class Report:
         t = self.d.add_table(rows=1, cols=len(header))
         t.style = "Table Grid"; t.alignment = WD_TABLE_ALIGNMENT.CENTER
         for i, h in enumerate(header):
-            self._cell(t.rows[0].cells[i], h, bold=True, align=CENTER)
+            self._cell(t.rows[0].cells[i], h, bold=True, align=CENTER, size=size)
         self._repeat_header(t.rows[0])
         for row in rows:
             cells = t.add_row().cells
             for i, v in enumerate(row):
                 self._cell(cells[i], str(v), align=CENTER if i else WD_ALIGN_PARAGRAPH.LEFT,
-                           red=(str(v) == "Не выполнен"))
+                           red=(str(v) == "Не выполнен"), size=size)
         if widths:
             t.autofit = False
             for i, w in enumerate(widths): t.columns[i].width = Cm(w)
@@ -100,12 +100,12 @@ class Report:
         return t
 
     @staticmethod
-    def _cell(cell, text, bold=False, align=None, red=False):
+    def _cell(cell, text, bold=False, align=None, red=False, size=12):
         cell.text = ""
         par = cell.paragraphs[0]
         par.paragraph_format.space_after = Pt(0); par.paragraph_format.first_line_indent = Cm(0)
         if align is not None: par.alignment = align
-        r = Report._run(par, text, 12, bold)
+        r = Report._run(par, text, size, bold)
         if red: r.font.color.rgb = RGBColor(0xC0, 0, 0)
 
     @staticmethod
@@ -253,7 +253,7 @@ class Report:
                     "Предел текучести, МПа", "Для толщин стенок, мм"],
                    [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m.get("thickness_range") or "–"]],
                    caption="Механические характеристики используемых материалов",
-                   widths=[1.5, 2.7, 2.4, 2.9, 2.5, 2.5, 2.3])
+                   widths=[2.6, 2.4, 2.3, 2.9, 2.4, 2.4, 2.0], size=10)
         sy = m["yield_mpa"]
         self.body("Согласно ГОСТ 31385-2023 и СП 16.13330.2020 расчетные сопротивления:")
         self.math(f"1-й пояс: R = {sy}·0,7·1,0 / (1,05·1,05) = {fmt(c['R1'],2)} МПа")
@@ -424,7 +424,12 @@ class Report:
             if c["kmin"] is not None else "Коэффициент запаса устойчивости из проекта Ansys не получен (нет результатов расчёта на устойчивость).",
             f"Допустимый уровень налива продукта по условию прочности составил {fmt(res['max_fill_m'])} м." if c["strength_ok"] else
             "Для продолжения эксплуатации требуется снижение уровня налива или вывод резервуара в ремонт; допустимый уровень налива следует определить повторным расчетом."]
-        for k, x in enumerate([x for x in items if x], 1): self.body(f"{k}. {x}")
+        items = [x for x in items if x]
+        for k, x in enumerate(items, 1):
+            par = self.body(f"{k}. {x}")
+            par.paragraph_format.keep_together = True
+            if k < len(items):
+                par.paragraph_format.keep_with_next = True        # выводы переносятся целиком, без одиноких строк
 
     def appendices(self):
         self.h1("Приложение 1 – Перечень использованной нормативной технической и методической документации", new_page=True)
