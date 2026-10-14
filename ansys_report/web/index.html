@@ -103,6 +103,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
   <aside class="side">
     <div class="brand"><div class="logo"><img src="/icon.png" alt=""></div><div><b>Ansys Report</b><span>Технические отчёты</span></div></div>
     <button class="nav on" data-v="report"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg>Отчёт</button>
+    <button class="nav" data-v="geo"><svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Замеры</button>
     <button class="nav" data-v="map"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Соответствия</button>
     <button class="nav" data-v="about"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>О программе</button>
     <div class="spacer"></div>
@@ -168,6 +169,49 @@ label.f{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 4px}
       </div>
     </section>
 
+    <!-- ЗАМЕРЫ -->
+    <section id="v-geo" class="hide">
+      <header>
+        <h1>Проверка<br>по замерам<small>Заказчик даёт точки — программа проверяет допуски, строит стенку и готовит поверхность для расчёта в Ansys</small></h1>
+        <div class="pill"><span class="dot ok" id="gdot"></span><span id="gtxt">Готово к работе</span></div>
+      </header>
+      <div class="grid">
+        <div>
+          <div class="card">
+            <h2><span class="num">1</span>Файл замеров</h2>
+            <div class="row"><input type="text" id="gjson" placeholder="Проект замеров .json"><button class="btn dark" id="gpickJson">Выбрать</button></div>
+            <p class="hint" style="margin:10px 4px 0">Формат — проект «РВС · Геометрия стенки» (диаметр, высота, образующие, отклонения в мм, пояса, вмятины).</p>
+          </div>
+          <div class="card">
+            <h2><span class="num">2</span>Папка для результата</h2>
+            <div class="row"><input type="text" id="gout" placeholder="Куда сохранить"><button class="btn dark" id="gpickOut">Выбрать</button></div>
+          </div>
+          <div class="card">
+            <h2><span class="num">3</span>Сведения для отчёта</h2>
+            <div class="fields" id="gfields"></div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <h2>Запуск</h2>
+            <label class="tog"><input type="checkbox" id="gcad" checked><span class="sw"></span><span>Построить поверхность для Ansys<small>Файлы STEP и IGES, толщины участков в CSV</small></span></label>
+            <button class="go" id="ggo"><span id="ggotxt">Проверить и собрать</span><i><svg viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></svg></i></button>
+            <div class="bar" id="gbar" style="margin-top:16px"><i></i></div>
+            <div class="err hide" id="gerr"></div>
+          </div>
+          <div class="card result hide" id="gresult">
+            <h2>Готово</h2><p id="grpath"></p>
+            <div class="row" style="flex-wrap:wrap">
+              <button class="btn rb" id="goWord"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12l1.2 5 1.8-4.5 1.8 4.5 1.2-5"/></svg>Открыть Word</button>
+              <button class="btn rb" id="goHtml"><svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Просмотр</button>
+              <button class="btn rb" id="goDir"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Открыть папку</button>
+            </div>
+          </div>
+          <div class="log" id="glog"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- СООТВЕТСТВИЯ -->
     <section id="v-map" class="hide">
       <header><h1>Соответствия<small>Если ваш проект оформлен иначе — укажите, как в нём называются тела и расчёты (сейчас поддерживаются вертикальные резервуары)</small></h1></header>
@@ -204,7 +248,7 @@ let fields = [], files = [], seen = 0, timer = null;
 
 document.querySelectorAll(".nav").forEach(b => b.onclick = () => {
   document.querySelectorAll(".nav").forEach(x => x.classList.toggle("on", x === b));
-  for (const v of ["report","map","about"]) $("#v-"+v).classList.toggle("hide", v !== b.dataset.v);
+  for (const v of ["report","geo","map","about"]) $("#v-"+v).classList.toggle("hide", v !== b.dataset.v);
 });
 
 function setStage(n, bad){
@@ -246,6 +290,7 @@ async function init(){
   if (s.ansys.found){ $("#adot").className = "dot ok"; $("#atitle").textContent = "Ansys найден";
     const v = String(s.ansys.version); $("#asub").textContent = "Версия 20" + v.slice(0,2) + " R" + v.slice(2); }
   else { $("#adot").className = "dot bad"; $("#atitle").textContent = "Ansys не найден"; $("#asub").textContent = "Установите Ansys Mechanical"; }
+  gInit(s);
   setInterval(() => api("/api/ping", {}), 4000);
 }
 
@@ -290,6 +335,43 @@ const openPath = async p => { try { const r = await api("/api/open", {path: p});
 const openBy = ext => () => { const f = files.find(f => ext.test(f)); if (f) openPath(f); else { $("#err").textContent = "Файл не найден в результате сборки."; $("#err").classList.remove("hide"); } };
 $("#oWord").onclick = openBy(/\.docx$/i); $("#oXlsx").onclick = openBy(/\.xlsx$/i);
 $("#oDir").onclick = () => { const f = files[0]; if (f) openPath(f.replace(/[\\/][^\\/]*$/, "")); };
+
+// ---- Замеры ----
+const GKEYS = ["tank_name","tag","number","executor_name"];
+function gInit(s){
+  $("#gjson").value = s.geo_json || ""; $("#gout").value = s.out; $("#gcad").checked = s.geo_cad !== false;
+  const box = $("#gfields");
+  for (const k of GKEYS){ const f = fields.find(x => x.key === k); if (!f) continue;
+    const w = document.createElement("div"); w.innerHTML = `<label class="f">${f.label}</label><input type="text" id="g_${k}">`;
+    box.appendChild(w); w.querySelector("input").value = s.anketa[k] || ""; }
+}
+$("#gpickJson").onclick = async () => { const r = await api("/api/pick", {kind:"json"}); if (r.path) $("#gjson").value = r.path; };
+$("#gpickOut").onclick = async () => { const r = await api("/api/pick", {kind:"folder"}); if (r.path) $("#gout").value = r.path; };
+let gfiles = [], gseen = 0, gtimer = null;
+$("#ggo").onclick = async () => {
+  if (!$("#gjson").value.trim()){ $("#gerr").textContent = "Сначала выберите файл замеров (.json)."; $("#gerr").classList.remove("hide"); return; }
+  $("#gerr").classList.add("hide"); $("#gresult").classList.add("hide"); $("#glog").innerHTML = ""; gseen = 0;
+  const anketa = {}; for (const k of GKEYS){ const e = $("#g_"+k); if (e) anketa[k] = e.value; }
+  const r = await api("/api/build_geo", {json:$("#gjson").value, out:$("#gout").value, cad:$("#gcad").checked, anketa});
+  if (!r.ok){ $("#gerr").textContent = r.error; $("#gerr").classList.remove("hide"); return; }
+  $("#ggo").disabled = true; $("#ggotxt").textContent = "Идёт обработка…"; $("#gdot").className = "dot"; $("#gtxt").textContent = "Работаем…";
+  $("#gbar i").style.width = "30%"; $("#gbar").classList.add("run");
+  clearInterval(gtimer);
+  gtimer = setInterval(async () => {
+    const s = await api("/api/status?since=" + gseen); gseen = s.total;
+    for (const l of s.lines){ const d = document.createElement("div"); d.textContent = l;
+      d.className = /ОШИБКА|Ошибка/.test(l) ? "e" : /^ГОТОВО/.test(l) ? "g" : ""; $("#glog").appendChild(d); $("#glog").scrollTop = $("#glog").scrollHeight; }
+    if (!s.done) return;
+    clearInterval(gtimer); $("#ggo").disabled = false; $("#ggotxt").textContent = "Проверить и собрать"; $("#gbar").classList.remove("run");
+    if (s.error){ $("#gerr").textContent = s.error; $("#gerr").classList.remove("hide"); $("#gdot").className = "dot bad"; $("#gtxt").textContent = "Есть ошибка"; return; }
+    gfiles = s.files; $("#gbar i").style.width = "100%"; $("#gdot").className = "dot ok"; $("#gtxt").textContent = "Готово";
+    const w = gfiles.find(f => /\.docx$/i.test(f)) || gfiles[0] || ""; $("#grpath").textContent = w.replace(/[\\/][^\\/]*$/, "");
+    $("#gresult").classList.remove("hide");
+  }, 700);
+};
+const gOpen = ext => () => { const f = gfiles.find(f => ext.test(f)); if (f) openPath(f); };
+$("#goWord").onclick = gOpen(/\.docx$/i); $("#goHtml").onclick = gOpen(/\.html$/i);
+$("#goDir").onclick = () => { const f = gfiles[0]; if (f) openPath(f.replace(/[\\/][^\\/]*$/, "")); };
 window.addEventListener("pagehide", () => navigator.sendBeacon("/api/bye", "{}"));
 $("#pdot").className = "dot ok"; init();
 </script>
