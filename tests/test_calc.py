@@ -254,7 +254,12 @@ def test_material_from_ansys_engineering_data(tmp_path):
     assert p.material["name"] == "Structural Steel" and p.material["source"] == "Ansys"
     p2 = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1, "steel_name": "09Г2С"}))
     assert p2.material["name"] == "09Г2С"
-    assert abs(calc_all(p)["allow"] - 250 / 1.5) < 0.01
+    c = calc_all(p)
+    assert abs(c["allow"] - 250 / 1.5) < 0.01
+    # ГОСТ Р 58622-2019, табл. 13: для листов стенки критерий - мембранные напряжения <= 1,5[σ] (= σ0,2)
+    assert abs(c["allow15"] - 250) < 0.01
+    assert c["strength_ok"] == all(b["ok_mem"] for b in c["belts"])
+    assert len(c["dev_check"]) == len(c["belts"]) and c["dev_check"][0]["lim2"] == c["dev_check"][0]["lim1"] + 30
 
 
 def test_full_shape_apdl_from_survey_csv(tmp_path):
