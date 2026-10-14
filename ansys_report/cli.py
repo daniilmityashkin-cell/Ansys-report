@@ -10,7 +10,7 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     a = ap.parse_args(argv)
@@ -23,6 +23,17 @@ def main(argv=None) -> int:
     if a.command == "gui":
         from .gui import main as gui_main
         return gui_main()
+    if a.command == "geometry-classic":
+        from .geometry.rvs_gui import main as geo_main
+        geo_main()
+        return 0
+    if a.command == "geometry":
+        if not a.project:
+            ap.error("укажите путь к файлу замеров (JSON)")
+        from .geometry.pipeline import build_from_points
+        for f in build_from_points(a.project, a.out, {}):
+            print("Файл:", f)
+        return 0
     if not a.project:
         ap.error("укажите путь к project.yaml")
     try:

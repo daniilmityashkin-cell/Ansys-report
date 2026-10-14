@@ -300,3 +300,41 @@ def test_universal_report_for_acoustic_project(tmp_path):
     out, _ = build_universal(tmp_path, tmp_path / "r.docx", {"tank_name": "Башня"})
     text = "\n".join(p.text for p in docx.Document(out).paragraphs)
     assert "Modal Acoustics" in text and "5 Результаты расчёта" in text
+
+
+def _points_project():
+    """Синтетический проект замеров: 12 образующих × 13 отметок, наклон образующих, одна вмятина, три пояса толщины."""
+    import math
+    angles = [30.0 * i for i in range(12)]
+    heights = [1.5 * k for k in range(13)]
+    values = [[f"{(1 if i % 2 == 0 else -1) * z * (5 + i) * 0.6:.1f}".replace(".", ",") for i in range(12)] for z in heights]
+    dent_x = [-0.6, -0.3, 0.0, 0.3, 0.6]
+    dent_y = [-0.6, -0.3, 0.0, 0.3, 0.6]
+    dv = [[("0" if (j in (0, 4) or i in (0, 4)) else ("-12" if (i == 2 and j == 2) else "-3")) for i in range(5)] for j in range(5)]
+    return {"version": "1.0", "diameter": "28.5", "height": "18", "angles": angles, "heights": heights, "values": values,
+            "bands": [["1.5", "13"]] + [["1.5", "12"]] * 2 + [["1.5", "11"]] * 9,
+            "defects": [{"name": "Вмятина 1", "mode": "Дуга, м", "anchor": "20", "height": "6", "width": "1.2", "span_height": "1.2",
+                         "nx": "5", "ny": "5", "x": dent_x, "y": dent_y, "values": dv}],
+            "contour_threshold": "0.1", "wall_includes_defects": False}
+
+
+def test_points_geometry_check_and_report(tmp_path):
+    """Замеры → оценка по допускам H/200 и H/200+30 → CAD-оболочка → Word."""
+    import docx
+    from ansys_report.geometry import check
+    from ansys_report.geometry.pipeline import build_from_points
+    pr = _points_project()
+    res = check.analyze(pr)
+    assert res["n_points"] == 12 * 12 and res["over_a"] >= res["over_b"] >= 0
+    b1 = res["belts"][0]
+    assert abs(b1["lim_a"] - 7.5) < 1e-9 and abs(b1["lim_b"] - 37.5) < 1e-9          # H/200 и H/200 + 30 на первом поясе
+    assert res["dents"][0]["depth_mm"] > 11
+    f = tmp_path / "p.json"
+    f.write_text(json.dumps(pr, ensure_ascii=False), encoding="utf-8")
+    files = build_from_points(f, tmp_path / "out", {"tag": "T-77", "number": "N-1", "tank_name": "РВС-1"}, log=lambda s: None)
+    names = [x.name for x in files]
+    assert any(n.endswith(".docx") for n in names) and "Поверхность РВС.step" in names and "Поверхность РВС.igs" in names
+    step = next(x for x in files if x.suffix == ".step").read_text(encoding="ascii")
+    assert "B_SPLINE_SURFACE_WITH_KNOTS" in step and step.count("ADVANCED_FACE") == 3      # три участка толщины 13 / 12 / 11 мм
+    text = "\n".join(p.text for p in docx.Document(next(x for x in files if x.suffix == ".docx")).paragraphs)
+    assert "Оценка отклонений по точкам" in text and "5 Выводы" in text
