@@ -396,14 +396,14 @@ def _blocks(d: Path, settings) -> dict[str, str]:
                 return
 
     if full:
-        add("fig06_eq_stress", full, "Equivalent_Stress")
-        add("fig07_membrane", full, "Membrane_Stress")
-        add("fig08_fiber", full, "Maximum_Principal_Stress", "Bending_Stress")
+        add("fig06_eq_stress", full, "AR_Equivalent", "Equivalent_Stress")
+        add("fig07_membrane", full, "AR_Membrane", "Membrane_Stress")
+        add("fig08_fiber", full, "AR_Fiber", "Maximum_Principal_Stress", "Bending_Stress")
         add("fig09_deform", full, "Total_Deformation")
     if empty:
-        add("fig10_empty_eq", empty, "Equivalent_Stress")
-        add("fig11_empty_mem", empty, "Membrane_Stress")
-        add("fig12_empty_fiber", empty, "Bending_Stress", "Maximum_Principal_Stress")
+        add("fig10_empty_eq", empty, "AR_Equivalent", "Equivalent_Stress")
+        add("fig11_empty_mem", empty, "AR_Membrane", "Membrane_Stress")
+        add("fig12_empty_fiber", empty, "AR_Fiber", "Bending_Stress", "Maximum_Principal_Stress")
         add("fig13_empty_deform", empty, "Total_Deformation")
     k = 1
     for n in eigen:
