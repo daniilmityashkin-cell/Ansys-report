@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block body %}
+<h1>{{ g.title }}</h1><p class="sub">Генерация №{{ g.id }} · <span class="tag {{ g.status }}">{{ {'draft':'проверка пройдена','paid':'оплачено','running':'считается','done':'готово','error':'ошибка'}[g.status] }}</span></p>
+<div class="card"><h2>Проверка замеров (бесплатно)</h2>
+<div class="kv"><span>Диаметр × высота</span><span>{{ summary.diameter_m }} × {{ summary.height_m }} м</span>
+<span>Замеров</span><span>{{ summary.n_points }} ({{ summary.n_gens }} образующих × {{ summary.n_belts }} поясов)</span>
+<span>Выше допуска H/200</span><span>{{ summary.over_a }} {% if summary.ok_a %}— допуск выполнен{% endif %}</span>
+<span>Выше допуска H/200 + 30 мм</span><span>{{ summary.over_b }} {% if summary.ok_b %}— допуск выполнен{% endif %}</span>
+<span>Максимальное отклонение</span><span>{{ summary.max_abs_mm }} мм ({{ summary.worst_belt }}-й пояс)</span>
+<span>Вмятины</span><span>{% if summary.dents %}{% for d in summary.dents %}{{ d.name }} — {{ d.depth_mm }} мм{% if not loop.last %}; {% endif %}{% endfor %}{% else %}нет{% endif %}</span>
+<span>Участки толщины</span><span>{% for gr in summary.groups %}{{ gr.thickness_mm }} мм ({{ gr.bottom_m }}–{{ gr.top_m }} м){% if not loop.last %}; {% endif %}{% endfor %}</span></div></div>
+{% if g.status == 'draft' %}<form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="btn">Сгенерировать и оплатить — {{ st.price_generation_rub }} ₽</button></form>
+<p><small>После оплаты будут построены поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.</small></p>
+{% elif g.status in ('paid','running') %}<div class="card"><p>Идёт расчёт. Обычно это занимает меньше минуты. <a href="/g/{{ g.id }}">Обновить</a></p></div>
+{% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
+{% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% endblock %}

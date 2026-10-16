@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Геометрия РВС{% endblock %}</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<nav class="top"><b><a href="/" style="color:inherit">Геометрия РВС</a></b>
+{% if user %}<a href="/cabinet">Кабинет</a><a href="/new">Новая генерация</a><a href="/subscription">Подписка</a>
+<form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Выйти ({{ user.email }})</button></form>
+{% else %}<a href="/login">Войти</a><a href="/register">Регистрация</a>{% endif %}</nav>
+<main>{% block body %}{% endblock %}</main></body></html>

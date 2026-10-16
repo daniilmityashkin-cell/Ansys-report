@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block body %}
+<h1>Технический отчёт</h1><p class="sub">{{ g.title }}</p>
+{% if not user.has_subscription %}<div class="card"><p>Технический отчёт доступен по подписке.</p><p><a class="btn" href="/subscription">Оформить подписку</a></p></div>
+{% else %}<div class="card"><p>Подписка активна. Загрузка результатов расчёта из Ansys и сборка отчёта — в разработке.</p></div>{% endif %}{% endblock %}
