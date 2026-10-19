@@ -14,6 +14,18 @@ out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "an
 System.IO.Directory.CreateDirectory(out)
 log = []
 
+
+def set_units():
+    """Рисунки и таблицы в МПа и мм (единицы только в сеансе, проект не меняется)."""
+    try:
+        ExtAPI.Application.ActiveUnitSystem = MechanicalUnitSystem.StandardNMM
+        log.append(u"единицы: Н, мм, МПа")
+    except Exception as e:
+        log.append(u"единицы не переключены (%s)" % e)
+
+
+set_units()
+
 BELT_RE = os.environ.get("ANSYS_REPORT_BELT_REGEX") or r"^p\s*(\d+)$"
 AXIS = (os.environ.get("ANSYS_REPORT_AXIS") or "X").upper()
 STATIC_PREFIX = os.environ.get("ANSYS_REPORT_STATIC") or "Static"
@@ -34,7 +46,7 @@ def write(name, lines):
     f.write(u"\n".join(lines))
     f.close()
 
-def fit_view():
+def fit_view(steep=False):
     # В фоновом режиме камера по умолчанию сильно приближена и стоит "на боку".
     # Вертикаль резервуара - ось X (гравитация по -X): ставим X "вверх", смотрим сбоку сверху, затем "показать всё".
     ok = False
@@ -42,7 +54,8 @@ def fit_view():
         from Ansys.ACT.Math import Vector3D
         cam = Graphics.Camera
         up = {"X": (1, 0, 0), "Y": (0, 1, 0), "Z": (0, 0, 1)}[AXIS]
-        view = {"X": (-0.5, -1, -0.6), "Y": (-0.6, -0.5, -1), "Z": (-1, -0.6, -0.5)}[AXIS]
+        v = (-1.2, -0.8, -0.5) if steep else (-0.5, -1, -0.6)     # steep: сверху, видна и внутренняя сторона стенки
+        view = {"X": v, "Y": (v[2], v[0], v[1]), "Z": (v[1], v[2], v[0])}[AXIS]
         cam.UpVector = Vector3D(up[0], up[1], up[2])
         cam.ViewVector = Vector3D(view[0], view[1], view[2])
         ok = True
@@ -74,6 +87,8 @@ for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
 log.append(u"Найдено поясов: %d" % len(belts))
 
 stab = [u"analysis,mode,k"]
+modes = [u"analysis,type,mode,value,unit"]
+summary = [u"analysis,result,max,min,unit"]
 for a in model.Analyses:
     sol = a.Solution
     aname = a.Name.replace(" ", "_")
@@ -92,16 +107,61 @@ for a in model.Analyses:
         log.append(u"%s: статус решения: %s" % (a.Name, sol.Status))
     except Exception:
         pass
-    # 1. картинки существующих результатов
+    # 1. картинки существующих результатов (формы потери устойчивости смотрим сверху)
+    is_eigen = a.Name.startswith(EIGEN_PREFIX)
     for r in sol.Children:
         if r.Name.startswith("Solution Information"):
             continue
         try:
             r.Activate()
-            fit_view()
+            if is_eigen:
+                try:
+                    Graphics.ViewOptions.ResultPreference.DeformationScaling = DeformationScaling.Auto
+                except Exception:
+                    pass
+            fit_view(is_eigen)
             Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
+    # 1a. полные поля по всей стенке (эквивалентные, мембранные, фибровые), единицы МПа
+    if a.Name.startswith(STATIC_PREFIX):
+        tmp = []
+        try:
+            eqf = sol.AddEquivalentStress(); eqf.Name = "AR Equivalent"
+            mm = sol.AddMaximumPrincipalStress(); mm.Name = "AR Membrane"; mm.Position = type(mm.Position).Middle
+            fbf = sol.AddMaximumPrincipalStress(); fbf.Name = "AR Fiber"
+            tmp = [eqf, mm, fbf]
+            sol.EvaluateAllResults()
+            for r in tmp:
+                try:
+                    r.Activate()
+                    fit_view()
+                    Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
+                except Exception as e:
+                    log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
+        except Exception as e:
+            log.append(u"%s: полные поля: %s" % (a.Name, e))
+        for r in tmp:
+            try:
+                r.Delete()
+            except Exception:
+                pass
+    # 1b. универсальная сводка: частоты мод и максимумы/минимумы существующих результатов
+    for r in sol.Children:
+        if r.Name.startswith("Solution Information"):
+            continue
+        try:
+            tn = r.GetType().Name
+            if tn == "TotalDeformation" and not a.Name.startswith(EIGEN_PREFIX):
+                try:
+                    f = r.ReportedFrequency
+                    modes.append(u"%s,%s,%s,%.6g,%s" % (a.Name, a.AnalysisType, r.Mode, f.Value, f.Unit))
+                except Exception:
+                    pass
+            mx, mn = r.Maximum, r.Minimum
+            summary.append(u"%s,%s,%.6g,%.6g,%s" % (a.Name, r.Name, mx.Value, mn.Value, mx.Unit))
+        except Exception:
+            pass
     # 2. устойчивость: коэффициент запаса = ReportedFrequency у результатов Eigenvalue Buckling
     if a.Name.startswith(EIGEN_PREFIX):
         for r in sol.Children:
@@ -156,6 +216,10 @@ for a in model.Analyses:
                 r.Delete()
 
 write("stability.csv", stab)
+if len(modes) > 1:
+    write("modes.csv", modes)
+if len(summary) > 1:
+    write("results_summary.csv", summary)
 write("log.txt", log)
 print(u"\n".join(log))
 print("Готово: " + out)

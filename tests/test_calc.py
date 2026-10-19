@@ -1,3 +1,4 @@
+import json
 """Тесты на обезличенном примере examples/demo (данные получены из реального проекта Ansys)."""
 from pathlib import Path
 import openpyxl
@@ -30,7 +31,7 @@ def test_gui_core(tmp_path):
     from ansys_report.gui import build_all
     msgs = []
     files = build_all(YAML, tmp_path, msgs.append)
-    assert len(files) == 4 and all(f.exists() for f in files) and any("Word" in m for m in msgs)
+    assert len(files) == 5 and all(f.exists() for f in files) and any("Word" in m for m in msgs)
 
 
 def test_apdl_shift_matches_survey():
@@ -248,8 +249,92 @@ def test_material_from_ansys_engineering_data(tmp_path):
     shutil.copy(f, d / "engineering_data.xml")
     from ansys_report.ansys_connect import make_project_folder
     p = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1}))
-    assert p.material["yield_mpa"] == 250.0 and p.material["young_modulus_mpa"] == 200000.0
+    assert p.material["yield_mpa"] == 250 and p.material["young_modulus_mpa"] == 200000
+    assert isinstance(p.material["yield_mpa"], int) and isinstance(p.material["density"], int)
     assert p.material["name"] == "Structural Steel" and p.material["source"] == "Ansys"
     p2 = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-3", "roof_radius": 1, "steel_name": "09Г2С"}))
     assert p2.material["name"] == "09Г2С"
-    assert abs(calc_all(p)["allow"] - 250 / 1.5) < 0.01
+    c = calc_all(p)
+    assert abs(c["allow"] - 250 / 1.5) < 0.01
+    # ГОСТ Р 58622-2019, табл. 13: для листов стенки критерий - мембранные напряжения <= 1,5[σ] (= σ0,2)
+    assert abs(c["allow15"] - 250) < 0.01
+    assert c["strength_ok"] == all(b["ok_mem"] for b in c["belts"])
+    assert len(c["dev_check"]) == len(c["belts"]) and c["dev_check"][0]["lim2"] == c["dev_check"][0]["lim1"] + 30
+
+
+def test_full_shape_apdl_from_survey_csv(tmp_path):
+    """Замеры «полного» (CSV) + выгрузка модели -> макрос APDL с ненулевыми сдвигами; шаблон замеров читается обратно."""
+    import shutil
+    from ansys_report.apdl_gen import build_apdl
+    from ansys_report.ansys_connect import make_project_folder
+    from ansys_report.project import write_survey_csv
+    src = Path(__file__).resolve().parent.parent / "examples" / "demo"
+    d = tmp_path / "d"
+    shutil.copytree(src, d, ignore=shutil.ignore_patterns("project.yaml", "images"))
+    p = load_project(make_project_folder(d, {"number": "N", "year": 2026, "tag": "T-5", "roof_radius": 1}))
+    txt = build_apdl(p)
+    import re
+    assert "NMODIF" in txt and re.search(r"^DLT\(\d+,\d+\) = ", txt, re.M) and txt.isascii()
+    t = write_survey_csv(tmp_path / "tpl.csv", p.survey_empty)       # шаблон = «пустой»: после чтения сдвиги нулевые
+    d2 = tmp_path / "d2"
+    shutil.copytree(src, d2, ignore=shutil.ignore_patterns("project.yaml", "images"))
+    shutil.copy(t, d2 / "survey_full.csv")
+    p2 = load_project(make_project_folder(d2, {"number": "N", "year": 2026, "tag": "T-5", "roof_radius": 1}))
+    assert not re.search(r"^DLT\(\d+,\d+\) = ", build_apdl(p2), re.M)
+
+
+def test_universal_report_for_acoustic_project(tmp_path):
+    """Проект без поясов (Modal Acoustics): универсальный отчёт собирается без ошибок."""
+    import docx
+    from ansys_report.universal import build_universal
+    md = {"vertical_axis": "X", "belt_rings": [], "belt_regex": r"^p\s*(\d+)$", "node_count": 10, "element_count": 5,
+          "bbox": {"xmax": 2.5, "xmin": -2.5, "rmax": 6.3},
+          "mesh_object": {"ElementSize": "0.25 [m]", "ElementOrder": "Linear"},
+          "bodies": [{"name": "Solid", "material": "Structural Steel", "thickness": "0 [m]", "dimension": "?", "suppressed": "False"}],
+          "materials": [{"name": "Structural Steel", "props": {"AssignedBodies": "1"}}],
+          "analyses": [{"name": "Modal Acoustics", "type": "Modal", "results": [], "children": [
+              {"name": "Analysis Settings", "type": "ANSYSAnalysisSettings", "props": {"MaximumModesToFind": "6"}},
+              {"name": "Physics Region", "type": "PhysicsRegion", "props": {"Acoustics": "True"}}]}]}
+    (tmp_path / "model_data.json").write_text(json.dumps(md), encoding="utf-8")
+    (tmp_path / "modes.csv").write_text("analysis,type,mode,value,unit\nModal Acoustics,Modal,1,12.5,Hz\n", encoding="utf-8")
+    out, _ = build_universal(tmp_path, tmp_path / "r.docx", {"tank_name": "Башня"})
+    text = "\n".join(p.text for p in docx.Document(out).paragraphs)
+    assert "Modal Acoustics" in text and "5 Результаты расчёта" in text
+
+
+def _points_project():
+    """Синтетический проект замеров: 12 образующих × 13 отметок, наклон образующих, одна вмятина, три пояса толщины."""
+    import math
+    angles = [30.0 * i for i in range(12)]
+    heights = [1.5 * k for k in range(13)]
+    values = [[f"{(1 if i % 2 == 0 else -1) * z * (5 + i) * 0.6:.1f}".replace(".", ",") for i in range(12)] for z in heights]
+    dent_x = [-0.6, -0.3, 0.0, 0.3, 0.6]
+    dent_y = [-0.6, -0.3, 0.0, 0.3, 0.6]
+    dv = [[("0" if (j in (0, 4) or i in (0, 4)) else ("-12" if (i == 2 and j == 2) else "-3")) for i in range(5)] for j in range(5)]
+    return {"version": "1.0", "diameter": "28.5", "height": "18", "angles": angles, "heights": heights, "values": values,
+            "bands": [["1.5", "13"]] + [["1.5", "12"]] * 2 + [["1.5", "11"]] * 9,
+            "defects": [{"name": "Вмятина 1", "mode": "Дуга, м", "anchor": "20", "height": "6", "width": "1.2", "span_height": "1.2",
+                         "nx": "5", "ny": "5", "x": dent_x, "y": dent_y, "values": dv}],
+            "contour_threshold": "0.1", "wall_includes_defects": False}
+
+
+def test_points_geometry_check_and_report(tmp_path):
+    """Замеры → оценка по допускам H/200 и H/200+30 → CAD-оболочка → Word."""
+    import docx
+    from ansys_report.geometry import check
+    from ansys_report.geometry.pipeline import build_from_points
+    pr = _points_project()
+    res = check.analyze(pr)
+    assert res["n_points"] == 12 * 12 and res["over_a"] >= res["over_b"] >= 0
+    b1 = res["belts"][0]
+    assert abs(b1["lim_a"] - 7.5) < 1e-9 and abs(b1["lim_b"] - 37.5) < 1e-9          # H/200 и H/200 + 30 на первом поясе
+    assert res["dents"][0]["depth_mm"] > 11
+    f = tmp_path / "p.json"
+    f.write_text(json.dumps(pr, ensure_ascii=False), encoding="utf-8")
+    files = build_from_points(f, tmp_path / "out", {"tag": "T-77", "number": "N-1", "tank_name": "РВС-1"}, log=lambda s: None)
+    names = [x.name for x in files]
+    assert any(n.endswith(".docx") for n in names) and "Поверхность РВС.step" in names and "Поверхность РВС.igs" in names
+    step = next(x for x in files if x.suffix == ".step").read_text(encoding="ascii")
+    assert "B_SPLINE_SURFACE_WITH_KNOTS" in step and step.count("ADVANCED_FACE") == 3      # три участка толщины 13 / 12 / 11 мм
+    text = "\n".join(p.text for p in docx.Document(next(x for x in files if x.suffix == ".docx")).paragraphs)
+    assert "Оценка отклонений по точкам" in text and "5 Выводы" in text

@@ -58,6 +58,16 @@ def _load_survey(path: Path, n_belts: int, n_points: int) -> list[list[float]]:
     return belts
 
 
+def write_survey_csv(path: Path, survey: list[list[float]]) -> Path:
+    """CSV замеров: строки — точки, столбцы belt1…beltN, отклонения стенки от вертикали в мм."""
+    n_pts = len(survey[0])
+    lines = [",".join(f"belt{b}" for b in range(1, len(survey) + 1))]
+    for j in range(n_pts):
+        lines.append(",".join(f"{survey[b][j]:g}" for b in range(len(survey))))
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return Path(path)
+
+
 def load_project(yaml_path: str | Path) -> Project:
     yaml_path = Path(yaml_path)
     root = yaml_path.parent
@@ -142,7 +152,7 @@ def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
     if name is None:
         return
     summ = ai.material_summary(mats[name])
-    m.update(summ)
+    m.update({k: (int(v) if float(v).is_integer() else round(float(v), 3)) for k, v in summ.items()})   # 250.0 -> 250
     m["ansys_name"] = name
     m["source"] = "Ansys"
     if not (m.get("name") or "").strip():

@@ -65,6 +65,12 @@ def _pick(kind: str) -> str:
         return ""
     if kind == "folder":
         body = "$d = New-Object System.Windows.Forms.FolderBrowserDialog; if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }"
+    elif kind == "json":
+        body = ("$d = New-Object System.Windows.Forms.OpenFileDialog; "
+                "$d.Filter = 'Проект замеров (*.json)|*.json|Все файлы (*.*)|*.*'; if ($d.ShowDialog() -eq 'OK') { $d.FileName }")
+    elif kind == "csv":
+        body = ("$d = New-Object System.Windows.Forms.OpenFileDialog; "
+                "$d.Filter = 'Замеры (*.csv)|*.csv|Все файлы (*.*)|*.*'; if ($d.ShowDialog() -eq 'OK') { $d.FileName }")
     else:
         body = ("$d = New-Object System.Windows.Forms.OpenFileDialog; "
                 "$d.Filter = 'Проект Ansys (*.wbpj;*.wbpz;*.mechdb)|*.wbpj;*.wbpz;*.mechdb|Все файлы (*.*)|*.*'; "
@@ -132,7 +138,7 @@ def make_handler(job: Job, state: dict):
                     "project": st.get("project", ""), "out": st.get("out", str(Path.home() / "Documents" / "AnsysReport")),
                     "anketa": {k: st.get("anketa", {}).get(k, d) for k, _, d in FIELDS},
                     "fields": [{"key": k, "label": l} for k, l, _ in FIELDS],
-                    "solve": st.get("solve", True), "model": ModelSettings.from_dict(st.get("model")).to_dict(),
+                    "survey": st.get("survey") or "", "geo_json": st.get("geo_json", ""), "geo_cad": st.get("geo_cad", True), "solve": st.get("solve", True), "model": ModelSettings.from_dict(st.get("model")).to_dict(),
                     "ansys": {"found": bool(installs), "version": ver}})
             if path == "/api/status":
                 since = int(self.path.split("since=")[-1]) if "since=" in self.path else 0
@@ -164,7 +170,7 @@ def make_handler(job: Job, state: dict):
                 if job.running:
                     return self._json({"ok": False, "error": "Сборка уже идёт"})
                 try:
-                    SETTINGS.write_text(json.dumps({k: data[k] for k in ("project", "out", "anketa", "solve", "model")},
+                    SETTINGS.write_text(json.dumps({k: data.get(k) for k in ("project", "out", "anketa", "solve", "model", "survey")},
                                                    ensure_ascii=False), encoding="utf-8")
                 except Exception:
                     pass
@@ -172,9 +178,43 @@ def make_handler(job: Job, state: dict):
                 job.running = True
                 threading.Thread(target=_run, args=(job, data, build_from_ansys), daemon=True).start()
                 return self._json({"ok": True})
+            if path == "/api/build_geo":
+                if job.running:
+                    return self._json({"ok": False, "error": "Сборка уже идёт"})
+                try:
+                    st = _load()
+                    st.update({"geo_json": data.get("json"), "geo_cad": data.get("cad"), "out": data.get("out"),
+                               "anketa": {**st.get("anketa", {}), **{k: v for k, v in (data.get("anketa") or {}).items() if v}}})
+                    SETTINGS.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+                except Exception:
+                    pass
+                job.reset()
+                job.running = True
+                threading.Thread(target=_run_geo, args=(job, data), daemon=True).start()
+                return self._json({"ok": True})
             self._send(404, b"{}")
 
     return H
+
+
+def _run_geo(job: Job, d: dict):
+    """Замеры (JSON) → оценка по допускам, геометрия STEP/IGES, рисунки, Word."""
+    app_log(f"Старт: замеры={d.get('json')} папка={d.get('out')} cad={d.get('cad')}")
+    try:
+        from .geometry.pipeline import build_from_points
+        files = build_from_points(str(d["json"]).strip().strip('"'), str(d["out"]).strip().strip('"'), d.get("anketa") or {},
+                                  job.log, bool(d.get("cad", True)))
+        job.files = [str(f) for f in files]
+        job.log("ГОТОВО.")
+    except PermissionError:
+        job.error = "Файл открыт в Word. Закройте его и повторите."
+    except BaseException as e:  # noqa: BLE001
+        import traceback
+        app_log("ОШИБКА:\n" + traceback.format_exc())
+        job.error = f"{type(e).__name__}: {e}  (подробности: {app_log_path()})"
+    finally:
+        job.done = True
+        job.running = False
 
 
 def _run(job: Job, d: dict, build):
@@ -187,7 +227,8 @@ def _run(job: Job, d: dict, build):
         if empty:
             job.log("Внимание: не заполнены поля отчёта (" + ", ".join(empty) + ") — в отчёте останется пустое место.")
         files = build(str(d["project"]).strip().strip('"'), str(d["out"]).strip().strip('"'), anketa, job.log,
-                      bool(d.get("reuse")), bool(d.get("solve", True)), ModelSettings.from_dict(d.get("model")))
+                      bool(d.get("reuse")), bool(d.get("solve", True)), ModelSettings.from_dict(d.get("model")),
+                      d.get("survey") or None)
         job.files = [str(f) for f in files]
         job.log("ГОТОВО.")
     except PermissionError:

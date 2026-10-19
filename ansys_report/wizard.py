@@ -12,7 +12,7 @@ FIELDS = [  # ключ шаблона, подпись, значение по у�
     ("number", "Номер отчёта", "ТО-001-26"),
     ("year", "Год", str(date.today().year)),
     ("title", "Название отчёта", "Резервуара РВС на прочность и устойчивость"),
-    ("tank_name", "Тип/название резервуара", "РВС"),
+    ("tank_name", "Название объекта", "РВС-1000 или опора ТЭС"),
     ("tag", "Позиция (номер)", "Т-001"),
     ("site", "Площадка / заказчик", ""),
     ("site_number", "Номер на площадке", ""),
@@ -40,7 +40,7 @@ def _load():
         return {}
 
 
-def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False, solve=True, settings=None):
+def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False, solve=True, settings=None, survey_full=None):
     """Полный цикл: Ansys → выгрузка → project.yaml → Word/Excel. Возвращает список файлов."""
     from .ansys_connect import extract, make_project_folder
     from .gui import build_all
@@ -49,14 +49,37 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
     out_dir = Path(out_dir) / out_names(anketa.get("tag") or "tank", "x")["folder"]
     out_dir.mkdir(parents=True, exist_ok=True)
     data = out_dir / "_ansys_data"
+    survey_full = (str(survey_full).strip().strip('"') or None) if survey_full else None
+    if survey_full and not Path(survey_full).exists():
+        raise FileNotFoundError(f"Файл замеров «полного» резервуара не найден: {survey_full}")
     if not (reuse_data and (data / "model_data.json").exists()):
-        extract(project_file, data, log, solve=solve, settings=settings)
+        extract(project_file, data, log, solve=solve, settings=settings, survey_full=survey_full)
+    elif survey_full:
+        import shutil
+        shutil.copy2(survey_full, data / "survey_full.csv")
+        log("Замеры «полного» обновлены для Excel и файлов точек (расчёт Ansys не перезапускался)")
+    from .ansys_connect import _has_belts
+    if not _has_belts(data):
+        from .universal import build_universal
+        from .util import out_names
+        log("Резервуарных поясов в проекте нет — собираю универсальный отчёт по модели (объект, материалы, сетка, расчёты, результаты)")
+        make_project_folder(data, anketa, settings)
+        nm = out_names(anketa.get("tag") or "object", anketa.get("number") or "report")
+        docx_path, _ = build_universal(data, out_dir / nm["word"], anketa)
+        log(f"Отчёт лежит в папке: {out_dir}")
+        return [docx_path]
     yaml_path = make_project_folder(data, anketa, settings)
     try:
         import yaml
         raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         log(f"Соответствия: «полный» расчёт — {raw['ansys']['analysis_full'] or 'не найден'}; "
             f"результаты: {raw['results'].get('full', '-')}, {raw['results'].get('empty', '-')}")
+        mt = raw.get("material", {})
+        if mt.get("source") == "Ansys":
+            log(f"Материал из Ansys: {mt.get('ansys_name')} (текучесть {mt.get('yield_mpa')} МПа, прочность {mt.get('ultimate_mpa')} МПа, "
+                f"E = {mt.get('young_modulus_mpa')} МПа, плотность {mt.get('density')} кг/м3)")
+        else:
+            log("Материал: свойства из запасных значений анкеты (в проекте Ansys данные материала не найдены)")
     except Exception:
         pass
     log("Собираю отчёт…")

@@ -19,3 +19,6 @@ dist/
 build/
 installer/Output/
 *.spec
+
+server_data/
+*.db

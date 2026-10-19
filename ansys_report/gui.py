@@ -18,6 +18,12 @@ def build_all(project_yaml: str | Path, out_dir: str | Path, log=print) -> list[
     nm = out_names(tag, p.report["number"])
     files = []
     files.append(build_excel(p, out / nm["excel"])); log(f"Excel: {files[-1]}")
+    try:                                   # шаблон для замеров «полного» резервуара: заполненная копия «пустого» — правится вручную
+        from .project import write_survey_csv
+        t = write_survey_csv(out / "survey_full_template.csv", p.survey_empty)
+        files.append(t); log(f"Шаблон замеров «полного»: {t}")
+    except Exception:       # noqa: BLE001
+        pass
     for name, dev in (("full", p.survey_full), ("empty", p.survey_empty)):
         files.append(export_points_txt(p, dev, out / nm[name])); log(f"Точки: {files[-1]}")
     if not p.has_results:

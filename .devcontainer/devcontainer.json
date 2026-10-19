@@ -1,0 +1,7 @@
+{
+  "name": "Геометрия РВС (демо сайта)",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install -r requirements-server.txt",
+  "forwardPorts": [8000],
+  "portsAttributes": {"8000": {"label": "Сайт", "onAutoForward": "openBrowser"}}
+}
