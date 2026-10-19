@@ -9,7 +9,7 @@ def compute(gen_dir: str, title: str) -> dict:
     """Запускается в рабочем процессе: читает input.json, пишет файлы в result/. Возвращает список файлов."""
     from ansys_report.geometry.pipeline import build_from_points
     gen = Path(gen_dir)
-    files = build_from_points(gen / "input.json", gen / "result", {"tag": "r", "tank_name": title, "number": ""}, log=lambda s: None)
+    files = build_from_points(gen / "input.json", gen / "result", {"tag": "tank", "tank_name": title, "number": ""}, log=lambda s: None)
     return {"files": [str(Path(f).relative_to(gen / "result")) for f in files]}
 
 

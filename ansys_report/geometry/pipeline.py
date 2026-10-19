@@ -34,7 +34,8 @@ def build_from_points(project_file, out_dir, anketa: dict | None = None, log=pri
         files += [Path(f) for f in chk["files"]]
     log("Собираю отчёт Word…")
     nm = out_names(anketa.get("tag") or "tank", anketa.get("number") or "report")
-    docx_path = PointsReport(res, figs, anketa, chk).build(out / nm["word"].replace("Report_", "Geometry_report_"))
+    word = nm["word"].replace("Report_report_", "Report_").replace("Report_", "Geometry_report_")
+    docx_path = PointsReport(res, figs, anketa, chk).build(out / word)
     files.insert(0, docx_path)
     try:                                         # интерактивный просмотр для инженера (HTML, 3D/развёртка с ползунками)
         rvs_core.report_write(out / "Просмотр геометрии.html", res["model"])
