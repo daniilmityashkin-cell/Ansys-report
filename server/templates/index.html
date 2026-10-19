@@ -1,10 +1,40 @@
 {% extends "base.html" %}{% block body %}
-<h1>Замеры резервуара → проверка → геометрия для расчёта</h1>
-<p class="sub">Загрузите замеры стенки. Мы проверим отклонения по допускам, восстановим стенку и подготовим поверхность (STEP/IGES) с участками толщины для расчёта в Ansys.</p>
-<div class="grid">
-<div class="card"><h2>1. Проверка бесплатно</h2><p>Сразу после загрузки: сколько точек выходит за допуски H/200 и H/200 + 30 мм, максимальное отклонение, найденные вмятины.</p></div>
-<div class="card"><h2>2. Геометрия — {{ st.price_generation_rub }} ₽</h2><p>После оплаты: STEP и IGES, таблицы поясов и толщин, рисунки, отчёт по геометрии в Word, интерактивный просмотр.</p></div>
-<div class="card"><h2>3. Технический отчёт — по подписке</h2><p>Отчёт по результатам расчёта (прочность, устойчивость, выводы) в личном кабинете. Подписка: {{ st.price_subscription_rub }} ₽ за {{ st.subscription_days }} дней.</p></div>
-<div class="card"><h2>4. Личный кабинет</h2><p>Все ваши генерации и файлы хранятся в кабинете.</p></div></div>
-<p>{% if user %}<a class="btn" href="/new">Новая генерация</a>{% else %}<a class="btn" href="/register">Начать</a> <a class="btn light" href="/login">Войти</a>{% endif %}</p>
+<section class="hero">
+<span class="pill">Резервуары · ГОСТ Р 58622-2019 · ГОСТ 31385-2016</span>
+<h1>От замеров стенки до <em>геометрии для Ansys</em></h1>
+<p>Загрузите геодезические замеры РВС. Проверим отклонения по допускам, восстановим стенку и подготовим поверхность STEP/IGES с участками толщины для расчёта.</p>
+{% if user %}<a class="btn" href="/new">Новая генерация</a> <a class="btn light" href="/cabinet">Кабинет</a>
+{% else %}<a class="btn" href="/register">Начать бесплатно</a> <a class="btn light" href="/login">Войти</a>{% endif %}
+</section>
+
+<section>
+<div class="sec"><span class="pill">Как это работает</span><h2>Четыре шага</h2><p>Первая проверка бесплатна, платите только за результат.</p></div>
+<div class="steps">
+<div class="step"><div class="n">1</div><h3>Вставьте замеры</h3><p>Таблица из Excel или файл JSON: диаметр, высота, толщины поясов, отклонения.</p></div>
+<div class="step"><div class="n">2</div><h3>Бесплатная проверка</h3><p>Сколько точек выходит за допуски H/200 и H/200 + 30 мм, максимум, вмятины.</p></div>
+<div class="step"><div class="n">3</div><h3>Оплата</h3><p>Разовая генерация геометрии. Оплата на странице платёжного провайдера.</p></div>
+<div class="step"><div class="n">4</div><h3>Файлы в кабинете</h3><p>STEP, IGES, таблицы, рисунки и отчёт Word. Всё хранится в личном кабинете.</p></div>
+</div></section>
+
+<section>
+<div class="sec"><span class="pill">Что вы получаете</span><h2>Всё для расчёта в одном месте</h2></div>
+<div class="feat">
+<div class="card"><div class="ico">◈</div><div><b>Поверхность STEP / IGES</b><span class="d">Единая оболочка, толщина по поясам</span></div></div>
+<div class="card"><div class="ico">▤</div><div><b>Отчёт по геометрии</b><span class="d">Word с таблицами, допусками и рисунками</span></div></div>
+<div class="card"><div class="ico">◎</div><div><b>Интерактивный просмотр</b><span class="d">Развёртка и 3D стенки в браузере</span></div></div>
+</div></section>
+
+<section>
+<div class="sec"><span class="pill">Тарифы</span><h2>Прозрачные цены</h2></div>
+<div class="price">
+<div class="card hl"><h2>Геометрия</h2><div class="big">{{ st.price_generation_rub }} ₽ <small>за генерацию</small></div>
+<ul><li>STEP и IGES</li><li>Таблицы поясов и толщин</li><li>Отчёт по геометрии в Word</li></ul>
+<a class="btn" href="{% if user %}/new{% else %}/register{% endif %}">Сгенерировать</a></div>
+<div class="card"><h2>Технический отчёт</h2><div class="big">{{ st.price_subscription_rub }} ₽ <small>за {{ st.subscription_days }} дней</small></div>
+<ul><li>Прочность и устойчивость</li><li>Выводы по ГОСТ Р 58622-2019</li><li>Все генерации в кабинете</li></ul>
+<a class="btn light" href="{% if user %}/subscription{% else %}/register{% endif %}">Подписка</a></div>
+</div></section>
+
+<section class="cta"><h2>Проверьте свои замеры за минуту</h2><p>Регистрация и первая проверка бесплатны.</p>
+{% if user %}<a class="btn" href="/new">Новая генерация</a>{% else %}<a class="btn" href="/register">Создать аккаунт</a>{% endif %}</section>
 {% endblock %}
