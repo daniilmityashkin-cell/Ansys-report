@@ -111,3 +111,25 @@ def test_subscription_and_report_gate(site):
     c.post(pay_url, data={"csrf": csrf_of(c, pay_url)})            # тот же платёж повторно: срок не растёт
     with site.state.Session() as db:
         assert db.query(User).one().subscription_until == first
+
+
+def test_table_input_to_generation(site):
+    from server.tableinput import build_project
+    # 5 образующих × 3 пояса, строки - образующие (как у заказчика): каждая строка - одна образующая по поясам
+    table = "-10\t-9\t-6\n-12\t-23\t-27\n1\t-5\t-20\n60\t60\t52\n53\t64\t73"
+    pr = build_project("28,5", "18", table, "13 12 11", "gens")
+    assert len(pr["angles"]) == 5 and len(pr["heights"]) == 4 and pr["values"][0] == ["0"] * 5 and len(pr["bands"]) == 3
+    assert pr["values"][1][0] == "-10.0" and pr["values"][3][4] == "73.0"        # столбец-пояс 3 у образующей 5
+    for bad in (("0", "18", table, "13 12 11"), ("28.5", "18", table, "13 12"), ("28.5", "18", "1 2\n3", "13"), ("28.5", "18", "", "13")):
+        with pytest.raises(ValueError):
+            build_project(*bad)
+    c = TestClient(site)
+    register(c)
+    tok = csrf_of(c, "/new/table")
+    r = c.post("/new/table", data={"title": "РВС-2", "diameter": "28.5", "height": "18", "table": table, "thicknesses": "13 12 11",
+                                   "rows_are": "gens", "csrf": tok}, follow_redirects=False)
+    assert r.status_code == 303
+    assert "Проверка замеров" in c.get(r.headers["location"]).text
+    bad = c.post("/new/table", data={"title": "x", "diameter": "28.5", "height": "18", "table": table, "thicknesses": "13",
+                                     "rows_are": "gens", "csrf": tok})
+    assert bad.status_code == 400 and "Толщин указано" in bad.text

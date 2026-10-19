@@ -184,13 +184,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     err = f"Не удалось прочитать замеры: {e}"
             if err:
                 return render(request, "new.html", u, error=err, title=title, text=text, status_code=400)
-            g = Generation(user_id=u.id, title=(title.strip() or "Резервуар")[:200], summary=json.dumps(summary, ensure_ascii=False))
-            db.add(g)
-            db.commit()
-            d = gen_dir(g.id)
-            d.mkdir(parents=True, exist_ok=True)
-            (d / "input.json").write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
-            return RedirectResponse(f"/g/{g.id}", status_code=303)
+            return RedirectResponse(f"/g/{_create_generation(db, u, title, project, summary).id}", status_code=303)
+
+    def _create_generation(db, u: User, title: str, project: dict, summary: dict) -> Generation:
+        g = Generation(user_id=u.id, title=(title.strip() or "Резервуар")[:200], summary=json.dumps(summary, ensure_ascii=False))
+        db.add(g)
+        db.commit()
+        d = gen_dir(g.id)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "input.json").write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        return g
+
+    @app.get("/new/table", response_class=HTMLResponse)
+    def new_table_form(request: Request):
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return RedirectResponse("/login", status_code=303)
+            return render(request, "new_table.html", u, f={"rows_are": "gens"})
+
+    @app.post("/new/table")
+    def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
+                         table: str = Form(""), thicknesses: str = Form(""), rows_are: str = Form("gens"), csrf: str = Form("")):
+        bad = deny_csrf(request, csrf)
+        if bad:
+            return bad
+        from .tableinput import build_project
+        form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are}
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return RedirectResponse("/login", status_code=303)
+            try:
+                project = build_project(diameter, height, table, thicknesses, rows_are if rows_are in ("gens", "belts") else "gens")
+                summary = _preview(project)
+            except Exception as e:  # noqa: BLE001
+                return render(request, "new_table.html", u, error=str(e), f=form, status_code=400)
+            return RedirectResponse(f"/g/{_create_generation(db, u, title, project, summary).id}", status_code=303)
 
     def _owned(db, request: Request, gid: int):
         u = current_user(request, db)
