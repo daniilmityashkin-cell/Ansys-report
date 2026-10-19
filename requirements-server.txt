@@ -1,4 +1,11 @@
-# Сайт (server/). Установка: python -m pip install -r requirements.txt -r requirements-server.txt
+# Сайт (server/): всё нужное для запуска без Ansys. Установка: python -m pip install -r requirements-server.txt
+# Рекомендуемый Python: 3.12 или 3.13 (для 3.15 у ряда пакетов ещё нет готовых сборок).
+python-docx>=1.1
+openpyxl>=3.1
+PyYAML>=6.0
+Pillow>=10
+numpy>=1.26
+matplotlib>=3.8
 fastapi>=0.110
 uvicorn[standard]>=0.29
 sqlalchemy>=2.0
@@ -7,4 +14,4 @@ python-multipart>=0.0.9
 itsdangerous>=2.1
 argon2-cffi>=23.1
 httpx>=0.27
-psycopg[binary]>=3.1   # для PostgreSQL (ASR_DB_URL=postgresql+psycopg://...)
+# для PostgreSQL (по желанию): psycopg[binary]>=3.1  и  ASR_DB_URL=postgresql+psycopg://...

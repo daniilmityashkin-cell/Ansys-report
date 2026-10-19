@@ -8,7 +8,7 @@
 3. Окружение и пакеты:
    ```
    python -m venv .venv
-   .venv\Scripts\python -m pip install -r requirements.txt -r requirements-server.txt
+   .venv\Scripts\python -m pip install -r requirements-server.txt
    ```
 4. Проверка: `.venv\Scripts\python -m server` → http://127.0.0.1:8000 открывается в браузере.
 

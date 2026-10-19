@@ -7,7 +7,7 @@
 sudo apt install python3-venv nginx postgresql certbot python3-certbot-nginx
 git clone <репозиторий> /opt/asr && cd /opt/asr
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt -r requirements-server.txt
+pip install -r requirements-server.txt
 ```
 
 ## 2. Переменные окружения (файл `/etc/asr.env`, права 600)
