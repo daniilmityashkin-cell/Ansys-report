@@ -60,3 +60,10 @@ server {
 - Резервные копии: `pg_dump` и каталог `ASR_DATA_DIR` ежедневно, копия вне сервера.
 - Источник бесперебойного питания, мониторинг доступности (`/health`), ротация логов.
 - После обновления: `git pull && systemctl restart asr`; незавершённые генерации перезапускаются сами.
+
+## Временная демонстрация в GitHub Codespaces
+GitHub Pages для сайта не подходит (только статика). Для показа можно запустить сайт в Codespaces:
+1. Репозиторий на GitHub → Code → Codespaces → Create codespace on `claude/ansys-report-automation-8asxtm`.
+2. После установки зависимостей в терминале: `bash tools/codespace_run.sh`.
+3. Вкладка Ports → порт 8000 → Port Visibility → Public. Ссылка вида `https://<имя>-8000.app.github.dev`.
+Данные пропадают при удалении Codespace, оплата тестовая. Это только для демонстрации, не для заказчиков.
