@@ -146,3 +146,75 @@ def make_all(res: dict, img_dir: Path) -> dict:
     for d, info in zip(res["model"].defects, res["dents"]):
         out[f"geo_dent{info['id']}"] = dent_plot(res, d, info, img_dir / f"geo_dent{info['id']}.png")
     return out
+
+
+# ---------- рисунки для просмотра на сайте: цвет по |Δr|, радужная шкала ----------
+def _abs_norm(f):
+    from matplotlib.colors import Normalize
+    return Normalize(vmin=0.0, vmax=max(float(abs(f).max()), 1e-6))
+
+
+def preview_points3d(res: dict, path: Path, amp: float = 20.0) -> Path:
+    """Точки замеров на цилиндре (отклонения увеличены в amp раз), цвет по |Δr|."""
+    m = res["model"]
+    th, z, vals = m.theta, m.z, res["field"]
+    T, Z = np.meshgrid(th, z)
+    r = m.R + vals * amp / 1000.0
+    norm = _abs_norm(vals)
+    fig = plt.figure(figsize=(4.6, 4.0))
+    ax = fig.add_subplot(111, projection="3d")
+    tt = np.linspace(0, 2 * np.pi, 120)
+    for zz in (0, m.H):
+        ax.plot(m.R * np.cos(tt), m.R * np.sin(tt), zz, color="#bbb", lw=0.6)
+    ax.scatter(r * np.cos(T), r * np.sin(T), Z, c=np.abs(vals), cmap="jet", norm=norm, s=14)
+    ax.set_box_aspect((1, 1, m.H / (2 * m.R)))
+    ax.view_init(elev=22, azim=-60)
+    ax.set_axis_off()
+    return _save(fig, path)
+
+
+def preview_surface(res: dict, path: Path, amp: float = 20.0) -> Path:
+    m = res["model"]
+    theta = np.linspace(0, 2 * np.pi, 181)
+    z = np.linspace(0, m.H, 73)
+    f = m.field(theta, z)
+    T, Z = np.meshgrid(theta, z)
+    r = m.R + f * amp / 1000.0
+    cmap = plt.get_cmap("jet")
+    fig = plt.figure(figsize=(4.6, 4.0))
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot_surface(r * np.cos(T), r * np.sin(T), Z, facecolors=cmap(_abs_norm(f)(np.abs(f))), rstride=1, cstride=1,
+                    linewidth=0, antialiased=False, shade=False)
+    ax.set_box_aspect((1, 1, m.H / (2 * m.R)))
+    ax.view_init(elev=22, azim=-60)
+    ax.set_axis_off()
+    return _save(fig, path)
+
+
+def preview_unfold(res: dict, path: Path) -> Path:
+    """Развёртка: цвет по |Δr|, подписи вмятин P1…, метки измерений."""
+    m = res["model"]
+    theta = np.linspace(0, 2 * np.pi, 361)
+    z = np.linspace(0, m.H, 145)
+    f = m.field(theta, z)
+    s = theta * m.R
+    fig, ax = plt.subplots(figsize=(11, 3.2))
+    cs = ax.contourf(s, z, np.abs(f), levels=40, cmap="jet", norm=_abs_norm(f))
+    ang = np.asarray(res["angles"])
+    S, Z = np.meshgrid(np.radians(ang) * m.R, res["heights"][1:])
+    ax.plot(S.ravel(), Z.ravel(), "w+", ms=4, mew=0.8)
+    for d in res["dents"]:
+        ax.annotate(f"P{d['id']}", (d["s_m"], d["z_m"]), color="k", weight="bold", fontsize=9,
+                    bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.8))
+    ax.set_xlabel("s от образующей №1, м")
+    ax.set_ylabel("Z, м")
+    fig.colorbar(cs, ax=ax, pad=0.01, label="|Δr|, мм")
+    return _save(fig, path)
+
+
+def make_preview(res: dict, img_dir: Path) -> dict:
+    img_dir = Path(img_dir)
+    img_dir.mkdir(parents=True, exist_ok=True)
+    return {"prev_points": preview_points3d(res, img_dir / "prev_points.png"),
+            "prev_surface": preview_surface(res, img_dir / "prev_surface.png"),
+            "prev_unfold": preview_unfold(res, img_dir / "prev_unfold.png")}

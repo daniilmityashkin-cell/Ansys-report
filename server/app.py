@@ -289,6 +289,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return HTMLResponse("Не найдено", status_code=404)
             return FileResponse(gen_dir(g.id) / "result" / name, filename=Path(name).name)
 
+    @app.get("/g/{gid}/img/{name}")
+    def preview_img(request: Request, gid: int, name: str):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g or g.status != "done" or name not in ("prev_points.png", "prev_surface.png", "prev_unfold.png"):
+                return HTMLResponse("Не найдено", status_code=404)
+            for p in (gen_dir(g.id) / "result").glob(f"*/images/{name}"):
+                return FileResponse(p)
+            return HTMLResponse("Не найдено", status_code=404)
+
     @app.get("/g/{gid}/all.zip")
     def download_zip(request: Request, gid: int):
         with Session() as db:

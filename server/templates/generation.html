@@ -13,5 +13,10 @@
 <p><small>После оплаты будут построены поверхность STEP/IGES, таблицы толщин, рисунки, отчёт по геометрии и технический отчёт.{% if user.has_subscription %} По вашей подписке доплата не требуется.{% endif %}</small></p>
 {% elif g.status in ('paid','running') %}<div class="card"><p>Идёт расчёт. Обычно это занимает меньше минуты. <a href="/g/{{ g.id }}">Обновить</a></p></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
-{% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
+{% elif g.status == 'done' %}<div class="card"><h2>Геометрия по таблице измерений</h2>
+<p class="sub">{{ summary.n_points }} точек стенки · {{ summary.n_gens }} образующих · {{ summary.n_belts }} поясов{% if summary.dents %} · вмятин: {{ summary.dents|length }}{% endif %}. Цвет по |Δr|, отклонения на 3D-видах усилены в 20 раз.</p>
+<div class="grid"><div><h2>Точки</h2><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><h2>Поверхность</h2><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div>
+<h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
+<h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
+<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
 <p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% endblock %}

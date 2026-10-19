@@ -27,6 +27,7 @@ def build_from_points(project_file, out_dir, anketa: dict | None = None, log=pri
     shutil.copy2(project_file, out / "Проект замеров.json")
     log("Строю рисунки…")
     figs = figures.make_all(res, out / "images")
+    figures.make_preview(res, out / "images")
     chk = None
     if export_cad:
         log("Строю поверхность для Ansys (STEP/IGES)…")
