@@ -269,6 +269,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse("/login", status_code=303)
             if not g or g.status != "draft":
                 return RedirectResponse(f"/g/{gid}", status_code=303)
+            if u.has_subscription:                              # по подписке генерации без доплаты
+                start_job(db, g)
+                return RedirectResponse(f"/g/{g.id}", status_code=303)
             p = Payment(user_id=u.id, kind="generation", generation_id=g.id, amount_rub=st.price_generation_rub, provider=st.payment_provider)
             db.add(p)
             db.flush()

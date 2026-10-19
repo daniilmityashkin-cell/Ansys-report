@@ -98,12 +98,13 @@ def test_subscription_and_report_gate(site):
     c = TestClient(site)
     register(c)
     gen = new_generation(c).headers["location"]
-    assert "Технический отчёт доступен по подписке" in c.get(gen + "/report").text
+    assert "входит в оплаченную генерацию" in c.get(gen + "/report").text
     tok = csrf_of(c, "/subscription")
     pay = c.post("/subscription/buy", data={"csrf": tok}, follow_redirects=False)
     pay_url = pay.headers["location"]
     c.post(pay_url, data={"csrf": csrf_of(c, pay_url)})
-    assert "Подписка активна" in c.get(gen + "/report").text
+    r = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False)    # по подписке без оплаты
+    assert r.headers["location"] == gen
     with site.state.Session() as db:
         from server.models import User
         u = db.query(User).one()

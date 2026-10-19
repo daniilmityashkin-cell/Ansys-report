@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1>Подписка</h1>
-<div class="card"><p>Подписка открывает технический отчёт по результатам расчёта: прочность, устойчивость, выводы по ГОСТ Р 58622-2019.</p>
+<div class="card"><p>Подписка необязательна: каждая разовая генерация уже включает технический отчёт. Подписка нужна, если вы делаете много расчётов: пока она активна, генерации и отчёты оформляются без доплаты.</p>
 <p><b>{{ st.price_subscription_rub }} ₽</b> за {{ st.subscription_days }} дней.</p>
 {% if user.has_subscription %}<p class="muted">Активна до {{ user.subscription_until.strftime('%d.%m.%Y') }}. Оплата продлит срок.</p>{% endif %}
 <form method="post" action="/subscription/buy"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">{{ 'Продлить' if user.has_subscription else 'Оформить подписку' }}</button></form></div>{% endblock %}

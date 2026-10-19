@@ -9,8 +9,8 @@
 <span>Вмятины</span><span>{% if summary.dents %}{% for d in summary.dents %}{{ d.name }} — {{ d.depth_mm }} мм{% if not loop.last %}; {% endif %}{% endfor %}{% else %}нет{% endif %}</span>
 <span>Участки толщины</span><span>{% for gr in summary.groups %}{{ gr.thickness_mm }} мм ({{ gr.bottom_m }}–{{ gr.top_m }} м){% if not loop.last %}; {% endif %}{% endfor %}</span></div></div>
 {% if g.status == 'draft' %}<form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
-<button class="btn">Сгенерировать и оплатить — {{ st.price_generation_rub }} ₽</button></form>
-<p><small>После оплаты будут построены поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.</small></p>
+<button class="btn">{% if user.has_subscription %}Сгенерировать (по подписке){% else %}Сгенерировать и оплатить — {{ st.price_generation_rub }} ₽{% endif %}</button></form>
+<p><small>После оплаты будут построены поверхность STEP/IGES, таблицы толщин, рисунки, отчёт по геометрии и технический отчёт.{% if user.has_subscription %} По вашей подписке доплата не требуется.{% endif %}</small></p>
 {% elif g.status in ('paid','running') %}<div class="card"><p>Идёт расчёт. Обычно это занимает меньше минуты. <a href="/g/{{ g.id }}">Обновить</a></p></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
 {% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
