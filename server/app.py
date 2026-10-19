@@ -65,7 +65,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --- общие страницы ---
     @app.get("/health")
     def health():
-        return {"ok": True}
+        """Для мониторинга доступности (UptimeRobot и т. п.): отвечает 200 только если база читается."""
+        try:
+            with Session() as db:
+                db.execute(select(User.id).limit(1))
+            return {"ok": True}
+        except Exception:   # noqa: BLE001
+            return JSONResponse({"ok": False}, status_code=503)
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
@@ -247,6 +253,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse("/login", status_code=303)
             if not g:
                 return HTMLResponse("Не найдено", status_code=404)
+            if g.status == "draft" and app.state.reconcile(u.id):      # вернулся с оплаты, а уведомление ещё не пришло
+                db.refresh(g)
             return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"),
                           files=_files(g.id) if g.status == "done" else [])
 
@@ -326,6 +334,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return f"/g/{p.generation_id}"
         return "/subscription"
 
+    def reconcile(user_id: int | None = None) -> int:
+        """Сверка ожидающих платежей с провайдером (на случай, если уведомление не дошло: сервер был выключен, сбой сети).
+        Вызывается при открытии страниц пользователя, фоновым процессом и при каждом уведомлении."""
+        n = 0
+        with Session() as db:
+            q = select(Payment).where(Payment.status == "pending", Payment.provider != "fake")
+            if user_id:
+                q = q.where(Payment.user_id == user_id)
+            for p in db.scalars(q).all():
+                if not p.provider_id:
+                    continue
+                try:
+                    verdict = get_provider(p.provider).verify(p.provider_id)
+                except Exception:   # noqa: BLE001  (провайдер недоступен - попробуем в следующий раз)
+                    continue
+                if verdict == "paid":
+                    _apply_payment(db, p)
+                    n += 1
+                elif verdict == "canceled" or (now() - p.created).days >= 3:
+                    p.status = "canceled"
+                    db.commit()
+        return n
+    app.state.reconcile = reconcile
+
+    def start_reconciler(interval_s: float = 120.0):
+        import threading
+        stop = threading.Event()
+
+        def loop():
+            while not stop.wait(interval_s):
+                try:
+                    reconcile()
+                except Exception:   # noqa: BLE001
+                    pass
+        threading.Thread(target=loop, daemon=True, name="payments-reconciler").start()
+        return stop
+    app.state.start_reconciler = start_reconciler
+
     @app.post("/webhooks/yookassa")
     async def yookassa_webhook(request: Request):
         """Уведомление об оплате. Телу не доверяем: статус перепроверяется запросом к API ЮKassa."""
@@ -349,6 +395,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             u = current_user(request, db)
             if not u:
                 return RedirectResponse("/login", status_code=303)
+            if app.state.reconcile(u.id):
+                db.refresh(u)
             return render(request, "subscription.html", u)
 
     @app.post("/subscription/buy")

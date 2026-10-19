@@ -133,3 +133,25 @@ def test_table_input_to_generation(site):
     bad = c.post("/new/table", data={"title": "x", "diameter": "28.5", "height": "18", "table": table, "thicknesses": "13",
                                      "rows_are": "gens", "csrf": tok})
     assert bad.status_code == 400 and "Толщин указано" in bad.text
+
+
+def test_reconcile_applies_missed_payment(site, monkeypatch):
+    """Уведомление об оплате не дошло: сверка с провайдером всё равно запускает генерацию (платёж не теряется)."""
+    import server.app as appmod
+    from server.models import Payment, Generation
+
+    class Stub:
+        def verify(self, provider_id):
+            return "paid"
+    monkeypatch.setattr(appmod, "get_provider", lambda name: Stub())
+    c = TestClient(site)
+    register(c)
+    gen = new_generation(c).headers["location"]
+    gid = int(gen.rsplit("/", 1)[1])
+    with site.state.Session() as db:
+        u = db.get(Generation, gid).user_id
+        db.add(Payment(user_id=u, kind="generation", generation_id=gid, amount_rub=1500, provider="stub", provider_id="X1"))
+        db.commit()
+    assert site.state.reconcile() == 1
+    assert site.state.reconcile() == 0                                   # повторно ничего не применяется
+    assert "готово" in c.get(gen).text
