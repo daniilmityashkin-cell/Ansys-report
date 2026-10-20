@@ -89,7 +89,8 @@ def _system_name(mechdb: Path) -> str:
 
 
 def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path, mechdb: Path,
-                          scripts: list[str] | None = None, extra_files: dict | None = None, extra_env: dict | None = None) -> None:
+                          scripts: list[str] | None = None, extra_files: dict | None = None, extra_env: dict | None = None,
+                          save_as: Path | None = None) -> None:
     """Основной способ: Workbench в фоне открывает проект (со всеми файлами результатов) и запускает
     наши скрипты внутри Mechanical через журнал (SendCommand)."""
     import subprocess
@@ -137,6 +138,7 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             '    st("MECHANICAL OPEN")\n'
             + "\n".join(body) + "\n"
             "    model.Exit()\n"
+            + (f'    SaveAs(FilePath=r"{save_as}", Overwrite=True)\n' if save_as else "") +
             "except:\n"
             '    st("ERROR " + traceback.format_exc().replace("\\n", " | "))\n',
             encoding="utf-8")
@@ -440,3 +442,28 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
     text = re.sub(r"\{\{\w+\}\}", "", text)
     (d / "project.yaml").write_text(text, encoding="utf-8")
     return d / "project.yaml"
+
+
+def apply_loads_to_project(project: str | Path, loads_data: str | Path, out_dir: str | Path, log=print, save_as: str | Path | None = None,
+                           axis: str = "Z", version: int | None = None) -> Path:
+    """Накладывает нагрузки (loads_data.py из пакета нагрузок) на модель в проекте Workbench: по расчётному случаю - свой Static Structural.
+    Проект сохраняется под новым именем (save_as), исходный не меняется. Нужен установленный Ansys и модель резервуара (геометрия, сетка)."""
+    project, out = Path(project), Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    installs = find_ansys()
+    if not installs:
+        raise ConnectError("Ansys не найден (нет переменной AWP_ROOT###).")
+    ver = version or next(iter(installs))
+    work = Path(tempfile.mkdtemp(prefix="ansys_report_loads_"))
+    try:
+        wbpj = project
+        mechdb = find_mechdb(project, work)                       # .wbpz распаковывается во временную папку
+        if project.suffix.lower() == ".wbpz":
+            wbpj = next((work / "unpacked").glob("*.wbpj"))
+        target = Path(save_as) if save_as else project.with_name(project.stem + "_loads.wbpj")
+        extract_via_workbench(wbpj, out, log, ver, installs[ver], mechdb, scripts=["apply_loads.py"],
+                              extra_files={"ANSYS_REPORT_LOADS": str(loads_data)}, extra_env={"ANSYS_REPORT_AXIS": axis}, save_as=target)
+        log(f"Проект с нагрузками: {target}")
+        return target
+    finally:
+        shutil.rmtree(work, ignore_errors=True)

@@ -77,3 +77,30 @@ def test_loads_for_ansys_and_validation():
     with pytest.raises(ValueError):
         compute(bad)
     close(wind_nu(14.59, 34.2), 0.72822)
+
+
+def test_package_for_ansys(tmp_path):
+    from ansys_report.loads.export import write_package, build_cases
+    res = compute(DATA["input"])
+    pack = write_package(res, tmp_path)
+    ns = {}
+    exec((tmp_path / "loads_data.py").read_text(encoding="utf-8"), ns)               # файл данных исполняется как обычный Python (так читает скрипт в Mechanical)
+    L = ns["LOADS"]
+    assert [c["id"] for c in L["cases"]] == ["op", "op_wind", "hydrotest", "vacuum"]
+    assert L["geometry"]["diameter_mm"] == pytest.approx(34200) and L["geometry"]["n_belts"] == 8
+    op = L["cases"][0]
+    assert op["hydro"]["gradient_mpa_mm"] == pytest.approx(934 * 9.8e-9)             # МПа/мм
+    assert op["roof_extra_mpa"] == pytest.approx(-1.4 * 0.85 * 2 / 1000)             # снег на крыше, расчётный
+    wind = L["cases"][1]["wind"]
+    assert len(wind) == 8 and wind[0]["z_lo_mm"] == 0 and wind[-1]["z_hi_mm"] == pytest.approx(12000) and all(w["p_mpa"] < 0 for w in wind)
+    assert L["cases"][3]["hydro"] is None and L["cases"][3]["uniform_mpa"] == 0       # вакуум в примере = 0
+    roof = [m for m in L["point_masses"] if m["location"] == "roof"]
+    assert any("изоляция" in m["name"].lower() for m in roof)
+    assert (tmp_path / "loads_summary.csv").read_text(encoding="utf-8-sig").startswith("Нагрузка;Значение")
+    characteristic = build_cases(res, design=False)[0]
+    assert characteristic["roof_extra_mpa"] == pytest.approx(-0.85 * 2 / 1000)
+
+
+def test_apply_loads_script_is_valid_python():
+    import ast
+    ast.parse((Path(__file__).parents[1] / "ansys_scripts" / "apply_loads.py").read_text(encoding="utf-8"))

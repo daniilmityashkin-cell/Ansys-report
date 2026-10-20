@@ -10,10 +10,35 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
+    ap.add_argument("--loads", help="apply-loads: файл loads_data.py из пакета нагрузок")
+    ap.add_argument("--axis", default="Z", help="apply-loads: вертикальная ось модели (X, Y или Z)")
     a = ap.parse_args(argv)
+    if a.command == "loads":
+        if not a.project:
+            ap.error("укажите файл исходных данных для расчёта нагрузок (JSON)")
+        import json
+        from .loads.rvs_loads import compute
+        from .loads.export import write_package
+        res = compute(json.loads(Path(a.project).read_text(encoding="utf-8-sig")))
+        pack = write_package(res, a.out)
+        for k in ("json", "data", "summary"):
+            print("Файл:", pack[k])
+        for n in res["notes"]:
+            print("Примечание:", n)
+        bad = [s["belt"] for s in res["strength"] if not s["ok"]]
+        print("Прочность стенки:", "обеспечена" if not bad else f"НЕ обеспечена в поясах {bad}")
+        st = [b["belt"] for b in res["stability"]["belts"] if b["ok"] is False]
+        print("Устойчивость стенки:", "обеспечена" if not st else f"НЕ обеспечена в поясах {st}")
+        return 0
+    if a.command == "apply-loads":
+        if not (a.project and a.loads):
+            ap.error("укажите проект Workbench (.wbpj/.wbpz) и --loads loads_data.py")
+        from .ansys_connect import apply_loads_to_project
+        print("Проект с нагрузками:", apply_loads_to_project(a.project, a.loads, a.out, log=print, axis=a.axis))
+        return 0
     if a.command == "wizard":
         from .webui import main as web_main
         return web_main()
