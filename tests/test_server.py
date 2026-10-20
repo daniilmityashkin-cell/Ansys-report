@@ -348,3 +348,8 @@ def test_survey_workbook_upload(site):
     assert bad.status_code == 400 and "несколько листов" in bad.text
     ok = c.post("/new/table", data=dict(base, csrf=csrf_of(c, "/new/table"), sheet="Т-001 пустой"), files={"xlsx": ("s.xlsx", two, xl)}, follow_redirects=False)
     assert ok.status_code == 303
+    from server.tableinput import survey_from_xlsx
+    assert survey_from_xlsx(two, "Т-001")["sheet"] == "Т-001 пустой"                 # без состояния - «пустой»
+    assert survey_from_xlsx(two, "t-001 полный")["sheet"] == "Т-001 полный"           # латинская t, регистр
+    with pytest.raises(ValueError):
+        survey_from_xlsx(two, "Т-777")

@@ -174,11 +174,16 @@ def survey_from_xlsx(data: bytes, sheet: str | None = None) -> dict:
     if not cands:
         wb.close()
         raise ValueError("survey:none")
-    if sheet:
-        pick = [ws for ws in cands if ws.title.strip().lower() == sheet.strip().lower()]
-        if not pick:
+    if sheet and sheet.strip():
+        norm = lambda t: t.strip().lower().replace(" ", "").replace("\u2013", "-").replace("t", "\u0442")     # латинская «t» -> кириллическая «т»
+        q = norm(sheet)
+        pick = [ws for ws in cands if norm(ws.title) == q] or [ws for ws in cands if norm(ws.title).startswith(q)]
+        if len(pick) > 1:                                  # «Т-001» без состояния: для модели берут «пустой» резервуар
+            empty = [ws for ws in pick if "пуст" in ws.title.lower()]
+            pick = empty if len(empty) == 1 else pick
+        if len(pick) != 1:
             wb.close()
-            raise ValueError(f"Лист «{sheet}» не найден. Листы со съёмкой: {', '.join(w.title for w in cands)}.")
+            raise ValueError(f"Лист «{sheet}» не найден или неоднозначен. Листы со съёмкой: {', '.join(w.title for w in cands)}.")
         ws = pick[0]
     elif len(cands) == 1:
         ws = cands[0]
