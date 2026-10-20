@@ -129,3 +129,8 @@ details.more summary:hover{color:var(--ink)}
 
 .loads-block{margin-top:22px;padding-top:6px;border-top:1px solid var(--line)}
 .chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:16px 0 4px}.chk input{margin-top:4px}
+
+/* ожидание: индикатор и автообновление */
+.card.wait{display:flex;gap:18px;align-items:center}.card.wait p{margin:4px 0 0}
+.spin{flex:none;width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}

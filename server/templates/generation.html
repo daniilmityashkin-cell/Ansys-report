@@ -13,7 +13,7 @@
 <div class="grid"><div><h2>Точки</h2><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><h2>Поверхность</h2><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div>
 <h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
-{% else %}<div class="card"><p class="muted">Строим просмотр геометрии… <a href="/g/{{ g.id }}">Обновить страницу</a></p></div>{% endif %}
+{% else %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
 {% if loads_view %}{% if loads_view.error %}<div class="err">Нагрузки не рассчитаны: {{ loads_view.error }}</div>{% else %}{% set L = loads_view.loads %}{% set I = loads_view.inputs %}
 <div class="card"><h2>Нагрузки на резервуар</h2><p class="sub">Расчёт по методике ГОСТ 31385-2016 и СП 20.13330. Здесь значения без коэффициентов; расчётные сочетания войдут в пакет для Ansys.</p>
 <table><tr><th>Нагрузка</th><th>Значение</th></tr>
@@ -30,7 +30,15 @@
 {% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — в пакетах.{% elif mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% endif %}</p>
 <form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
 <button class="btn">{% if mode == 'credit' %}Получить отчёт и файлы (из пакета){% elif mode == 'free' %}Получить отчёт и файлы бесплатно{% else %}Получить отчёт и файлы — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
-{% elif g.status in ('paid','running') %}<div class="card"><p>Готовим отчёт и файлы. Обычно это занимает меньше минуты. <a href="/g/{{ g.id }}">Обновить</a></p></div>
+{% elif g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
 {% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
-<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% endblock %}
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}<script>
+(function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now();
+function fail(m){w.innerHTML='<div><b>'+m+'</b><p class="muted"><a href="">Обновить страницу</a></p></div>';}
+function tick(){fetch(url,{credentials:"same-origin"}).then(function(r){return r.json();}).then(function(d){
+ if(d.preview_error&&what==="preview"){fail("Не удалось построить просмотр: "+d.preview_error);return;}
+ if((what==="preview"&&d.preview)||(what==="done"&&(d.status==="done"||d.status==="error"))){location.reload();return;}
+ if(Date.now()-t0>180000){fail("Это занимает дольше обычного.");return;}setTimeout(tick,1500);}).catch(function(){setTimeout(tick,3000);});}
+setTimeout(tick,800);})();
+</script>{% endblock %}

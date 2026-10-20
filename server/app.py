@@ -376,6 +376,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return HTMLResponse("Не найдено", status_code=404)
             return FileResponse(gen_dir(g.id) / "result" / name, filename=Path(name).name)
 
+    @app.get("/g/{gid}/status")
+    def generation_status(request: Request, gid: int):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            pv = gen_dir(g.id) / "preview"
+            return JSONResponse({"status": g.status, "preview": (pv / "prev_unfold.png").exists(),
+                                 "preview_error": (pv / "error.txt").read_text(encoding="utf-8")[:300] if (pv / "error.txt").exists() else ""})
+
     @app.get("/g/{gid}/img/{name}")
     def preview_img(request: Request, gid: int, name: str):
         with Session() as db:

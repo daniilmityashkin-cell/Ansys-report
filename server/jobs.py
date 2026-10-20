@@ -51,11 +51,16 @@ def compute(gen_dir: str, title: str) -> dict:
 
 
 def compute_preview(gen_dir: str) -> None:
-    """Просмотр результата (точки, поверхность, развёртка) - бесплатная часть, строится сразу после проверки замеров."""
-    from ansys_report.geometry import check, figures
+    """Просмотр результата (точки, поверхность, развёртка) - бесплатная часть, строится сразу после проверки замеров.
+    Ошибка записывается в preview/error.txt, чтобы страница не ждала бесконечно."""
     gen = Path(gen_dir)
-    res = check.analyze(check.load_project(gen / "input.json"))
-    figures.make_preview(res, gen / "preview")
+    try:
+        from ansys_report.geometry import check, figures
+        res = check.analyze(check.load_project(gen / "input.json"))
+        figures.make_preview(res, gen / "preview")
+    except Exception as e:   # noqa: BLE001
+        (gen / "preview").mkdir(parents=True, exist_ok=True)
+        (gen / "preview" / "error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
 
 
 class JobRunner:

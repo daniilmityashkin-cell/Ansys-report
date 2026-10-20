@@ -353,3 +353,17 @@ def test_survey_workbook_upload(site):
     assert survey_from_xlsx(two, "t-001 полный")["sheet"] == "Т-001 полный"           # латинская t, регистр
     with pytest.raises(ValueError):
         survey_from_xlsx(two, "Т-777")
+
+
+def test_generation_status_endpoint(site):
+    c = TestClient(site)
+    register(c)
+    g = new_generation(c).headers["location"]
+    st = c.get(g + "/status").json()
+    assert st["status"] == "draft" and st["preview"] is True and st["preview_error"] == ""
+    assert TestClient(site).get(g + "/status", follow_redirects=False).status_code in (303, 404)
+    other = TestClient(site)
+    register(other, "b@example.com")
+    assert other.get(g + "/status").status_code == 404                                # чужая генерация
+    _pay_fake(c, g)
+    assert c.get(g + "/status").json()["status"] == "done"
