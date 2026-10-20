@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>{% block title %}Геометрия РВС{% endblock %}</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css"></head><body>
-<canvas id="bg" aria-hidden="true"></canvas>
-<nav class="top"><b><a href="/"><img class="logo" src="/static/logo.svg" alt="">Геометрия РВС</a></b>
+<title>{% block title %}Геометрия РВС{% endblock %}</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v={{ asset_v }}"><script>document.documentElement.classList.add("js")</script></head><body>
+<canvas id="bg" aria-hidden="true" style="position:fixed;inset:0;z-index:0;pointer-events:none;width:100%;height:100%"></canvas>
+<nav class="top"><b><a href="/"><img class="logo" src="/static/logo.svg" alt="" width="30" height="30">Геометрия РВС</a></b>
 {% if user %}<a href="/cabinet">Кабинет</a><a href="/new">Новая генерация</a><a href="/subscription">Подписка</a>
 <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Выйти ({{ user.email }})</button></form>
 {% else %}<a href="/login">Войти</a><a href="/register">Регистрация</a>{% endif %}</nav>
@@ -14,6 +14,16 @@
 document.querySelectorAll(".pw button").forEach(function(b){b.addEventListener("click",function(){
   var i=b.parentNode.querySelector("input");var show=i.type==="password";i.type=show?"text":"password";
   b.classList.toggle("on",show);b.setAttribute("aria-label",show?"Скрыть пароль":"Показать пароль");});});
+// плавное появление блоков при прокрутке
+(function(){
+  var els=document.querySelectorAll(".sec,.step,.feat .card,.price .card,.cta,.note,main h1:not(.hero h1),main form.card,main .card:not(.step):not(.feat .card):not(.price .card)");
+  els.forEach(function(e){e.classList.add("reveal");});
+  var sib=new Map();
+  function show(e){var p=e.parentNode,k=(sib.get(p)||0);sib.set(p,k+1);e.style.setProperty("--d",Math.min(k,5)*0.09+"s");e.classList.add("in");}
+  if(!("IntersectionObserver" in window)){els.forEach(show);return;}
+  var io=new IntersectionObserver(function(es){es.forEach(function(en){if(en.isIntersecting){show(en.target);io.unobserve(en.target);}});},{threshold:.12,rootMargin:"0px 0px -4% 0px"});
+  els.forEach(function(e){io.observe(e);});
+})();
 // живой фон: медленно дрейфующие точки со связями
 (function(){
   var c=document.getElementById("bg");if(!c||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
