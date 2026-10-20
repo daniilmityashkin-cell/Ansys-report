@@ -8,4 +8,5 @@ if [ -n "$CODESPACE_NAME" ]; then
 fi
 export ASR_HOST=0.0.0.0
 export ASR_TRUST_PROXY=1
+export ASR_MAX_REG_PER_IP=30      # демонстрация: можно создавать несколько тестовых аккаунтов
 exec python -m server
