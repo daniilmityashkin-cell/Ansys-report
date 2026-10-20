@@ -36,8 +36,12 @@ def main(argv=None) -> int:
     if a.command == "apply-loads":
         if not (a.project and a.loads):
             ap.error("укажите проект Workbench (.wbpj/.wbpz) и --loads loads_data.py")
-        from .ansys_connect import apply_loads_to_project
-        print("Проект с нагрузками:", apply_loads_to_project(a.project, a.loads, a.out, log=print, axis=a.axis))
+        from .ansys_connect import apply_loads_to_project, ConnectError
+        try:
+            print("Проект с нагрузками:", apply_loads_to_project(a.project, a.loads, a.out, log=print, axis=a.axis))
+        except ConnectError as e:
+            print(f"Ошибка: {e}", file=sys.stderr)
+            return 2
         return 0
     if a.command == "wizard":
         from .webui import main as web_main
