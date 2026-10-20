@@ -156,3 +156,28 @@ def test_reconcile_applies_missed_payment(site, monkeypatch):
     assert site.state.reconcile() == 1
     assert site.state.reconcile() == 0                                   # повторно ничего не применяется
     assert "готово" in c.get(gen).text
+
+
+def test_table_from_excel(site):
+    """Замеры из файла Excel: заголовки и номера отбрасываются, остаётся блок чисел."""
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Таблица 1.1 Отклонения, мм"])
+    ws.append(["№ обр.", 1, 2, 3])
+    for g, row in enumerate([(-10, -9, -6), (-12, -23, -27), (1, -5, -20), (60, 60, 52), ("53,5", 64, 73)], 1):
+        ws.append([g, *row])
+    buf = io.BytesIO()
+    wb.save(buf)
+    c = TestClient(site)
+    register(c)
+    tok = csrf_of(c, "/new/table")
+    r = c.post("/new/table", data={"csrf": tok, "title": "XLS", "diameter": "28.5", "height": "18", "thicknesses": "13 12 11", "rows_are": "gens"},
+               files={"xlsx": ("замеры.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    page = c.get(r.headers["location"]).text
+    assert "15 (5 образующих × 3 поясов)" in page
+    bad = c.post("/new/table", data={"csrf": tok, "diameter": "28.5", "height": "18", "thicknesses": "13 12 11"},
+                 files={"xlsx": ("x.xlsx", b"not excel", "application/octet-stream")})
+    assert bad.status_code == 400 and "Excel" in bad.text

@@ -211,18 +211,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return render(request, "new_table.html", u, f={"rows_are": "gens"})
 
     @app.post("/new/table")
-    def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
-                         table: str = Form(""), thicknesses: str = Form(""), rows_are: str = Form("gens"), csrf: str = Form("")):
+    async def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
+                               table: str = Form(""), thicknesses: str = Form(""), rows_are: str = Form("gens"), csrf: str = Form(""),
+                               xlsx: UploadFile | None = File(None)):
         bad = deny_csrf(request, csrf)
         if bad:
             return bad
-        from .tableinput import build_project
+        from .tableinput import build_project, table_from_xlsx
         form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are}
         with Session() as db:
             u = current_user(request, db)
             if not u:
                 return RedirectResponse("/login", status_code=303)
             try:
+                if xlsx is not None and xlsx.filename:
+                    raw = await xlsx.read(st.max_upload_bytes + 1)
+                    if len(raw) > st.max_upload_bytes:
+                        raise ValueError("Файл слишком большой.")
+                    table = form["table"] = table_from_xlsx(raw)       # таблица из файла подставляется в поле
                 project = build_project(diameter, height, table, thicknesses, rows_are if rows_are in ("gens", "belts") else "gens")
                 summary = _preview(project)
             except Exception as e:  # noqa: BLE001
