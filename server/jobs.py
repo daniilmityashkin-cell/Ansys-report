@@ -9,6 +9,8 @@ README_LOADS = """Наложение нагрузок на модель резе
 
 В папке: loads_data.py - нагрузки (расчётные случаи), apply_loads.py - скрипт для Mechanical, loads.json и loads_summary.csv - те же нагрузки для просмотра.
 
+Самый простой путь: папка ansys_model - запустите в ней Open_in_Ansys.bat (читайте README_RU.txt). Ниже - наложение на уже готовый проект.
+
 Способ 1 (из программы Ansys Report):
     python -m ansys_report apply-loads "C:\\Projects\\Tank_1\\Tank_1.wbpj" --loads loads_data.py -o out
     Будет создан проект Tank_1_loads.wbpj, где для каждого расчётного случая добавлен свой Static Structural.
@@ -39,6 +41,12 @@ def compute(gen_dir: str, title: str) -> dict:
         shutil.copy2(SCRIPTS / "apply_loads.py", pack_dir / "apply_loads.py")
         (pack_dir / "Как_наложить_нагрузки.txt").write_text(README_LOADS, encoding="utf-8")
         files += [pack["json"], pack["data"], pack["summary"], pack_dir / "apply_loads.py", pack_dir / "Как_наложить_нагрузки.txt"]
+        step = next(Path(f) for f in files if Path(f).suffix.lower() == ".step")
+        zones = step.parent / "Участки толщины.csv"
+        if step.exists() and zones.exists():                          # модель «открыть в Ansys» у заказчика
+            from ansys_report.loads.launcher import write_open_package
+            md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"])
+            files += [p for p in sorted(md.iterdir()) if p.is_file()]
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
 
 

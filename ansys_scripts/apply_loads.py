@@ -177,9 +177,11 @@ for a in model.Analyses:
     if a.Name.startswith("Static"):
         base = a
         break
-for case in L["cases"]:
+REUSE_FIRST = os.environ.get("ANSYS_REPORT_REUSE_FIRST") == "1"
+extra_apdl = globals().get("EXTRA_APDL", u"")
+for ci, case in enumerate(L["cases"]):
     try:
-        an = model.AddStaticStructuralAnalysis()
+        an = base if (REUSE_FIRST and ci == 0 and base is not None) else model.AddStaticStructuralAnalysis()
         an.Name = u"AR: " + case["name"]
         if ns_base is not None:
             fx = an.AddFixedSupport()
@@ -189,7 +191,7 @@ for case in L["cases"]:
             fl.Location = ns_bottom
         sn = an.AddCommandSnippet()
         sn.Name = u"AR нагрузки: " + case["name"]
-        sn.AppendText(apdl_case(case))
+        sn.AppendText((extra_apdl + u"\n" if extra_apdl else u"") + apdl_case(case))
         say(u"Случай '%s': создан, нагрузки заданы" % case["name"])
     except Exception as e:
         say(u"ОШИБКА случая '%s': %s" % (case["name"], e))

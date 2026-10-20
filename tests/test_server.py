@@ -287,3 +287,25 @@ def test_loads_in_table_form_and_package(site):
     assert c.post("/new/table", data=bad).status_code == 400
     bad = dict(data, l_equipment="только название", csrf=csrf_of(c, "/new/table"))
     assert "Оборудование" in c.post("/new/table", data=bad).text
+
+
+def test_open_in_ansys_package_in_paid_files(site):
+    """В платных файлах - папка «Открыть в Ansys»: модель, толщины, нагрузки, скрипты и .bat."""
+    c = TestClient(site)
+    register(c)
+    tok = csrf_of(c, "/new/table")
+    data = {"csrf": tok, "title": "РВС-А", "diameter": "28.5", "height": "18", "thicknesses": "13 12 11", "rows_are": "gens",
+            "table": "-10\t-9\t-6\n-12\t-23\t-27\n1\t-5\t-20\n60\t60\t52\n53\t64\t73", "l_on": "1", "l_density": "0.934", "l_fill": "16", "l_hydro": "16",
+            "l_overp": "0", "l_vac": "0", "l_snow": "III", "l_wind": "II", "l_terrain": "A", "l_roof_rise": "3", "l_deck": "4", "l_ryn": "345",
+            "l_ins_t": "0", "l_ins_rho": "140"}
+    gen = c.post("/new/table", data=data, follow_redirects=False).headers["location"]
+    _pay_fake(c, gen)
+    page = c.get(gen).text
+    for name in ("ansys_model/Open_in_Ansys.bat", "ansys_model/model.step", "ansys_model/thickness_zones.csv", "ansys_model/loads_data.py",
+                 "ansys_model/build_model.wbjn", "ansys_model/build_model.py", "ansys_model/apply_loads.py", "ansys_model/README_RU.txt"):
+        assert name in page, name
+    bat = c.get(gen + "/files/ansys_model/Open_in_Ansys.bat").text
+    assert "RunWB2.exe" in bat and "AWP_ROOT261" in bat and "ANSYS_REPORT_AXIS=Z" in bat
+    import ast
+    ast.parse(c.get(gen + "/files/ansys_model/build_model.wbjn").text)
+    assert "\n" in c.get(gen + "/files/ansys_model/Open_in_Ansys.bat").text

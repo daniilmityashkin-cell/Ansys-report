@@ -24,7 +24,7 @@ from .payments import get_provider, settle
 from .jobs import JobRunner
 
 HERE = Path(__file__).parent
-PUBLIC_FILE_EXT = {".docx", ".step", ".igs", ".csv", ".json", ".html", ".png", ".py", ".txt"}
+PUBLIC_FILE_EXT = {".docx", ".step", ".igs", ".csv", ".json", ".html", ".png", ".py", ".txt", ".bat", ".wbjn"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
