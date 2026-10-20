@@ -1,3 +1,4 @@
+from pathlib import Path
 """Сайт: регистрация, замеры → проверка → оплата (тестовый провайдер) → геометрия, доступ только владельцу, пакеты генераций."""
 import json
 import re
@@ -271,6 +272,10 @@ def test_viewer_json_owner_only(site):
     assert r.status_code == 200
     d = r.json()
     assert d["nt"] and d["nz"] and len(d["grid"]) == d["nz"] * d["nt"]
+    gid = g.rsplit("/", 1)[1]
+    vj = next(Path(str(x)) for x in site.state.settings.data_dir.glob(f"generations/{gid}/preview/viewer.json"))
+    vj.unlink()                                                              # старая генерация без 3D-данных
+    assert c.get(g + "/viewer.json").status_code == 200 and vj.exists()
     assert c.get("/static/vendor/three.module.min.js").status_code == 200
     assert TestClient(site).get(g + "/viewer.json", follow_redirects=False).status_code in (303, 404)
 

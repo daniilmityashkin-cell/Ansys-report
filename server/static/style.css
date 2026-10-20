@@ -147,3 +147,6 @@ details.more summary:hover{color:var(--ink)}
 .vinfo{padding:8px 14px 12px;font-size:13px;color:var(--muted);background:var(--card);min-height:36px}
 td.warn{color:#ffb71b;font-weight:600}td.bad{color:#ff8a8a;font-weight:600}
 .tablewrap{overflow-x:auto}
+
+.viewer-fail{padding:16px;color:#ffb4a8;font-size:14px}
+.scrollx{overflow-x:auto;border-radius:12px;cursor:grab;background:#fff}.scrollx.drag{cursor:grabbing;user-select:none}.scrollx img{display:block;min-width:1600px;width:1600px;max-width:none;height:auto}

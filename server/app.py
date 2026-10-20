@@ -391,8 +391,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with Session() as db:
             u, g = _owned(db, request, gid)
             p = gen_dir(g.id) / "preview" / "viewer.json" if g else None
-            if not u or not g or not p.exists():
+            if not u or not g:
                 return HTMLResponse("Не найдено", status_code=404)
+            if not p.exists():                                   # генерация создана до появления 3D - строим данные по входному файлу
+                try:
+                    from ansys_report.geometry import check
+                    from ansys_report.geometry.viewer_data import viewer_data
+                    res = check.analyze(check.load_project(gen_dir(g.id) / "input.json"))
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text(json.dumps(viewer_data(res), separators=(",", ":")), encoding="utf-8")
+                except Exception:   # noqa: BLE001
+                    return HTMLResponse("Не найдено", status_code=404)
             return FileResponse(p, media_type="application/json")
 
     @app.get("/g/{gid}/img/{name}")

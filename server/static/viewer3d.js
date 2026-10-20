@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
 
 const root = document.getElementById("viewer");
-if (root) start(root).catch(function (e) { root.querySelector("#v-info").textContent = "3D недоступно в этом браузере: " + e.message; root.classList.add("failed"); });
+if (root) start(root).catch(function (e) { var m = "3D-просмотр не запустился: " + e.message; root.querySelector("#v-info").textContent = m; var d = document.createElement("div"); d.className = "viewer-fail"; d.textContent = m + ". Обновите страницу (Ctrl+F5); если не помогло - включите аппаратное ускорение/WebGL в браузере."; root.insertBefore(d, root.firstChild); root.classList.add("failed"); });
 
 function jet(t) {
   t = Math.min(1, Math.max(0, t));

@@ -7,8 +7,8 @@ def viewer_data(res: dict, nt: int = 181, nz: int = 73) -> dict:
     m = res["model"]
     theta = np.linspace(0, 2 * np.pi, nt)
     z = np.linspace(0, m.H, nz)
-    grid = m.field(theta, z)                                     # [z][theta], мм
-    pts = res["field"]                                           # [отметка][образующая], мм
+    grid = np.nan_to_num(np.asarray(m.field(theta, z), float))                                    # [z][theta], мм
+    pts = np.nan_to_num(np.asarray(res["field"], float))                                                  # [отметка][образующая], мм
     return {
         "R": m.R, "H": m.H, "D": m.D, "nt": nt, "nz": nz,
         "grid": np.round(grid, 1).ravel().tolist(),

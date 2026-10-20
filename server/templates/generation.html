@@ -19,7 +19,7 @@
 <div id="v-info" class="vinfo">Вращайте мышью, колесо — масштаб, правая кнопка — сдвиг. Наведите курсор на поверхность или точку, чтобы увидеть отклонение.</div>
 </div>
 <details class="more"><summary>Если 3D не открывается: статичные картинки</summary><div class="grid"><div><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div></details>
-<h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
+<h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><p class="sub">Развёртка длинная: прокручивайте вправо колесом с Shift, ползунком или перетаскивая мышью.</p><div class="scrollx" id="unfold"><img src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка" draggable="false"></div>
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
 {% if summary.belts %}<div class="card"><h2>Оценка замеров по допускам (ГОСТ 31385-2016)</h2><p class="sub">Для каждого пояса: допуск H/200 и расширенный H/200 + 30 мм от высоты пояса, наибольшее по модулю отклонение и число точек за допуском.</p>
 <table><tr><th>Пояс</th><th>Высота, м</th><th>Толщина, мм</th><th>H/200, мм</th><th>H/200+30, мм</th><th>Макс. |Δ|, мм</th><th>Образующая</th><th>Выше H/200</th><th>Выше H/200+30</th></tr>
@@ -52,6 +52,7 @@
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
 {% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
 <p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
+<script>(function(){var b=document.getElementById("unfold");if(!b)return;var d=false,x=0,l=0;b.addEventListener("mousedown",function(e){d=true;x=e.pageX;l=b.scrollLeft;b.classList.add("drag")});window.addEventListener("mouseup",function(){d=false;b.classList.remove("drag")});window.addEventListener("mousemove",function(e){if(d)b.scrollLeft=l-(e.pageX-x)});})();</script>
 <script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}
 <script>
 (function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now();
