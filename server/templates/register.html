@@ -1,8 +1,7 @@
 {% extends "base.html" %}{% block body %}
-<h1>Регистрация</h1>
-<form class="card" method="post" style="max-width:480px"><input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="center"><form class="card auth" method="post"><h1>Регистрация</h1><input type="hidden" name="csrf" value="{{ csrf }}">
 {% if error %}<div class="err">{{ error }}</div>{% endif %}
 <label>Почта</label><input type="email" name="email" value="{{ email or '' }}" required>
-<label>Пароль (не короче 10 символов)</label><input type="password" name="password" minlength="10" required>
-<label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" name="consent" value="1" style="margin-top:4px"><span>Согласен на обработку персональных данных (<a href="/privacy">политика</a>)</span></label>
-<p><button class="btn">Зарегистрироваться</button></p></form>{% endblock %}
+<label>Пароль (не короче 8 символов)</label><div class="pw"><input type="password" name="password" minlength="8" required><button type="button" aria-label="Показать пароль"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M3 3l18 18"/></svg></button></div>
+<label class="chk"><input type="checkbox" name="consent" value="1"><span>Согласен на обработку персональных данных (<a href="/privacy">политика</a>)</span></label>
+<p class="row"><button class="btn">Зарегистрироваться</button></p></form></div>{% endblock %}

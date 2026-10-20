@@ -97,8 +97,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         err = ""
         if not valid_email(email):
             err = "Введите корректный адрес почты."
-        elif len(password) < 10:
-            err = "Пароль должен быть не короче 10 символов."
+        elif len(password) < 8:
+            err = "Пароль должен быть не короче 8 символов."
         elif not consent:
             err = "Нужно согласие на обработку персональных данных."
         with Session() as db:
