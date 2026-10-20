@@ -36,6 +36,8 @@ class Settings:
     max_drafts_per_day: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_DRAFTS_PER_DAY", "30")))
     trust_proxy: bool = field(default_factory=lambda: _bool("ASR_TRUST_PROXY", False))          # IP клиента из X-Forwarded-For (за прокси)
     first_generation_free: bool = field(default_factory=lambda: _bool("ASR_FIRST_FREE", False))  # первая генерация на аккаунте бесплатна
+    unlimited_emails: frozenset = field(default_factory=lambda: frozenset(
+        e.strip().lower() for e in os.environ.get("ASR_UNLIMITED_EMAILS", "").split(",") if e.strip()))   # аккаунты без лимита генераций (владелец, тесты)
     workers: int = field(default_factory=lambda: int(os.environ.get("ASR_WORKERS", "2")))
 
     def __post_init__(self):

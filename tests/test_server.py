@@ -413,3 +413,20 @@ def test_structure_form_and_json_project(site):
     r2 = c.post("/new/table", data={"csrf": csrf_of(c, "/new/table"), "src": "json", "title": "J"}, files={"jsonfile": ("p.json", proj, "application/json")}, follow_redirects=False)
     assert r2.status_code == 303
     assert c.post("/new/table", data={"csrf": csrf_of(c, "/new/table"), "src": "json"}).status_code == 400
+
+
+def test_unlimited_account(tmp_path):
+    """Аккаунт из ASR_UNLIMITED_EMAILS: любое число генераций без оплаты и пакетов."""
+    app = create_app(Settings(data_dir=tmp_path, inline_jobs=True, secret_key="t" * 32, unlimited_emails=frozenset({"vip@example.com"})))
+    c = TestClient(app)
+    register(c, email="vip@example.com")
+    for _ in range(3):
+        g = new_generation(c).headers["location"]
+        assert "безлимитный аккаунт" in c.get(g).text
+        r = c.post(g + "/pay", data={"csrf": csrf_of(c, g)}, follow_redirects=False)
+        assert r.status_code == 303
+        assert "Скачать всё архивом" in c.get(g).text
+    other = TestClient(app)
+    register(other, email="x@example.com")
+    g = new_generation(other).headers["location"]
+    assert "безлимитный" not in other.get(g).text

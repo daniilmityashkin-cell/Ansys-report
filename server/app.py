@@ -73,8 +73,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return fwd[:64]
         return (request.client.host if request.client else "")[:64]
 
+    def is_unlimited(u: User) -> bool:
+        return bool(st.unlimited_emails) and (u.email.lower() in st.unlimited_emails or (u.email_key or "") in {canonical_email(e) for e in st.unlimited_emails})
+
     def pay_mode(db, u: User, g: Generation) -> tuple[str, str]:
         """Как оформляется эта генерация: credit - из пакета, free - первая бесплатная, pay - разовая оплата, blocked - нужен пакет."""
+        if is_unlimited(u):
+            return "unlimited", ""
         if u.credit_count > 0:
             return "credit", ""
         used = db.scalar(select(func.count()).select_from(Generation).where(
@@ -193,7 +198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not u:
                 return RedirectResponse("/login", status_code=303)
             gens = db.scalars(select(Generation).where(Generation.user_id == u.id).order_by(Generation.id.desc())).all()
-            return render(request, "cabinet.html", u, gens=gens)
+            return render(request, "cabinet.html", u, gens=gens, unlimited=is_unlimited(u))
 
     @app.get("/new", response_class=HTMLResponse)
     def new_form(request: Request):
@@ -239,7 +244,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return RedirectResponse(f"/g/{gid}", status_code=303)
 
     def _create_generation(db, u: User, title: str, project: dict, summary: dict, loads_input: dict | None = None, structure: dict | None = None) -> Generation:
-        if db.scalar(select(func.count()).select_from(Generation).where(
+        if not is_unlimited(u) and db.scalar(select(func.count()).select_from(Generation).where(
                 Generation.user_id == u.id, Generation.created > now() - dt.timedelta(days=1))) >= st.max_drafts_per_day:
             raise ValueError("Слишком много проверок за сутки. Попробуйте завтра.")
         g = Generation(user_id=u.id, title=(title.strip() or "Резервуар")[:200], summary=json.dumps(summary, ensure_ascii=False),
@@ -383,7 +388,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mode, _ = pay_mode(db, u, g)
             if mode == "blocked":
                 return RedirectResponse(f"/g/{g.id}", status_code=303)
-            if mode in ("credit", "free"):                      # из пакета и первая бесплатная - без платежа
+            if mode in ("credit", "free", "unlimited"):         # из пакета, первая бесплатная и безлимитный аккаунт - без платежа
                 if mode == "credit":
                     u.credits = u.credit_count - 1
                 g.charged = mode
