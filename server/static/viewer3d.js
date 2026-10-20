@@ -12,7 +12,7 @@ function jet(t) {
 }
 
 async function start(box) {
-  const data = await (await fetch(box.dataset.src, { credentials: "same-origin" })).json();
+  const data = await loadJson(box.dataset.src);
   const canvas = box.querySelector("canvas");
   const info = box.querySelector("#v-info");
   const ampInput = box.querySelector("#v-amp"), ampLabel = box.querySelector("#v-amp-l");
@@ -147,4 +147,13 @@ async function start(box) {
   resize();
   renderer.setAnimationLoop(function () { controls.update(); renderer.render(scene, camera); });
   box.classList.add("ready");
+}
+
+async function loadJson(url) {                      // файл может появиться на пару секунд позже страницы - повторяем
+  for (let i = 0; ; i++) {
+    const r = await fetch(url, { credentials: "same-origin" });
+    if (r.ok) return r.json();
+    if (i >= 8) throw new Error("данные не найдены (" + r.status + ")");
+    await new Promise(function (ok) { setTimeout(ok, 1000); });
+  }
 }

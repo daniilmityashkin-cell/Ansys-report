@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
 
 const root = document.getElementById("struct3d");
-if (root) start(root).catch(function (e) { root.querySelector(".vinfo").textContent = "3D-схема не запустилась: " + e.message; });
+if (root) start(root).catch(function (e) { var d = document.createElement("div"); d.className = "viewer-fail"; d.textContent = "3D-схема не запустилась: " + e.message + ". Обновите страницу (Ctrl+F5)."; root.insertBefore(d, root.firstChild); });
 
 function mat(color, opacity, extra) {
   return new THREE.MeshStandardMaterial(Object.assign({ color: color, transparent: opacity < 1, opacity: opacity, side: THREE.DoubleSide, roughness: 0.8, metalness: 0.05 }, extra || {}));
@@ -13,7 +13,7 @@ function lines(points, color) {
 }
 
 async function start(box) {
-  const S = await (await fetch(box.dataset.src, { credentials: "same-origin" })).json();
+  const S = await loadJson(box.dataset.src);
   const R = S.D / 2, H = S.H, canvas = box.querySelector("canvas");
   const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
@@ -113,4 +113,13 @@ async function start(box) {
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (canvas.width !== w * renderer.getPixelRatio()) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); } }
   new ResizeObserver(fit).observe(canvas); fit();
   renderer.setAnimationLoop(function () { controls.update(); renderer.render(scene, camera); });
+}
+
+async function loadJson(url) {                      // файл может появиться на пару секунд позже страницы - повторяем
+  for (let i = 0; ; i++) {
+    const r = await fetch(url, { credentials: "same-origin" });
+    if (r.ok) return r.json();
+    if (i >= 8) throw new Error("данные не найдены (" + r.status + ")");
+    await new Promise(function (ok) { setTimeout(ok, 1000); });
+  }
 }

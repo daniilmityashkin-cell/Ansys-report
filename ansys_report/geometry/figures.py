@@ -20,8 +20,11 @@ def _norm(vmin, vmax):
 
 
 def _save(fig, path: Path):
-    fig.savefig(path, dpi=DPI, bbox_inches="tight", facecolor="white")
+    path = Path(path)
+    tmp = path.with_name(path.stem + ".tmp" + path.suffix)           # пишем во временный файл: сайт не должен отдать недописанную картинку
+    fig.savefig(tmp, dpi=DPI, bbox_inches="tight", facecolor="white")
     plt.close(fig)
+    tmp.replace(path)
     return path
 
 

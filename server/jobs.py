@@ -57,12 +57,17 @@ def compute_preview(gen_dir: str) -> None:
     try:
         from ansys_report.geometry import check, figures
         res = check.analyze(check.load_project(gen / "input.json"))
-        figures.make_preview(res, gen / "preview")
-        for d, info in zip(res["model"].defects, res["dents"]):
-            figures.dent_plot(res, d, info, gen / "preview" / f"dent{info['id']}.png")
         from ansys_report.geometry.viewer_data import viewer_data
         import json
-        (gen / "preview" / "viewer.json").write_text(json.dumps(viewer_data(res), separators=(",", ":")), encoding="utf-8")
+        pv = gen / "preview"
+        pv.mkdir(parents=True, exist_ok=True)
+        tmp = pv / "viewer.json.tmp"                      # сначала данные 3D (атомарно), картинки - потом: страница считает просмотр готовым по картинке
+        tmp.write_text(json.dumps(viewer_data(res), separators=(",", ":")), encoding="utf-8")
+        tmp.replace(pv / "viewer.json")
+        for d, info in zip(res["model"].defects, res["dents"]):
+            figures.dent_plot(res, d, info, pv / f"dent{info['id']}.png")
+        figures.make_preview(res, pv)
+        (pv / "ready").write_text("1")                     # признак: все файлы просмотра записаны целиком
     except Exception as e:   # noqa: BLE001
         (gen / "preview").mkdir(parents=True, exist_ok=True)
         (gen / "preview" / "error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")

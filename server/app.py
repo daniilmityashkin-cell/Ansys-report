@@ -4,6 +4,7 @@ import datetime as dt
 import io
 import json
 import re
+import time
 import zipfile
 from pathlib import Path
 
@@ -42,6 +43,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     limiter = LoginLimiter()
 
     SCTX = {"shapes": SHAPES, "roof_shapes": ROOF_SHAPES}
+
+    def preview_ready(gid: int) -> bool:
+        pv = gen_dir(gid) / "preview"
+        if (pv / "ready").exists():
+            return True
+        u = pv / "prev_unfold.png"          # генерации, созданные до появления признака готовности
+        return u.exists() and time.time() - u.stat().st_mtime > 120
 
     def gen_dir(gid: int) -> Path:
         return st.data_dir / "generations" / str(gid)
@@ -371,7 +379,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None
             mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
             return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view, structure=structure,
-                          has_preview=(gen_dir(g.id) / "preview" / "prev_unfold.png").exists(),
+                          has_preview=preview_ready(g.id),
                           files=_files(g.id) if g.status == "done" else [])
 
     @app.post("/g/{gid}/pay")
@@ -418,7 +426,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not u or not g:
                 return JSONResponse({"error": "not found"}, status_code=404)
             pv = gen_dir(g.id) / "preview"
-            return JSONResponse({"status": g.status, "preview": (pv / "prev_unfold.png").exists(),
+            return JSONResponse({"status": g.status, "preview": preview_ready(g.id),
                                  "preview_error": (pv / "error.txt").read_text(encoding="utf-8")[:300] if (pv / "error.txt").exists() else ""})
 
     @app.get("/g/{gid}/structure.json")
