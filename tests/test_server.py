@@ -385,3 +385,31 @@ def test_generation_status_endpoint(site):
     assert other.get(g + "/status").status_code == 404                                # чужая генерация
     _pay_fake(c, g)
     assert c.get(g + "/status").json()["status"] == "done"
+
+
+def test_structure_form_and_json_project(site):
+    """Конструкция вводится формой или берётся из файла проекта; 3D-схема и таблицы показываются на странице."""
+    c = TestClient(site)
+    register(c)
+    data = {"csrf": csrf_of(c, "/new/table"), "title": "К", "diameter": "28.5", "height": "18", "thicknesses": "13 12 11", "rows_are": "gens", "src": "manual",
+            "table": "-10\t-9\t-6\n-12\t-23\t-27\n1\t-5\t-20\n60\t60\t52\n53\t64\t73",
+            "s_nz_name": ["П1"], "s_nz_shape": ["Круглый"], "s_nz_width": ["426"], "s_nz_height": [""], "s_nz_z": ["1.1"], "s_nz_angle": ["353"], "s_nz_t": ["11"],
+            "s_nz_in": ["200"], "s_nz_out": ["500"], "s_posted": "1", "s_bot_on": "1", "s_bot_outside": "200", "s_bot_width": "1500", "s_bot_overlap": "100",
+            "s_bot_slope": "100", "s_bot_plate_t": "8", "s_bot_ann_t": "12", "s_roof_on": "1", "s_roof_shape": "Сферическая", "s_roof_sphere_r": "50",
+            "s_roof_cone_rise": "2", "s_roof_central_r": "1.3", "s_roof_radial": "24", "s_roof_first": "7.5", "s_roof_rings": "10", "s_roof_deck_t": "7",
+            "s_roof_band_w": "1000", "s_roof_band_t": "10", "s_roof_band_drop": "200", "s_roof_beam_drop": "20", "s_roof_deck_inset": "200",
+            "s_beam_radial": "Двутавр 25Б2", "s_beam_central": "Швеллер 24П", "s_beam_rings": "Уголок L90×90×6", "s_beam_edge": "Швеллер 24П"}
+    r = c.post("/new/table", data=data, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    g = r.headers["location"]
+    page = c.get(g).text
+    assert "Конструкция резервуара" in page and "Ø426" in page and "Сечения балок крыши" in page
+    js = c.get(g + "/structure.json").json()
+    assert js["nozzles"][0]["angle"] == 353 and js["roof"]["rise_m"] > 2
+    assert TestClient(site).get(g + "/structure.json", follow_redirects=False).status_code in (303, 404)
+    bad = dict(data, csrf=csrf_of(c, "/new/table"), s_nz_z=["99"])
+    assert "не помещается" in c.post("/new/table", data=bad).text
+    proj = json.dumps(_points_project(), ensure_ascii=False).encode()
+    r2 = c.post("/new/table", data={"csrf": csrf_of(c, "/new/table"), "src": "json", "title": "J"}, files={"jsonfile": ("p.json", proj, "application/json")}, follow_redirects=False)
+    assert r2.status_code == 303
+    assert c.post("/new/table", data={"csrf": csrf_of(c, "/new/table"), "src": "json"}).status_code == 400

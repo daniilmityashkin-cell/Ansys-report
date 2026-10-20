@@ -47,6 +47,25 @@
 {% for w in L.wind %}{% set zb = w.z_bottom_m %}{% set pe = [op.fill_height_m - zb, 0]|max * op.density_kg_m3 * L.gravity_m_s2 / 1000 + L.overpressure_mpa * 1000 %}{% set ph = [ht.fill_height_m - zb, 0]|max * ht.density_kg_m3 * L.gravity_m_s2 / 1000 %}
 <tr><td>{{ w.belt }}</td><td>{{ '%.2f'|format(zb) }}</td><td>{{ th[loop.index0] if th|length > loop.index0 else '—' }}</td><td>{{ '%.1f'|format(pe) }}</td><td>{{ '%.1f'|format(ph) }}</td><td>{{ '%.3f'|format(w.total_mpa * 1000) if w.total_mpa is not none else '—' }}</td></tr>{% endfor %}</table></div>
 {% for n in loads_view.notes %}{% endfor %}</div>{% endif %}{% endif %}
+{% if structure %}<div class="card"><h2>Конструкция резервуара</h2>
+<p class="sub">Стенка (синий), патрубки (золотой), днище и окрайка (зелёный/серый), крыша: радиальные и кольцевые балки, настил. Вращайте мышью, масштаб — ползунком.</p>
+<div class="viewer" id="struct3d" data-src="/g/{{ g.id }}/structure.json"><canvas style="display:block;width:100%;height:520px"></canvas><div class="vctl">
+<label class="chk2"><input type="checkbox" id="st-wall" checked> Стенка</label><label class="chk2"><input type="checkbox" id="st-nozzles" checked> Патрубки</label><label class="chk2"><input type="checkbox" id="st-bottom" checked> Днище</label><label class="chk2"><input type="checkbox" id="st-roof" checked> Крыша</label>
+<label>Масштаб <input type="range" id="st-zoom" min="30" max="400" value="100"> <b id="st-zoom-l">100%</b></label>
+<button type="button" class="btn light" id="st-reset">Сбросить вид</button><button type="button" class="btn light" id="st-top">Вид сверху</button></div><div class="vinfo"></div></div>
+{% if structure.nozzles %}<h2 style="margin-top:18px">Патрубки</h2><div class="tablewrap"><table><tr><th>Патрубок</th><th>Сечение, мм</th><th>Высота центра, м</th><th>Угол, °</th><th>Внутри / снаружи, мм</th><th>Толщина, мм</th></tr>
+{% for n in structure.nozzles %}<tr><td>{{ n.name }}</td><td>{% if n.shape == 'Круглый' %}Ø{{ n.width_mm|round|int }}{% else %}{{ n.width_mm|round|int }} × {{ n.height_mm|round|int }}{% endif %}</td><td>{{ n.height_m }}</td><td>{{ '%.0f'|format(n.angle) }}</td><td>{{ n.inside_mm|round|int }} / {{ n.outside_mm|round|int }}</td><td>{{ n.thickness_mm|round(1) }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if structure.bottom %}{% set b = structure.bottom %}<h2 style="margin-top:18px">Днище и окрайка</h2><table>
+<tr><td>Уклон</td><td>1:{{ b.slope_denominator|round|int }} (центр выше)</td></tr><tr><td>Окрайка</td><td>выступ наружу {{ b.outside_mm|round|int }} мм, ширина {{ b.annular_width_mm|round|int }} мм (внутри {{ (b.annular_width_mm - b.outside_mm)|round|int }} мм), толщина {{ b.annular_thickness_mm|round(1) }} мм</td></tr>
+<tr><td>Днище</td><td>толщина {{ b.plate_thickness_mm|round(1) }} мм, нахлёст на окрайку {{ b.overlap_mm|round|int }} мм</td></tr></table>{% endif %}
+{% if structure.roof %}{% set r = structure.roof %}<h2 style="margin-top:18px">Крыша</h2><table>
+<tr><td>Вид</td><td>{{ r.shape }}{% if r.shape == 'Сферическая' %}, радиус сферы {{ r.sphere_radius_m }} м{% endif %}, подъём {{ '%.2f'|format(r.rise_m) }} м</td></tr>
+<tr><td>Каркас</td><td>радиальных балок {{ r.radial_count }} (первая {{ r.first_angle_deg }}°), промежуточных колец {{ r.ring_count }}, центральное кольцо R = {{ r.central_radius_m }} м</td></tr>
+<tr><td>Настил</td><td>толщина {{ r.deck_thickness_mm|round(1) }} мм, отступ от стенки {{ r.deck_inset_mm|round|int }} мм</td></tr>
+<tr><td>Опорная полоса</td><td>{{ r.plate_width_mm|round|int }} × {{ r.plate_thickness_mm|round(1) }} мм, ниже края на {{ r.plate_drop_mm|round|int }} мм</td></tr></table>
+{% if structure.beam_sections %}<h2 style="margin-top:18px">Сечения балок крыши</h2><table><tr><th>Группа</th><th>Сечение</th></tr>{% for s in structure.beam_sections %}<tr><td>{{ s.group }}</td><td>{{ s.section or '—' }}</td></tr>{% endfor %}</table>{% endif %}
+{% if structure.roof_nodes %}{% set n = structure.roof_nodes %}<h2 style="margin-top:18px">Узлы крыши: пластины</h2><p>Круговая пластина {{ n.ring_height_mm|round|int }} × {{ n.ring_thickness_mm|round(1) }} мм. Верхние: {{ n.upper_length_mm|round|int }} × {{ n.upper_height_mm|round|int }} × {{ n.upper_thickness_mm|round(1) }} мм. Нижние: {{ n.lower_length_mm|round|int }} × {{ n.lower_height_mm|round|int }} × {{ n.lower_thickness_mm|round(1) }} мм. По {{ r.radial_count }} шт. верхних и нижних.</p>{% endif %}{% endif %}
+</div>{% endif %}
 {% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card"><h2>Отчёт и файлы</h2><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
 {% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — в пакетах.{% elif mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% endif %}</p>
 <form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
@@ -54,8 +73,8 @@
 {% elif g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
 {% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
-<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
-<script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview or structure %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
+{% if has_preview %}<script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}{% if structure %}<script type="module" src="/static/structure3d.js?v={{ asset_v }}"></script>{% endif %}{% endif %}
 <script>
 (function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now();
 function fail(m){w.innerHTML='<div><b>'+m+'</b><p class="muted"><a href="">Обновить страницу</a></p></div>';}

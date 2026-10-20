@@ -21,6 +21,7 @@ from .auth import (hash_password, verify_password, normalize_email, valid_email,
                    canonical_email, is_disposable)
 from .fingerprint import data_key
 from .loadsinput import DEFAULTS, SNOW, WIND, TERRAINS
+from .structinput import DEFAULTS as SDEFAULTS, SHAPES, ROOF_SHAPES
 from .payments import get_provider, settle
 from .jobs import JobRunner
 
@@ -39,6 +40,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.filters["rub"] = lambda n: f"{int(n):,}".replace(",", "\u00a0")       # 12000 -> 12 000
     templates.env.globals["min_unit"] = min((p // n for n, p in st.packs.items()), default=0)    # самая низкая цена генерации в пакетах
     limiter = LoginLimiter()
+
+    SCTX = {"shapes": SHAPES, "roof_shapes": ROOF_SHAPES}
 
     def gen_dir(gid: int) -> Path:
         return st.data_dir / "generations" / str(gid)
@@ -235,7 +238,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return render(request, "new.html", u, error=err, title=title, text=text, status_code=400)
             return RedirectResponse(f"/g/{gid}", status_code=303)
 
-    def _create_generation(db, u: User, title: str, project: dict, summary: dict, loads_input: dict | None = None) -> Generation:
+    def _create_generation(db, u: User, title: str, project: dict, summary: dict, loads_input: dict | None = None, structure: dict | None = None) -> Generation:
         if db.scalar(select(func.count()).select_from(Generation).where(
                 Generation.user_id == u.id, Generation.created > now() - dt.timedelta(days=1))) >= st.max_drafts_per_day:
             raise ValueError("Слишком много проверок за сутки. Попробуйте завтра.")
@@ -246,6 +249,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         d = gen_dir(g.id)
         d.mkdir(parents=True, exist_ok=True)
         (d / "input.json").write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        if structure:
+            (d / "structure.json").write_text(json.dumps(structure, ensure_ascii=False), encoding="utf-8")
         if loads_input:
             (d / "loads_input.json").write_text(json.dumps(loads_input, ensure_ascii=False), encoding="utf-8")
         runner.submit_preview(d)
@@ -257,25 +262,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             u = current_user(request, db)
             if not u:
                 return RedirectResponse("/login", status_code=303)
-            return render(request, "new_table.html", u, f={"rows_are": "gens", **DEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS)
+            return render(request, "new_table.html", u, f={"rows_are": "gens", **DEFAULTS, **SDEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS, **SCTX)
 
     @app.post("/new/table")
     async def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
                                table: str = Form(""), thicknesses: str = Form(""), rows_are: str = Form("gens"), csrf: str = Form(""),
-                               sheet: str = Form(""), xlsx: UploadFile | None = File(None)):
+                               sheet: str = Form(""), src: str = Form("xlsx"), xlsx: UploadFile | None = File(None), jsonfile: UploadFile | None = File(None)):
         raw_form = await request.form()                                 # поля расчёта нагрузок (l_*)
         lform = {k: str(v) for k, v in raw_form.items() if k.startswith("l_")}
+        sfields = {k: [str(x) for x in raw_form.getlist(k)] for k in raw_form.keys() if k.startswith("s_")}
+        sform = {k: v[0] for k, v in sfields.items() if v}
+        nz_rows = [dict(zip(("name", "shape", "width", "height", "z", "angle", "t", "in", "out"), r)) for r in zip(*[sfields.get(k, []) for k in (
+            "s_nz_name", "s_nz_shape", "s_nz_width", "s_nz_height", "s_nz_z", "s_nz_angle", "s_nz_t", "s_nz_in", "s_nz_out")])]
         bad = deny_csrf(request, csrf)
         if bad:
             return bad
         from .tableinput import build_project, table_from_xlsx, survey_from_xlsx
         from .loadsinput import build_loads_input
-        form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are, "sheet": sheet, **lform}
+        form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are, "sheet": sheet, "src": src, **lform, **sform, "s_posted": "1"}
         with Session() as db:
             u = current_user(request, db)
             if not u:
                 return RedirectResponse("/login", status_code=303)
             try:
+                if src == "json" and jsonfile is not None and jsonfile.filename:
+                    raw = await jsonfile.read(st.max_upload_bytes + 1)
+                    if len(raw) > st.max_upload_bytes:
+                        raise ValueError("Файл слишком большой.")
+                    try:
+                        jproj = json.loads(raw.decode("utf-8-sig"))
+                        jsummary = _preview(jproj)
+                    except Exception as e:  # noqa: BLE001
+                        raise ValueError(f"Не удалось прочитать файл проекта: {e}")
+                    from .structinput import structure_from_project
+                    jstruct = structure_from_project(jproj)
+                    loads_in = build_loads_input(lform, jproj) if lform.get("l_on") else None
+                    gid = _create_generation(db, u, title, jproj, jsummary, loads_in, jstruct).id
+                    return RedirectResponse(f"/g/{gid}", status_code=303)
+                if src == "json":
+                    raise ValueError("Выберите файл проекта (.json).")
                 if xlsx is not None and xlsx.filename:
                     raw = await xlsx.read(st.max_upload_bytes + 1)
                     if len(raw) > st.max_upload_bytes:
@@ -295,9 +320,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 project = build_project(diameter, height, table, thicknesses, rows_are if rows_are in ("gens", "belts") else "gens")
                 summary = _preview(project)
                 loads_in = build_loads_input(lform, project)
-                gid = _create_generation(db, u, title, project, summary, loads_in).id
+                from .structinput import build_structure
+                structure = build_structure(sfields, float(project["diameter"]), float(project["height"]))
+                gid = _create_generation(db, u, title, project, summary, loads_in, structure).id
             except Exception as e:  # noqa: BLE001
-                return render(request, "new_table.html", u, error=str(e), f=form, snow=SNOW, wind=WIND, terrains=TERRAINS, status_code=400)
+                return render(request, "new_table.html", u, error=str(e), f=form, snow=SNOW, wind=WIND, terrains=TERRAINS, nz_rows=nz_rows, **SCTX, status_code=400)
             return RedirectResponse(f"/g/{gid}", status_code=303)
 
     def _owned(db, request: Request, gid: int):
@@ -335,8 +362,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     loads_view = compute_loads(json.loads(lp.read_text(encoding="utf-8")))
                 except Exception as e:  # noqa: BLE001
                     loads_view = {"error": str(e)}
+            sp = gen_dir(g.id) / "structure.json"
+            structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None
             mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
-            return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view,
+            return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view, structure=structure,
                           has_preview=(gen_dir(g.id) / "preview" / "prev_unfold.png").exists(),
                           files=_files(g.id) if g.status == "done" else [])
 
@@ -386,6 +415,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             pv = gen_dir(g.id) / "preview"
             return JSONResponse({"status": g.status, "preview": (pv / "prev_unfold.png").exists(),
                                  "preview_error": (pv / "error.txt").read_text(encoding="utf-8")[:300] if (pv / "error.txt").exists() else ""})
+
+    @app.get("/g/{gid}/structure.json")
+    def structure_json(request: Request, gid: int):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            p = gen_dir(g.id) / "structure.json" if g else None
+            if not u or not g or not p.exists():
+                return HTMLResponse("Не найдено", status_code=404)
+            return FileResponse(p, media_type="application/json")
 
     @app.get("/g/{gid}/viewer.json")
     def viewer_json(request: Request, gid: int):
