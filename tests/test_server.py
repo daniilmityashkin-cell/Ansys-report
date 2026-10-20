@@ -319,7 +319,7 @@ def test_open_in_ansys_package_in_paid_files(site):
     gen = c.post("/new/table", data=data, follow_redirects=False).headers["location"]
     _pay_fake(c, gen)
     page = c.get(gen).text
-    for name in ("ansys_model/Open_in_Ansys.bat", "ansys_model/model.step", "ansys_model/thickness_zones.csv", "ansys_model/loads_data.py",
+    for name in ("ansys_model/Make_report.bat", "ansys_model/Run_all.bat", "ansys_model/anketa.json", "ansys_model/Open_in_Ansys.bat", "ansys_model/model.step", "ansys_model/thickness_zones.csv", "ansys_model/loads_data.py",
                  "ansys_model/build_model.wbjn", "ansys_model/build_model.py", "ansys_model/apply_loads.py", "ansys_model/README_RU.txt"):
         assert name in page, name
     bat = c.get(gen + "/files/ansys_model/Open_in_Ansys.bat").text

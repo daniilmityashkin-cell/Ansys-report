@@ -45,7 +45,8 @@ def compute(gen_dir: str, title: str) -> dict:
         zones = step.parent / "Участки толщины.csv"
         if step.exists() and zones.exists():                          # модель «открыть в Ansys» у заказчика
             from ansys_report.loads.launcher import write_open_package
-            md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"])
+            md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"],
+                                    anketa={"tag": title, "tank_name": title})
             files += [p for p in sorted(md.iterdir()) if p.is_file()]
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
 

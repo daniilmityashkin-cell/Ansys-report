@@ -66,6 +66,43 @@ echo Starting Workbench, please wait a few minutes...
 echo.
 echo Project: %WORK%\\Tank_model.wbpj
 echo Logs: %WORK%\\out\\log_build.txt and log_loads.txt
+if not defined AR_NOPAUSE pause
+'''
+
+
+REPORT_BAT = '''@echo off
+rem Technical report from the Workbench project built by Open_in_Ansys.bat (solves in background, extracts results, writes Word/Excel).
+setlocal
+set "SRC=%~dp0"
+set "WORK=C:\\ansys_report_work\\model"
+if not exist "%WORK%\\Tank_model.wbpj" (
+  echo Project not found: %WORK%\\Tank_model.wbpj  - run Open_in_Ansys.bat first.
+  pause
+  exit /b 1
+)
+set "OUT=%WORK%\\report"
+set "EXE="
+if exist "%ProgramFiles%\\AnsysReport\\AnsysReport.exe" set "EXE=%ProgramFiles%\\AnsysReport\\AnsysReport.exe"
+if exist "%LocalAppData%\\Programs\\AnsysReport\\AnsysReport.exe" set "EXE=%LocalAppData%\\Programs\\AnsysReport\\AnsysReport.exe"
+echo Building the technical report, please wait (solving + extracting results, 5-20 minutes)...
+if defined EXE (
+  "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" -o "%OUT%"
+) else (
+  python -m ansys_report report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" -o "%OUT%"
+)
+echo.
+echo Report folder: %OUT%
+if not defined AR_NOPAUSE pause
+'''
+
+
+RUN_ALL_BAT = '''@echo off
+set "AR_NOPAUSE=1"
+call "%~dp0Open_in_Ansys.bat"
+call "%~dp0Make_report.bat"
+set "AR_NOPAUSE="
+echo.
+echo Done. Project: C:\\ansys_report_work\\model\\Tank_model.wbpj , report: C:\\ansys_report_work\\model\\report
 pause
 '''
 
@@ -80,6 +117,11 @@ README = """Модель резервуара с нагрузками - откр
    В Mechanical в дереве будут расчётные случаи «AR: Эксплуатация», «AR: Эксплуатация с ветром», «AR: Гидроиспытания», «AR: Вакуум, снег и ветер».
 4. Проект сохраняется в C:\\ansys_report_work\\model\\Tank_model.wbpj. Журналы: C:\\ansys_report_work\\model\\out\\log_build.txt и log_loads.txt.
 
+Технический отчёт: после сборки модели дважды щёлкните Make_report.bat (или сразу Run_all.bat - сборка модели и отчёт подряд).
+Скрипт запустит расчёт в Workbench в фоне, выгрузит результаты и соберёт Word/Excel в C:\\ansys_report_work\\model\\report.
+Для этого на компьютере должна быть установлена программа ANSYS REPORT (AnsysReport_Setup.exe) или Python с пакетом ansys_report.
+Реквизиты отчёта (номер, позиция, площадка, исполнитель) можно поправить в anketa.json до запуска.
+
 Состав: model.step - геометрия (мм), thickness_zones.csv - участки толщины, loads_data.py - нагрузки, apply_loads.py и build_model.py - скрипты Mechanical,
 build_model.wbjn - журнал Workbench.
 
@@ -89,7 +131,8 @@ set "ANSYS_REPORT_FLIP=1" - добавьте её перед запуском Wo
 """
 
 
-def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path, loads_data: str | Path, axis: str = "Z", mesh_mm: float = 150) -> Path:
+def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path, loads_data: str | Path, axis: str = "Z", mesh_mm: float = 150,
+                       anketa: dict | None = None) -> Path:
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copy2(step, dest / "model.step")
@@ -99,5 +142,9 @@ def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path
         shutil.copy2(SCRIPTS / name, dest / name)
     (dest / "build_model.wbjn").write_text(JOURNAL, encoding="utf-8")
     (dest / "Open_in_Ansys.bat").write_text(_bat(axis, mesh_mm), encoding="ascii", newline="\r\n")
+    (dest / "Make_report.bat").write_text(REPORT_BAT, encoding="ascii", newline="\r\n")
+    (dest / "Run_all.bat").write_text(RUN_ALL_BAT, encoding="ascii", newline="\r\n")
+    import json
+    (dest / "anketa.json").write_text(json.dumps(anketa or {}, ensure_ascii=False, indent=1), encoding="utf-8")
     (dest / "README_RU.txt").write_text(README, encoding="utf-8")
     return dest

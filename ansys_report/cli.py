@@ -10,10 +10,12 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     ap.add_argument("--loads", help="apply-loads: файл loads_data.py из пакета нагрузок")
+    ap.add_argument("--anketa", help="report-from-ansys: файл anketa.json (поля отчёта: номер, позиция, исполнитель и т. д.)")
+    ap.add_argument("--no-solve", action="store_true", help="report-from-ansys: не запускать расчёт, взять готовые результаты проекта")
     ap.add_argument("--axis", default="Z", help="apply-loads: вертикальная ось модели (X, Y или Z)")
     a = ap.parse_args(argv)
     if a.command == "loads":
@@ -43,6 +45,23 @@ def main(argv=None) -> int:
         except ConnectError as e:
             print(f"Ошибка: {e}", file=sys.stderr)
             return 2
+        return 0
+    if a.command == "report-from-ansys":
+        if not a.project:
+            ap.error("укажите проект Workbench (.wbpj)")
+        import json
+        from .wizard import build_from_ansys, FIELDS
+        from .ansys_connect import ConnectError
+        anketa = {k: d for k, _, d in FIELDS}
+        if a.anketa:
+            anketa.update({k: v for k, v in json.loads(Path(a.anketa).read_text(encoding="utf-8-sig")).items() if str(v).strip()})
+        try:
+            files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve)
+        except (ConnectError, FileNotFoundError) as e:
+            print(f"Ошибка: {e}", file=sys.stderr)
+            return 2
+        for f in files:
+            print("Файл:", f)
         return 0
     if a.command == "wizard":
         from .webui import main as web_main
