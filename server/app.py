@@ -261,15 +261,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/new/table")
     async def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
                                table: str = Form(""), thicknesses: str = Form(""), rows_are: str = Form("gens"), csrf: str = Form(""),
-                               xlsx: UploadFile | None = File(None)):
+                               sheet: str = Form(""), xlsx: UploadFile | None = File(None)):
         raw_form = await request.form()                                 # поля расчёта нагрузок (l_*)
         lform = {k: str(v) for k, v in raw_form.items() if k.startswith("l_")}
         bad = deny_csrf(request, csrf)
         if bad:
             return bad
-        from .tableinput import build_project, table_from_xlsx
+        from .tableinput import build_project, table_from_xlsx, survey_from_xlsx
         from .loadsinput import build_loads_input
-        form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are, **lform}
+        form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are, "sheet": sheet, **lform}
         with Session() as db:
             u = current_user(request, db)
             if not u:
@@ -279,7 +279,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raw = await xlsx.read(st.max_upload_bytes + 1)
                     if len(raw) > st.max_upload_bytes:
                         raise ValueError("Файл слишком большой.")
-                    table = form["table"] = table_from_xlsx(raw)       # таблица из файла подставляется в поле
+                    try:                                                  # геодезическая съёмка (листы «Т-001 пустой» и т. п.)
+                        meta = survey_from_xlsx(raw, sheet)
+                    except ValueError as e:
+                        if str(e) != "survey:none":
+                            raise
+                        table = form["table"] = table_from_xlsx(raw)       # простая таблица чисел: подставляется в поле
+                    else:
+                        table = form["table"] = meta["table"]
+                        rows_are = form["rows_are"] = "gens"
+                        diameter = form["diameter"] = diameter.strip() or f"{meta['diameter_m']:g}"
+                        height = form["height"] = height.strip() or f"{meta['height_m']:g}"
+                        form["sheet"] = meta["sheet"]
                 project = build_project(diameter, height, table, thicknesses, rows_are if rows_are in ("gens", "belts") else "gens")
                 summary = _preview(project)
                 loads_in = build_loads_input(lform, project)

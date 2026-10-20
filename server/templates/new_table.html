@@ -10,7 +10,9 @@
 <select name="rows_are" style="padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">
 <option value="gens" {{ 'selected' if f.rows_are != 'belts' }}>строки — образующие, столбцы — пояса (как в таблице 1.1 заказчика)</option>
 <option value="belts" {{ 'selected' if f.rows_are == 'belts' }}>строки — пояса, столбцы — образующие</option></select>
-<label>Файл Excel (.xlsx) с таблицей замеров</label><input type="file" name="xlsx" accept=".xlsx">
+<label>Файл Excel (.xlsx): геодезическая съёмка или таблица замеров</label><input type="file" name="xlsx" accept=".xlsx">
+<label>Лист файла (если в файле несколько резервуаров или состояний; для модели обычно берут «пустой»)</label><input type="text" name="sheet" value="{{ f.sheet or '' }}" placeholder="например: Т-001 пустой">
+<p><small>Диаметр и высоту можно не вводить: при загрузке съёмки они берутся из файла.</small></p>
 <label>…или вставьте таблицу из Excel (только числа, без заголовков)</label><textarea name="table" placeholder="-10&#9;-9&#9;-6&#10;-12&#9;-23&#9;-27">{{ f.table or '' }}</textarea>
 <label>Толщины поясов снизу вверх, мм (через пробел: 13 12 12 11 11 …)</label><input type="text" name="thicknesses" value="{{ f.thicknesses or '' }}">
 

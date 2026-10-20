@@ -309,3 +309,42 @@ def test_open_in_ansys_package_in_paid_files(site):
     import ast
     ast.parse(c.get(gen + "/files/ansys_model/build_model.wbjn").text)
     assert "\n" in c.get(gen + "/files/ansys_model/Open_in_Ansys.bat").text
+
+
+def _survey_book(names=("Т-009 пустой",)):
+    """Книга в формате геодезической съёмки: блоки по поясам, пустая строка между блоками, замыкание (точка 1 в конце), округление высоты 2981."""
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.remove(wb.active)
+    for name in names:
+        ws = wb.create_sheet(name)
+        ws["B1"], ws["C1"] = 14250, 28500
+        row = 3
+        for belt, level in enumerate((1490, 2980, 4470), 1):
+            for k in range(1, 16):
+                ang = 85 - 24 * (k - 1)
+                ws.cell(row, 2, k); ws.cell(row, 3, -10 + belt * k % 7 * 3); ws.cell(row, 4, ang); ws.cell(row, 5, 14240)
+                ws.cell(row, 7, 2981 if (belt == 2 and k == 15) else level)
+                row += 1
+            ws.cell(row, 2, 1); ws.cell(row, 3, -10); ws.cell(row, 4, -275); ws.cell(row, 7, level)      # замыкание
+            row += 2
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_survey_workbook_upload(site):
+    c = TestClient(site)
+    register(c)
+    xl = ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    base = {"csrf": csrf_of(c, "/new/table"), "title": "Т-009", "thicknesses": "13 12 11", "rows_are": "belts"}
+    r = c.post("/new/table", data=base, files={"xlsx": ("съёмка.xlsx", _survey_book(), xl)}, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    page = c.get(r.headers["location"]).text
+    assert "45 (15 образующих × 3 поясов)" in page and "28.5 × 4.47 м" in page
+    two = _survey_book(("Т-001 полный", "Т-001 пустой"))
+    bad = c.post("/new/table", data=dict(base, csrf=csrf_of(c, "/new/table")), files={"xlsx": ("s.xlsx", two, xl)})
+    assert bad.status_code == 400 and "несколько листов" in bad.text
+    ok = c.post("/new/table", data=dict(base, csrf=csrf_of(c, "/new/table"), sheet="Т-001 пустой"), files={"xlsx": ("s.xlsx", two, xl)}, follow_redirects=False)
+    assert ok.status_code == 303
