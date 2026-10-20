@@ -1,5 +1,6 @@
 """Сайт: регистрация и вход, кабинет, замеры → проверка → оплата → геометрия, подписка на технический отчёт."""
 from __future__ import annotations
+import datetime as dt
 import io
 import json
 import zipfile
@@ -10,12 +11,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from .config import Settings
 from .db import make_session_factory
 from .models import User, Generation, Payment, now
-from .auth import (hash_password, verify_password, normalize_email, valid_email, csrf_token, csrf_ok, LoginLimiter)
+from .auth import (hash_password, verify_password, normalize_email, valid_email, csrf_token, csrf_ok, LoginLimiter,
+                   canonical_email, is_disposable)
+from .fingerprint import data_key
 from .payments import get_provider, settle
 from .jobs import JobRunner
 
@@ -26,7 +29,7 @@ PUBLIC_FILE_EXT = {".docx", ".step", ".igs", ".csv", ".json", ".html", ".png"}
 def create_app(settings: Settings | None = None) -> FastAPI:
     st = settings or Settings()
     engine, Session = make_session_factory(st.db_url)
-    app = FastAPI(title="Геометрия РВС", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="ANSYS REPORT", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SessionMiddleware, secret_key=st.secret_key, https_only=st.https_only, same_site="lax", max_age=14 * 86400)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -52,6 +55,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runner.submit(g.id, gen_dir(g.id), g.title)
 
     # --- вспомогательное ---
+    def client_ip(request: Request) -> str:
+        if st.trust_proxy:                                         # за прокси (Caddy, nginx): реальный адрес в первом значении заголовка
+            fwd = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            if fwd:
+                return fwd[:64]
+        return (request.client.host if request.client else "")[:64]
+
+    def pay_mode(db, u: User, g: Generation) -> tuple[str, str]:
+        """Как оформляется эта генерация: sub - по подписке, free - первая бесплатная, pay - разовая оплата, blocked - нужна подписка."""
+        if u.has_subscription:
+            return "sub", ""
+        used = db.scalar(select(func.count()).select_from(Generation).where(
+            Generation.user_id == u.id, Generation.id != g.id, Generation.status.in_(("paid", "running", "done"))))
+        if used:
+            return "blocked", "Разовая генерация на этом аккаунте уже использована. Дальше генерации доступны по подписке."
+        if g.data_key and db.scalar(select(func.count()).select_from(Generation).where(
+                Generation.data_key == g.data_key, Generation.user_id != u.id, Generation.status.in_(("paid", "running", "done")))):
+            return "blocked", "Эти замеры уже обрабатывались на другом аккаунте. Для повторной генерации нужна подписка."
+        return ("free" if st.first_generation_free else "pay"), ""
+
     def current_user(request: Request, db) -> User | None:
         uid = request.session.get("uid")
         return db.get(User, uid) if uid else None
@@ -102,12 +125,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             err = "Пароль должен быть не короче 8 символов."
         elif not consent:
             err = "Нужно согласие на обработку персональных данных."
+        if not err and is_disposable(email):
+            err = "Временные адреса почты не принимаются. Укажите постоянный адрес."
+        key, ip = canonical_email(email), client_ip(request)
         with Session() as db:
-            if not err and db.scalar(select(User).where(User.email == email)):
+            if not err and db.scalar(select(User).where((User.email == email) | (User.email_key == key))):
                 err = "Этот адрес уже зарегистрирован."
+            if not err and db.scalar(select(func.count()).select_from(User).where(
+                    User.reg_ip == ip, User.created > now() - dt.timedelta(days=1))) >= st.max_reg_per_ip:
+                err = "С вашего адреса уже создано несколько аккаунтов. Попробуйте позже или напишите в поддержку."
             if err:
                 return render(request, "register.html", error=err, email=email, status_code=400)
-            u = User(email=email, password_hash=hash_password(password), consent_at=now())
+            u = User(email=email, email_key=key, reg_ip=ip, password_hash=hash_password(password), consent_at=now())
             db.add(u)
             db.commit()
             request.session.clear()
@@ -189,17 +218,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     summary = _preview(project)
                 except Exception as e:  # noqa: BLE001
                     err = f"Не удалось прочитать замеры: {e}"
+            if not err:
+                try:
+                    gid = _create_generation(db, u, title, project, summary).id
+                except ValueError as e:
+                    err = str(e)
             if err:
                 return render(request, "new.html", u, error=err, title=title, text=text, status_code=400)
-            return RedirectResponse(f"/g/{_create_generation(db, u, title, project, summary).id}", status_code=303)
+            return RedirectResponse(f"/g/{gid}", status_code=303)
 
     def _create_generation(db, u: User, title: str, project: dict, summary: dict) -> Generation:
-        g = Generation(user_id=u.id, title=(title.strip() or "Резервуар")[:200], summary=json.dumps(summary, ensure_ascii=False))
+        if db.scalar(select(func.count()).select_from(Generation).where(
+                Generation.user_id == u.id, Generation.created > now() - dt.timedelta(days=1))) >= st.max_drafts_per_day:
+            raise ValueError("Слишком много проверок за сутки. Попробуйте завтра.")
+        g = Generation(user_id=u.id, title=(title.strip() or "Резервуар")[:200], summary=json.dumps(summary, ensure_ascii=False),
+                       data_key=data_key(project))
         db.add(g)
         db.commit()
         d = gen_dir(g.id)
         d.mkdir(parents=True, exist_ok=True)
         (d / "input.json").write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        runner.submit_preview(d)
         return g
 
     @app.get("/new/table", response_class=HTMLResponse)
@@ -231,9 +270,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     table = form["table"] = table_from_xlsx(raw)       # таблица из файла подставляется в поле
                 project = build_project(diameter, height, table, thicknesses, rows_are if rows_are in ("gens", "belts") else "gens")
                 summary = _preview(project)
+                gid = _create_generation(db, u, title, project, summary).id
             except Exception as e:  # noqa: BLE001
                 return render(request, "new_table.html", u, error=str(e), f=form, status_code=400)
-            return RedirectResponse(f"/g/{_create_generation(db, u, title, project, summary).id}", status_code=303)
+            return RedirectResponse(f"/g/{gid}", status_code=303)
 
     def _owned(db, request: Request, gid: int):
         u = current_user(request, db)
@@ -262,7 +302,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return HTMLResponse("Не найдено", status_code=404)
             if g.status == "draft" and app.state.reconcile(u.id):      # вернулся с оплаты, а уведомление ещё не пришло
                 db.refresh(g)
-            return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"),
+            mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
+            return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why,
+                          has_preview=(gen_dir(g.id) / "preview" / "prev_unfold.png").exists(),
                           files=_files(g.id) if g.status == "done" else [])
 
     @app.post("/g/{gid}/pay")
@@ -276,7 +318,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse("/login", status_code=303)
             if not g or g.status != "draft":
                 return RedirectResponse(f"/g/{gid}", status_code=303)
-            if u.has_subscription:                              # по подписке генерации без доплаты
+            mode, _ = pay_mode(db, u, g)
+            if mode == "blocked":
+                return RedirectResponse(f"/g/{g.id}", status_code=303)
+            if mode in ("sub", "free"):                         # по подписке и первая бесплатная - без платежа
                 start_job(db, g)
                 return RedirectResponse(f"/g/{g.id}", status_code=303)
             p = Payment(user_id=u.id, kind="generation", generation_id=g.id, amount_rub=st.price_generation_rub, provider=st.payment_provider)
@@ -300,11 +345,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def preview_img(request: Request, gid: int, name: str):
         with Session() as db:
             u, g = _owned(db, request, gid)
-            if not u or not g or g.status != "done" or name not in ("prev_points.png", "prev_surface.png", "prev_unfold.png"):
+            if not u or not g or name not in ("prev_points.png", "prev_surface.png", "prev_unfold.png"):
                 return HTMLResponse("Не найдено", status_code=404)
-            for p in (gen_dir(g.id) / "result").glob(f"*/images/{name}"):
-                return FileResponse(p)
-            return HTMLResponse("Не найдено", status_code=404)
+            p = gen_dir(g.id) / "preview" / name
+            return FileResponse(p) if p.exists() else HTMLResponse("Не найдено", status_code=404)
 
     @app.get("/g/{gid}/all.zip")
     def download_zip(request: Request, gid: int):

@@ -13,6 +13,14 @@ def compute(gen_dir: str, title: str) -> dict:
     return {"files": [str(Path(f).relative_to(gen / "result")) for f in files]}
 
 
+def compute_preview(gen_dir: str) -> None:
+    """Просмотр результата (точки, поверхность, развёртка) - бесплатная часть, строится сразу после проверки замеров."""
+    from ansys_report.geometry import check, figures
+    gen = Path(gen_dir)
+    res = check.analyze(check.load_project(gen / "input.json"))
+    figures.make_preview(res, gen / "preview")
+
+
 class JobRunner:
     """Очередь: пул процессов; по завершении вызывает on_done(gen_id, result|None, error|'')."""
     def __init__(self, workers: int, inline: bool, on_done):
@@ -34,6 +42,15 @@ class JobRunner:
             except Exception as e:   # noqa: BLE001
                 self.on_done(gen_id, None, f"{type(e).__name__}: {e}")
         fut.add_done_callback(done)
+
+    def submit_preview(self, gen_dir: Path):
+        if self.inline:
+            try:
+                compute_preview(str(gen_dir))
+            except Exception:   # noqa: BLE001
+                pass
+            return
+        self.pool.submit(compute_preview, str(gen_dir))
 
     def shutdown(self):
         if self.pool:

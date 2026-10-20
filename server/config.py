@@ -24,6 +24,10 @@ class Settings:
     subscription_days: int = field(default_factory=lambda: int(os.environ.get("ASR_SUBSCRIPTION_DAYS", "30")))
     max_upload_bytes: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_UPLOAD", str(2_000_000))))
     inline_jobs: bool = field(default_factory=lambda: _bool("ASR_INLINE_JOBS", False))   # тесты: считать в этом же процессе
+    max_reg_per_ip: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_REG_PER_IP", "3")))     # регистраций с одного IP за сутки
+    max_drafts_per_day: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_DRAFTS_PER_DAY", "30")))
+    trust_proxy: bool = field(default_factory=lambda: _bool("ASR_TRUST_PROXY", False))          # IP клиента из X-Forwarded-For (за прокси)
+    first_generation_free: bool = field(default_factory=lambda: _bool("ASR_FIRST_FREE", False))  # первая генерация на аккаунте бесплатна
     workers: int = field(default_factory=lambda: int(os.environ.get("ASR_WORKERS", "2")))
 
     def __post_init__(self):

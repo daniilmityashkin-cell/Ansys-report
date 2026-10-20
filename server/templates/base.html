@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>{% block title %}Геометрия РВС{% endblock %}</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v={{ asset_v }}"><script>document.documentElement.classList.add("js")</script></head><body>
+<title>{% block title %}ANSYS REPORT{% endblock %}</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v={{ asset_v }}"><script>document.documentElement.classList.add("js")</script></head><body>
 <canvas id="bg" aria-hidden="true" style="position:fixed;inset:0;z-index:0;pointer-events:none;width:100%;height:100%"></canvas>
-<nav class="top"><b><a href="/"><img class="logo" src="/static/logo.svg" alt="" width="30" height="30">Геометрия РВС</a></b>
+<nav class="top"><b><a href="/"><img class="logo" src="/static/logo.svg" alt="" width="30" height="30">ANSYS REPORT</a></b>
 {% if user %}<a href="/cabinet">Кабинет</a><a href="/new">Новая генерация</a><a href="/subscription">Подписка</a>
 <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Выйти ({{ user.email }})</button></form>
 {% else %}<a href="/login">Войти</a><a href="/register">Регистрация</a>{% endif %}</nav>
 <main>{% block body %}{% endblock %}</main>
-<footer class="foot"><span>© Геометрия РВС</span><a href="/privacy">Конфиденциальность</a></footer>
+<footer class="foot"><span>© ANSYS REPORT</span><a href="/privacy">Конфиденциальность</a></footer>
 <script>
 // показать/скрыть пароль
 document.querySelectorAll(".pw button").forEach(function(b){b.addEventListener("click",function(){

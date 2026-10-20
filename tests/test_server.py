@@ -63,7 +63,7 @@ def test_full_flow_pay_and_download(site):
     assert r.status_code == 303
     gen = r.headers["location"]
     page = c.get(gen).text
-    assert "Проверка замеров" in page and "Сгенерировать и оплатить" in page
+    assert "Результат проверки" in page and "Получить отчёт и файлы" in page
     assert c.get(gen + "/all.zip").status_code == 404                              # до оплаты файлов нет
     tok = csrf_of(c, gen)
     pay = c.post(gen + "/pay", data={"csrf": tok}, follow_redirects=False)
@@ -130,7 +130,7 @@ def test_table_input_to_generation(site):
     r = c.post("/new/table", data={"title": "РВС-2", "diameter": "28.5", "height": "18", "table": table, "thicknesses": "13 12 11",
                                    "rows_are": "gens", "csrf": tok}, follow_redirects=False)
     assert r.status_code == 303
-    assert "Проверка замеров" in c.get(r.headers["location"]).text
+    assert "Результат проверки" in c.get(r.headers["location"]).text
     bad = c.post("/new/table", data={"title": "x", "diameter": "28.5", "height": "18", "table": table, "thicknesses": "13",
                                      "rows_are": "gens", "csrf": tok})
     assert bad.status_code == 400 and "Толщин указано" in bad.text
@@ -181,3 +181,76 @@ def test_table_from_excel(site):
     bad = c.post("/new/table", data={"csrf": tok, "diameter": "28.5", "height": "18", "thicknesses": "13 12 11"},
                  files={"xlsx": ("x.xlsx", b"not excel", "application/octet-stream")})
     assert bad.status_code == 400 and "Excel" in bad.text
+
+
+def _pay_fake(c, gen):
+    r = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False)
+    if r.headers["location"].startswith("/pay/fake/"):
+        c.post(r.headers["location"], data={"csrf": csrf_of(c, r.headers["location"])})
+    return r
+
+
+def test_one_generation_per_account_then_subscription(site):
+    c = TestClient(site)
+    register(c)
+    g1 = new_generation(c).headers["location"]
+    _pay_fake(c, g1)
+    assert "готово" in c.get(g1).text
+    p2 = _points_project()
+    p2["diameter"] = "31.0"                                    # другие данные: проверяем именно правило «одна на аккаунт»
+    g2 = new_generation(c, p2, "РВС-2").headers["location"]
+    page = c.get(g2).text
+    assert "уже использована" in page and "1500 ₽" not in page
+    r = c.post(g2 + "/pay", data={"csrf": csrf_of(c, g2)}, follow_redirects=False)
+    assert r.headers["location"] == g2                         # платёж не создаётся
+    with site.state.Session() as db:
+        from server.models import Payment
+        assert db.query(Payment).count() == 1
+    tok = csrf_of(c, "/subscription")                           # подписка снимает ограничение
+    pay = c.post("/subscription/buy", data={"csrf": tok}, follow_redirects=False).headers["location"]
+    c.post(pay, data={"csrf": csrf_of(c, pay)})
+    assert "по подписке" in c.get(g2).text
+
+
+def test_same_data_on_other_account_needs_subscription(site):
+    a, b = TestClient(site), TestClient(site)
+    register(a)
+    _pay_fake(a, new_generation(a).headers["location"])
+    register(b, "b@example.com")
+    g = new_generation(b).headers["location"]                  # те же замеры на другом аккаунте
+    assert "другом аккаунте" in b.get(g).text
+
+
+def test_registration_abuse_protection(site):
+    c = TestClient(site)
+    assert register(c, "a.b+one@gmail.com").status_code == 303
+    assert register(TestClient(site), "ab@gmail.com").status_code == 400               # тот же адрес с другой записью
+    assert register(TestClient(site), "x@mailinator.com").status_code == 400            # одноразовая почта
+    assert register(TestClient(site), "c@example.com").status_code == 303
+    assert register(TestClient(site), "d@example.com").status_code == 303
+    assert register(TestClient(site), "e@example.com").status_code == 400               # 4-й аккаунт с одного адреса за сутки
+
+
+def test_old_database_gets_new_columns(tmp_path):
+    import sqlite3
+    db = tmp_path / "site.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email VARCHAR(254), password_hash VARCHAR(255), created DATETIME, subscription_until DATETIME, consent_at DATETIME)")
+    con.execute("INSERT INTO users (email, password_hash) VALUES ('old@example.com', 'x')")
+    con.commit(); con.close()
+    app = create_app(Settings(data_dir=tmp_path, inline_jobs=True, secret_key="t" * 32))
+    with app.state.Session() as s:
+        from server.models import User
+        assert s.query(User).one().email_key == "old@example.com"
+
+
+def test_preview_free_before_payment(site):
+    c = TestClient(site)
+    register(c)
+    g = new_generation(c).headers["location"]
+    page = c.get(g).text
+    assert "Геометрия по таблице измерений" in page and "Получить отчёт и файлы" in page
+    img = c.get(g + "/img/prev_unfold.png")
+    assert img.status_code == 200 and img.headers["content-type"] == "image/png"
+    assert c.get(g + "/all.zip").status_code == 404                         # файлы - только после оплаты
+    assert TestClient(site).get(g + "/img/prev_unfold.png", follow_redirects=False).status_code in (303, 404)

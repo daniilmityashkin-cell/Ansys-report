@@ -18,6 +18,8 @@ class User(Base):
     created: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     subscription_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     consent_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)      # согласие на обработку персональных данных
+    email_key: Mapped[str | None] = mapped_column(String(254), nullable=True, index=True)  # почта без псевдонимов (точки, +метки): защита от дублей
+    reg_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     generations: Mapped[list["Generation"]] = relationship(back_populates="user")
 
     @property
@@ -35,6 +37,7 @@ class Generation(Base):
     created: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     summary: Mapped[str] = mapped_column(Text, default="{}")       # JSON: итоги проверки по допускам
     error: Mapped[str] = mapped_column(Text, default="")
+    data_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)   # отпечаток замеров (одни и те же данные на разных аккаунтах)
     user: Mapped[User] = relationship(back_populates="generations")
 
 

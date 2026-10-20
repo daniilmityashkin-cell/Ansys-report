@@ -27,11 +27,11 @@
 <section>
 <div class="sec"><span class="pill">Тарифы</span><h2>Прозрачные цены</h2></div>
 <div class="price">
-<div class="card"><h2>Генерация</h2><div class="big">{{ st.price_generation_rub }} ₽ <small>за генерацию</small></div>
+<div class="card"><h2>Генерация</h2><div class="big">{{ st.price_generation_rub }} ₽ <small>один раз на аккаунт</small></div>
 <ul><li>STEP и IGES, таблицы поясов и толщин</li><li>Отчёт по геометрии в Word</li><li>Технический отчёт по ГОСТ Р 58622-2019</li></ul>
 <a class="btn" href="{% if user %}/new{% else %}/register{% endif %}">Сгенерировать</a></div>
-<div class="card"><h2>Подписка <small class="muted">по желанию</small></h2><div class="big">{{ st.price_subscription_rub }} ₽ <small>за {{ st.subscription_days }} дней</small></div>
-<ul><li>Генерации и отчёты без доплаты</li><li>Для тех, кто считает много резервуаров</li><li>Все генерации в кабинете</li></ul>
+<div class="card"><h2>Подписка</h2><div class="big">{{ st.price_subscription_rub }} ₽ <small>за {{ st.subscription_days }} дней</small></div>
+<ul><li>Генерации и отчёты без ограничений</li><li>Для тех, кто считает много резервуаров</li><li>Все генерации в кабинете</li></ul>
 <a class="btn light" href="{% if user %}/subscription{% else %}/register{% endif %}">Подписка</a></div>
 </div></section>
 

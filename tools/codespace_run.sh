@@ -7,4 +7,5 @@ if [ -n "$CODESPACE_NAME" ]; then
   echo "Адрес сайта: $ASR_BASE_URL (порт 8000 должен быть Public: вкладка «Ports» → правой кнопкой → Port Visibility → Public)"
 fi
 export ASR_HOST=0.0.0.0
+export ASR_TRUST_PROXY=1
 exec python -m server
