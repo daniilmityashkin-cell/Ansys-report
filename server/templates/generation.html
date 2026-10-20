@@ -21,6 +21,8 @@
 </div>
 <details class="more"><summary>Если 3D не открывается: статичные картинки</summary><div class="grid"><div><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div></details>
 <h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
+{% if summary.dents and summary.dents[0].id is defined %}<h2 style="margin-top:18px">Локальные участки (вмятины и выпучины)</h2>
+<div class="grid">{% for d in summary.dents %}<div><h3>{{ loop.index }}. {{ d.name }}</h3><p class="sub">P{{ d.id }}: s = {{ d.s_m }} м · φ = {{ d.angle }}° · Z = {{ d.z_m }} м · {{ d.sign }} {{ d.depth_mm }} мм · {{ d.n_points }} точек · {{ d.width_m }}×{{ d.height_m }} м</p><img class="pv" src="/g/{{ g.id }}/img/dent{{ d.id }}.png" alt="{{ d.name }}"></div>{% endfor %}</div>{% endif %}
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
 {% if summary.belts %}<div class="card"><h2>Оценка замеров по допускам (ГОСТ 31385-2016)</h2><p class="sub">Для каждого пояса: допуск H/200 и расширенный H/200 + 30 мм от высоты пояса, наибольшее по модулю отклонение и число точек за допуском.</p>
 <table><tr><th>Пояс</th><th>Высота, м</th><th>Толщина, мм</th><th>H/200, мм</th><th>H/200+30, мм</th><th>Макс. |Δ|, мм</th><th>Образующая</th><th>Выше H/200</th><th>Выше H/200+30</th></tr>

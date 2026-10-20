@@ -58,6 +58,8 @@ def compute_preview(gen_dir: str) -> None:
         from ansys_report.geometry import check, figures
         res = check.analyze(check.load_project(gen / "input.json"))
         figures.make_preview(res, gen / "preview")
+        for d, info in zip(res["model"].defects, res["dents"]):
+            figures.dent_plot(res, d, info, gen / "preview" / f"dent{info['id']}.png")
         from ansys_report.geometry.viewer_data import viewer_data
         import json
         (gen / "preview" / "viewer.json").write_text(json.dumps(viewer_data(res), separators=(",", ":")), encoding="utf-8")

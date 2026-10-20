@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -408,7 +409,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def preview_img(request: Request, gid: int, name: str):
         with Session() as db:
             u, g = _owned(db, request, gid)
-            if not u or not g or name not in ("prev_points.png", "prev_surface.png", "prev_unfold.png"):
+            if not u or not g or not re.fullmatch(r"prev_points\.png|prev_surface\.png|prev_unfold\.png|dent\d{1,3}\.png", name):
                 return HTMLResponse("Не найдено", status_code=404)
             p = gen_dir(g.id) / "preview" / name
             return FileResponse(p) if p.exists() else HTMLResponse("Не найдено", status_code=404)
@@ -576,7 +577,9 @@ def _preview(project: dict) -> dict:
     return {"diameter_m": r["diameter_m"], "height_m": r["height_m"], "n_points": r["n_points"], "n_gens": len(r["angles"]),
             "n_belts": len(r["belts"]), "over_a": r["over_a"], "over_b": r["over_b"], "ok_a": r["ok_a"], "ok_b": r["ok_b"],
             "max_abs_mm": round(r["max_abs"], 1), "worst_belt": wb["belt"], "dents": [
-                {"name": d["name"], "depth_mm": round(d["depth_mm"], 1)} for d in r["dents"]],
+                {"id": d["id"], "name": d["name"], "depth_mm": round(d["depth_mm"], 1), "sign": d["sign"], "s_m": round(d["s_m"], 2),
+                 "angle": round(d["angle"], 1), "z_m": round(d["z_m"], 2), "width_m": round(d["width_m"], 2),
+                 "height_m": round(d["height_m"], 2), "n_points": d["n_points"]} for d in r["dents"]],
             "groups": [{"thickness_mm": g["thickness_mm"], "bottom_m": g["bottom_m"], "top_m": g["top_m"]} for g in r["groups"]],
             "belts": [{"belt": b["belt"], "z_m": round(b["z_m"], 2), "lim_a": round(b["lim_a"], 1), "lim_b": round(b["lim_b"], 1), "max_abs": round(b["max_abs"], 1),
                        "max_gen": b["max_gen"], "over_a": b["over_a"], "over_b": b["over_b"], "n": b["n"]} for b in r["belts"]],
