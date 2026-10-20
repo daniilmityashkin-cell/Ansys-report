@@ -1,9 +1,10 @@
 {% extends "base.html" %}{% block body %}
-<h1>Новая генерация</h1><p><a class="btn light" href="/new/table">Ввести таблицу замеров</a></p><p class="sub">Файл замеров в формате проекта «РВС · Геометрия стенки» (JSON). Проверка бесплатна.</p>
+<h1>Новая генерация</h1><p class="sub">Введите замеры стенки из вашей таблицы. Проверка бесплатна.</p><p><a class="btn" href="/new/table">Ввести таблицу замеров</a></p>
 <div class="note"><b>Важно.</b> Файл проекта Ansys и все папки в пути к нему должны быть названы <b>строго на английском языке</b> (латинскими буквами), иначе проект не откроется.</div>
+<details class="more"><summary>Есть готовый файл замеров из программы «RVS Geometry» (JSON)?</summary>
 <form class="card" method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf }}">
 {% if error %}<div class="err">{{ error }}</div>{% endif %}
 <label>Название (например, РВС-9985)</label><input type="text" name="title" value="{{ title or '' }}" maxlength="200">
 <label>Файл замеров (.json)</label><input type="file" name="file" accept=".json,application/json">
 <label>…или вставьте содержимое файла</label><textarea name="text">{{ text or '' }}</textarea>
-<p><button class="btn">Проверить замеры</button></p></form>{% endblock %}
+<p><button class="btn">Проверить замеры</button></p></form></details>{% endblock %}
