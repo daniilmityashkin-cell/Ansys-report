@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block body %}
+<h1>Пакеты генераций</h1>
+<p class="sub">Первая генерация на аккаунте покупается отдельно. Для следующих выгоднее взять пакет: каждая генерация включает технический отчёт, поверхность STEP/IGES и все файлы.</p>
+<p class="balance">Осталось генераций: <b>{{ user.credit_count }}</b></p>
+<div class="packs">{% for n, price in st.packs.items() %}
+<form class="card pack" method="post" action="/packs/buy"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="size" value="{{ n }}">
+<h2>{{ n }} генераций</h2><div class="big">{{ price|rub }} ₽</div><p class="muted">{{ (price // n)|rub }} ₽ за генерацию</p>
+<button class="btn">Купить пакет</button></form>{% endfor %}</div>{% endblock %}

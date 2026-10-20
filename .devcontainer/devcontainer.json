@@ -1,5 +1,5 @@
 {
-  "name": "Геометрия РВС (демо сайта)",
+  "name": "ANSYS REPORT (демо сайта)",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
   "postCreateCommand": "pip install -r requirements-server.txt",
   "forwardPorts": [8000],

@@ -24,6 +24,38 @@ def normalize_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
+DISPOSABLE_DOMAINS = {
+    "mailinator.com", "guerrillamail.com", "guerrillamail.net", "guerrillamail.org", "sharklasers.com", "10minutemail.com", "10minutemail.net",
+    "temp-mail.org", "tempmail.com", "tempmail.net", "temp-mail.io", "tempail.com", "yopmail.com", "yopmail.net", "trashmail.com", "trashmail.net",
+    "getnada.com", "nada.email", "dispostable.com", "maildrop.cc", "throwawaymail.com", "fakeinbox.com", "mailnesia.com", "mohmal.com",
+    "emailondeck.com", "mintemail.com", "spamgourmet.com", "mytemp.email", "tmpmail.org", "tmpmail.net", "burnermail.io", "moakt.com",
+    "discard.email", "inboxkitten.com", "tempinbox.com", "mailcatch.com", "33mail.com", "anonbox.net", "1secmail.com", "1secmail.net",
+    "dropmail.me", "emlhub.com", "tempr.email", "luxusmail.org",
+}
+_GMAIL = {"gmail.com", "googlemail.com"}
+_YANDEX = {"yandex.ru", "ya.ru", "yandex.com", "yandex.kz", "yandex.by", "yandex.ua"}
+
+
+def email_domain(email: str) -> str:
+    return normalize_email(email).rsplit("@", 1)[-1]
+
+
+def is_disposable(email: str) -> bool:
+    return email_domain(email) in DISPOSABLE_DOMAINS
+
+
+def canonical_email(email: str) -> str:
+    """Один человек - одна почта: убираем метки «+что-то», у Gmail точки, сводим синонимы доменов Gmail и Яндекса."""
+    e = normalize_email(email)
+    local, _, dom = e.rpartition("@")
+    local = local.split("+", 1)[0]
+    if dom in _GMAIL:
+        local, dom = local.replace(".", ""), "gmail.com"
+    elif dom in _YANDEX:
+        local, dom = local.replace(".", "-"), "yandex.ru"
+    return f"{local}@{dom}"
+
+
 def valid_email(email: str) -> bool:
     e = normalize_email(email)
     return 3 <= len(e) <= EMAIL_MAX and "@" in e and "." in e.rsplit("@", 1)[-1] and " " not in e

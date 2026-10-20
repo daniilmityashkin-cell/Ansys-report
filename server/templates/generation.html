@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1>{{ g.title }}</h1><p class="sub">Генерация №{{ g.id }} · <span class="tag {{ g.status }}">{{ {'draft':'проверка пройдена','paid':'оплачено','running':'считается','done':'готово','error':'ошибка'}[g.status] }}</span></p>
-<div class="card"><h2>Проверка замеров (бесплатно)</h2>
+<div class="card"><h2>Результат проверки</h2>
 <div class="kv"><span>Диаметр × высота</span><span>{{ summary.diameter_m }} × {{ summary.height_m }} м</span>
 <span>Замеров</span><span>{{ summary.n_points }} ({{ summary.n_gens }} образующих × {{ summary.n_belts }} поясов)</span>
 <span>Выше допуска H/200</span><span>{{ summary.over_a }} {% if summary.ok_a %}— допуск выполнен{% endif %}</span>
@@ -8,15 +8,79 @@
 <span>Максимальное отклонение</span><span>{{ summary.max_abs_mm }} мм ({{ summary.worst_belt }}-й пояс)</span>
 <span>Вмятины</span><span>{% if summary.dents %}{% for d in summary.dents %}{{ d.name }} — {{ d.depth_mm }} мм{% if not loop.last %}; {% endif %}{% endfor %}{% else %}нет{% endif %}</span>
 <span>Участки толщины</span><span>{% for gr in summary.groups %}{{ gr.thickness_mm }} мм ({{ gr.bottom_m }}–{{ gr.top_m }} м){% if not loop.last %}; {% endif %}{% endfor %}</span></div></div>
-{% if g.status == 'draft' %}<form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
-<button class="btn">{% if user.has_subscription %}Сгенерировать (по подписке){% else %}Сгенерировать и оплатить — {{ st.price_generation_rub }} ₽{% endif %}</button></form>
-<p><small>После оплаты будут построены поверхность STEP/IGES, таблицы толщин, рисунки, отчёт по геометрии и технический отчёт.{% if user.has_subscription %} По вашей подписке доплата не требуется.{% endif %}</small></p>
-{% elif g.status in ('paid','running') %}<div class="card"><p>Идёт расчёт. Обычно это занимает меньше минуты. <a href="/g/{{ g.id }}">Обновить</a></p></div>
-{% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
-{% elif g.status == 'done' %}<div class="card"><h2>Геометрия по таблице измерений</h2>
+{% if has_preview %}<div class="card"><h2>3D-модель по результатам съёмки</h2>
 <p class="sub">{{ summary.n_points }} точек стенки · {{ summary.n_gens }} образующих · {{ summary.n_belts }} поясов{% if summary.dents %} · вмятин: {{ summary.dents|length }}{% endif %}. Цвет по |Δr|, отклонения на 3D-видах усилены в 20 раз.</p>
-<div class="grid"><div><h2>Точки</h2><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><h2>Поверхность</h2><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div>
+<div class="viewer" id="viewer" data-src="/g/{{ g.id }}/viewer.json">
+<canvas></canvas>
+<div class="vbar"><label><input type="checkbox" id="v-surf" checked> Поверхность</label><label><input type="checkbox" id="v-pts"> Точки замеров</label><label><input type="checkbox" id="v-wire"> Сетка</label>
+<label>Усиление отклонений <input type="range" id="v-amp" min="1" max="60" value="20"> <b id="v-amp-l">20×</b></label>
+<label>Масштаб <input type="range" id="v-zoom" min="30" max="400" value="100"> <b id="v-zoom-l">100%</b></label>
+<button type="button" class="btn light" id="v-reset">Сбросить вид</button><button type="button" class="btn light" id="v-full">На весь экран</button></div>
+<div class="vlegend"><span id="v-min"></span><i class="vgrad"></i><span id="v-max"></span><span>· цвет по |Δr|</span></div>
+<div id="v-info" class="vinfo">Вращайте мышью, масштаб — ползунком, правая кнопка — сдвиг; колесо прокручивает страницу. Наведите курсор на поверхность или точку, чтобы увидеть отклонение.</div>
+</div>
+<details class="more"><summary>Если 3D не открывается: статичные картинки</summary><div class="grid"><div><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div></details>
 <h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
+{% if summary.dents and summary.dents[0].id is defined %}<h2 style="margin-top:18px">Локальные участки (вмятины и выпучины)</h2>
+<div class="grid">{% for d in summary.dents %}<div><h3>{{ loop.index }}. {{ d.name }}</h3><p class="sub">P{{ d.id }}: s = {{ d.s_m }} м · φ = {{ d.angle }}° · Z = {{ d.z_m }} м · {{ d.sign }} {{ d.depth_mm }} мм · {{ d.n_points }} точек · {{ d.width_m }}×{{ d.height_m }} м</p><img class="pv" src="/g/{{ g.id }}/img/dent{{ d.id }}.png" alt="{{ d.name }}"></div>{% endfor %}</div>{% endif %}
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
-<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
-<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% endblock %}
+{% if summary.belts %}<div class="card"><h2>Оценка замеров по допускам (ГОСТ 31385-2016)</h2><p class="sub">Для каждого пояса: допуск H/200 и расширенный H/200 + 30 мм от высоты пояса, наибольшее по модулю отклонение и число точек за допуском.</p>
+<table><tr><th>Пояс</th><th>Высота, м</th><th>Толщина, мм</th><th>H/200, мм</th><th>H/200+30, мм</th><th>Макс. |Δ|, мм</th><th>Образующая</th><th>Выше H/200</th><th>Выше H/200+30</th></tr>
+{% for b in summary.belts %}<tr><td>{{ b.belt }}</td><td>{{ b.z_m }}</td><td>{{ summary.thickness_belts[loop.index0] if summary.thickness_belts else '' }}</td><td>{{ b.lim_a }}</td><td>{{ b.lim_b }}</td><td{% if b.max_abs > b.lim_b %} class="bad"{% elif b.max_abs > b.lim_a %} class="warn"{% endif %}>{{ b.max_abs }}</td><td>{{ b.max_gen }}</td><td>{{ b.over_a }} из {{ b.n }}</td><td>{{ b.over_b }} из {{ b.n }}</td></tr>{% endfor %}</table>
+{% if summary.worst %}<h2 style="margin-top:18px">Точки с наибольшим превышением допуска H/200</h2><table><tr><th>Пояс</th><th>Образующая</th><th>Угол, °</th><th>Высота, м</th><th>Δ, мм</th><th>Допуск, мм</th><th>|Δ| / допуск</th></tr>
+{% for w in summary.worst %}<tr><td>{{ w.belt }}</td><td>{{ w.gen }}</td><td>{{ w.angle }}</td><td>{{ w.z_m }}</td><td>{{ w.dev }}</td><td>{{ w.lim_a }}</td><td>{{ w.ratio }}</td></tr>{% endfor %}</table>{% endif %}</div>{% endif %}
+{% else %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
+{% if loads_view %}{% if loads_view.error %}<div class="err">Нагрузки не рассчитаны: {{ loads_view.error }}</div>{% else %}{% set L = loads_view.loads %}{% set I = loads_view.inputs %}
+<div class="card"><h2>Нагрузки на резервуар</h2><p class="sub">Расчёт по методике ГОСТ 31385-2016 и СП 20.13330. Здесь значения без коэффициентов; расчётные сочетания войдут в пакет для Ansys.</p>
+<table><tr><th>Нагрузка</th><th>Значение</th></tr>
+<tr><td>Гидростатика, эксплуатация</td><td>продукт {{ L.hydrostatic_operation.density_kg_m3|round|int }} кг/м³, уровень {{ '%.2f'|format(L.hydrostatic_operation.fill_height_m) }} м, у днища {{ '%.1f'|format(L.hydrostatic_operation.density_kg_m3 * L.gravity_m_s2 * L.hydrostatic_operation.fill_height_m / 1000) }} кПа</td></tr>
+<tr><td>Гидростатика, гидроиспытания</td><td>вода {{ L.hydrostatic_hydrotest.density_kg_m3|round|int }} кг/м³, уровень {{ '%.2f'|format(L.hydrostatic_hydrotest.fill_height_m) }} м, у днища {{ '%.1f'|format(L.hydrostatic_hydrotest.density_kg_m3 * L.gravity_m_s2 * L.hydrostatic_hydrotest.fill_height_m / 1000) }} кПа</td></tr>
+<tr><td>Избыточное давление / вакуум</td><td>{{ '%.2f'|format(L.overpressure_mpa * 1000) }} кПа / {{ '%.2f'|format(L.vacuum_mpa * 1000) }} кПа</td></tr>
+<tr><td>Снег (район {{ I.snow_district }})</td><td>{{ '%.2f'|format(I.Sg_kpa) }} кПа; на крыше {{ '%.3f'|format(L.snow_mpa.characteristic * 1000) }} кПа (с коэффициентами {{ '%.3f'|format(L.snow_mpa.design * 1000) }} кПа)</td></tr>
+<tr><td>Ветер (район {{ I.wind_district }}, местность {{ I.terrain }})</td><td>w₀ = {{ '%.2f'|format(I.w0_kpa) }} кПа{% if L.wind_pulsation_kpa is not none %}, пульсация {{ '%.3f'|format(L.wind_pulsation_kpa) }} кПа, ν = {{ '%.3f'|format(L.wind_correlation_nu) }}{% endif %}</td></tr>
+<tr><td>Масса металла крыши</td><td>{{ '%.0f'|format(loads_view.roof.metal_mass_kg) }} кг</td></tr>
+<tr><td>Масса теплоизоляции (стенка / крыша)</td><td>{{ '%.0f'|format(loads_view.wall.insulation_mass_kg) }} кг / {{ '%.0f'|format(loads_view.roof.insulation_mass_kg) }} кг</td></tr></table>
+{% set hb = I.belt_height %}{% set op = L.hydrostatic_operation %}{% set ht = L.hydrostatic_hydrotest %}{% set th = summary.thickness_belts or [] %}
+<h2 style="margin-top:18px">Нагрузки по поясам стенки</h2>
+<p class="sub">Давление на нижней кромке пояса: гидростатика + избыточное давление; ветер — расчётный на высоте пояса (МПа × 1000 = кПа).</p>
+<div class="tablewrap"><table><tr><th>Пояс</th><th>Высота низа, м</th><th>Толщина, мм</th><th>Гидростатика, эксплуатация, кПа</th><th>Гидростатика, гидроиспытания, кПа</th><th>Ветер, кПа</th></tr>
+{% for w in L.wind %}{% set zb = w.z_bottom_m %}{% set pe = [op.fill_height_m - zb, 0]|max * op.density_kg_m3 * L.gravity_m_s2 / 1000 + L.overpressure_mpa * 1000 %}{% set ph = [ht.fill_height_m - zb, 0]|max * ht.density_kg_m3 * L.gravity_m_s2 / 1000 %}
+<tr><td>{{ w.belt }}</td><td>{{ '%.2f'|format(zb) }}</td><td>{{ th[loop.index0] if th|length > loop.index0 else '—' }}</td><td>{{ '%.1f'|format(pe) }}</td><td>{{ '%.1f'|format(ph) }}</td><td>{{ '%.3f'|format(w.total_mpa * 1000) if w.total_mpa is not none else '—' }}</td></tr>{% endfor %}</table></div>
+{% for n in loads_view.notes %}{% endfor %}</div>{% endif %}{% endif %}
+{% if structure %}<div class="card"><h2>Конструкция резервуара</h2>
+<p class="sub">Стенка (синий), патрубки (золотой), днище и окрайка (зелёный/серый), крыша: радиальные и кольцевые балки, настил. Вращайте мышью, масштаб — ползунком.</p>
+<div class="viewer" id="struct3d" data-src="/g/{{ g.id }}/structure.json"><canvas style="display:block;width:100%;height:520px"></canvas><div class="vctl">
+<label class="chk2"><input type="checkbox" id="st-wall" checked> Стенка</label><label class="chk2"><input type="checkbox" id="st-nozzles" checked> Патрубки</label><label class="chk2"><input type="checkbox" id="st-bottom" checked> Днище</label><label class="chk2"><input type="checkbox" id="st-roof" checked> Крыша</label>
+<label>Масштаб <input type="range" id="st-zoom" min="30" max="400" value="100"> <b id="st-zoom-l">100%</b></label>
+<button type="button" class="btn light" id="st-reset">Сбросить вид</button><button type="button" class="btn light" id="st-top">Вид сверху</button></div><div class="vinfo"></div></div>
+{% if structure.nozzles %}<h2 style="margin-top:18px">Патрубки</h2><div class="tablewrap"><table><tr><th>Патрубок</th><th>Сечение, мм</th><th>Высота центра, м</th><th>Угол, °</th><th>Внутри / снаружи, мм</th><th>Толщина, мм</th></tr>
+{% for n in structure.nozzles %}<tr><td>{{ n.name }}</td><td>{% if n.shape == 'Круглый' %}Ø{{ n.width_mm|round|int }}{% else %}{{ n.width_mm|round|int }} × {{ n.height_mm|round|int }}{% endif %}</td><td>{{ n.height_m }}</td><td>{{ '%.0f'|format(n.angle) }}</td><td>{{ n.inside_mm|round|int }} / {{ n.outside_mm|round|int }}</td><td>{{ n.thickness_mm|round(1) }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if structure.bottom %}{% set b = structure.bottom %}<h2 style="margin-top:18px">Днище и окрайка</h2><table>
+<tr><td>Уклон</td><td>1:{{ b.slope_denominator|round|int }} (центр выше)</td></tr><tr><td>Окрайка</td><td>выступ наружу {{ b.outside_mm|round|int }} мм, ширина {{ b.annular_width_mm|round|int }} мм (внутри {{ (b.annular_width_mm - b.outside_mm)|round|int }} мм), толщина {{ b.annular_thickness_mm|round(1) }} мм</td></tr>
+<tr><td>Днище</td><td>толщина {{ b.plate_thickness_mm|round(1) }} мм, нахлёст на окрайку {{ b.overlap_mm|round|int }} мм</td></tr></table>{% endif %}
+{% if structure.roof %}{% set r = structure.roof %}<h2 style="margin-top:18px">Крыша</h2><table>
+<tr><td>Вид</td><td>{{ r.shape }}{% if r.shape == 'Сферическая' %}, радиус сферы {{ r.sphere_radius_m }} м{% endif %}, подъём {{ '%.2f'|format(r.rise_m) }} м</td></tr>
+<tr><td>Каркас</td><td>радиальных балок {{ r.radial_count }} (первая {{ r.first_angle_deg }}°), промежуточных колец {{ r.ring_count }}, центральное кольцо R = {{ r.central_radius_m }} м</td></tr>
+<tr><td>Настил</td><td>толщина {{ r.deck_thickness_mm|round(1) }} мм, отступ от стенки {{ r.deck_inset_mm|round|int }} мм</td></tr>
+<tr><td>Опорная полоса</td><td>{{ r.plate_width_mm|round|int }} × {{ r.plate_thickness_mm|round(1) }} мм, ниже края на {{ r.plate_drop_mm|round|int }} мм</td></tr></table>
+{% if structure.beam_sections %}<h2 style="margin-top:18px">Сечения балок крыши</h2><table><tr><th>Группа</th><th>Сечение</th></tr>{% for s in structure.beam_sections %}<tr><td>{{ s.group }}</td><td>{{ s.section or '—' }}</td></tr>{% endfor %}</table>{% endif %}
+{% if structure.roof_nodes %}{% set n = structure.roof_nodes %}<h2 style="margin-top:18px">Узлы крыши: пластины</h2><p>Круговая пластина {{ n.ring_height_mm|round|int }} × {{ n.ring_thickness_mm|round(1) }} мм. Верхние: {{ n.upper_length_mm|round|int }} × {{ n.upper_height_mm|round|int }} × {{ n.upper_thickness_mm|round(1) }} мм. Нижние: {{ n.lower_length_mm|round|int }} × {{ n.lower_height_mm|round|int }} × {{ n.lower_thickness_mm|round(1) }} мм. По {{ r.radial_count }} шт. верхних и нижних.</p>{% endif %}{% endif %}
+</div>{% endif %}
+{% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card"><h2>Отчёт и файлы</h2><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
+{% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — в пакетах.{% elif mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% endif %}</p>
+<form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="btn">{% if mode == 'credit' %}Получить отчёт и файлы (из пакета){% elif mode == 'unlimited' %}Получить отчёт и файлы (безлимитный аккаунт){% elif mode == 'free' %}Получить отчёт и файлы бесплатно{% else %}Получить отчёт и файлы — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
+{% elif g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
+{% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
+{% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview or structure %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
+{% if has_preview %}<script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}{% if structure %}<script type="module" src="/static/structure3d.js?v={{ asset_v }}"></script>{% endif %}{% endif %}
+<script>
+(function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now();
+function fail(m){w.innerHTML='<div><b>'+m+'</b><p class="muted"><a href="">Обновить страницу</a></p></div>';}
+function tick(){fetch(url,{credentials:"same-origin"}).then(function(r){return r.json();}).then(function(d){
+ if(d.preview_error&&what==="preview"){fail("Не удалось построить просмотр: "+d.preview_error);return;}
+ if((what==="preview"&&d.preview)||(what==="done"&&(d.status==="done"||d.status==="error"))){location.reload();return;}
+ if(Date.now()-t0>180000){fail("Это занимает дольше обычного.");return;}setTimeout(tick,1500);}).catch(function(){setTimeout(tick,3000);});}
+setTimeout(tick,800);})();
+</script>{% endblock %}

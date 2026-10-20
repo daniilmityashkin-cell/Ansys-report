@@ -77,8 +77,8 @@ def get_provider(name: str) -> PaymentProvider:
     return FakeProvider()
 
 
-def settle(db, payment: Payment, subscription_days: int) -> bool:
-    """Помечает платёж оплаченным (один раз) и применяет результат: оплата генерации или продление подписки.
+def settle(db, payment: Payment) -> bool:
+    """Помечает платёж оплаченным (один раз) и применяет результат: оплата генерации или зачисление пакета генераций.
     Возвращает True, если оплата применена сейчас (повторные вызовы безопасны - платёж не засчитается дважды)."""
     if payment.status == "paid":
         return False
@@ -88,8 +88,7 @@ def settle(db, payment: Payment, subscription_days: int) -> bool:
         g = db.get(Generation, payment.generation_id)
         if g and g.status == "draft":
             g.status = "paid"
-    elif payment.kind == "subscription":
+    elif payment.kind == "pack":
         u = db.get(User, payment.user_id)
-        start = u.subscription_until if (u.subscription_until and u.subscription_until > now()) else now()
-        u.subscription_until = start + dt.timedelta(days=subscription_days)
+        u.credits = (u.credits or 0) + (payment.qty or 0)
     return True

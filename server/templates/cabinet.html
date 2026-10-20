@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1>Личный кабинет</h1>
-<p class="sub">Подписка (необязательна): {% if user.has_subscription %}активна до {{ user.subscription_until.strftime('%d.%m.%Y') }}{% else %}не оформлена — <a href="/subscription">подробнее</a>{% endif %}</p>
+<p class="sub">Осталось генераций в пакетах: <b>{% if unlimited %}∞ (безлимитный аккаунт){% else %}{{ user.credit_count }}{% endif %}</b> · <a href="/packs">купить пакет</a></p>
 <p><a class="btn" href="/new">Новая генерация</a></p>
 <div class="card">{% if gens %}<table><tr><th>№</th><th>Название</th><th>Дата</th><th>Статус</th></tr>
 {% for g in gens %}<tr><td><a href="/g/{{ g.id }}">{{ g.id }}</a></td><td><a href="/g/{{ g.id }}">{{ g.title }}</a></td><td>{{ g.created.strftime('%d.%m.%Y %H:%M') }}</td>

@@ -1,0 +1,253 @@
+{
+ "product_name": "товарная нефть",
+ "product_density_t_m3": 0.934,
+ "diameter_m": 34.2,
+ "wall_height_m": 12,
+ "belt_height_m": 1.5,
+ "n_belts": 8,
+ "roof_rise_m": 3.7,
+ "roof_deck_thickness_m": 0.004,
+ "steel_density_kg_m3": 7790,
+ "max_fill_height_m": 11.5,
+ "ryn_mpa": 420,
+ "e_mpa": 206000,
+ "gamma_c1": 0.7,
+ "gamma_c2": 0.8,
+ "gamma_c_rest": 0.8,
+ "gamma_c_hydro": 0.9,
+ "gamma_m": 1.1,
+ "gamma_n": 1.1,
+ "corrosion_weak_mm_year": 0.05,
+ "corrosion_medium_mm_year": 0.1,
+ "service_life_years": 40,
+ "anticorrosion_life_years": 10,
+ "diagnostics_interval_years": 10,
+ "snow_district": "IV",
+ "wind_district": "II",
+ "aero_coef": 0.8,
+ "terrain": "A",
+ "overpressure_pa": 0,
+ "vacuum_pa": 0,
+ "water_density_kg_m3": 1000,
+ "fill_height_m": 11,
+ "hydrotest_height_m": 11,
+ "insulation_density_kg_m3": 140,
+ "insulation_thickness_m": 0.1,
+ "g": 9.8,
+ "roof_support_ring_kg_m": 60.08,
+ "roof_radial_beams_count": 60,
+ "roof_radial_beam_length_m": 17.4,
+ "roof_radial_beam_kg_m": 25,
+ "roof_ring_beams_length_m": 313.6,
+ "roof_ring_beam_kg_m": 8.1,
+ "equipment": [
+  {
+   "name": "Площадка на крыше",
+   "count": 1,
+   "mass_kg": 4297,
+   "category": "metal",
+   "belts": [],
+   "roof": true
+  },
+  {
+   "name": "ППР 500",
+   "count": 2,
+   "mass_kg": 270,
+   "category": "metal",
+   "belts": [
+    1
+   ],
+   "roof": false
+  },
+  {
+   "name": "Лестница маршевая",
+   "count": 1,
+   "mass_kg": 2128,
+   "category": "metal",
+   "belts": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "roof": false
+  },
+  {
+   "name": "Площадка для обслуживания КНП",
+   "count": 4,
+   "mass_kg": 165,
+   "category": "metal",
+   "belts": [
+    8
+   ],
+   "roof": false
+  },
+  {
+   "name": "Уровнемер радиолокационный УЛМ-11",
+   "count": 1,
+   "mass_kg": 10,
+   "category": "equipment",
+   "belts": [],
+   "roof": true
+  },
+  {
+   "name": "Вентиляционные патрубки ПВ-350",
+   "count": 3,
+   "mass_kg": 50,
+   "category": "equipment",
+   "belts": [],
+   "roof": true
+  },
+  {
+   "name": "Люк монтажный DN 1000",
+   "count": 1,
+   "mass_kg": 310,
+   "category": "equipment",
+   "belts": [],
+   "roof": true
+  },
+  {
+   "name": "Люк световой DN 600",
+   "count": 4,
+   "mass_kg": 170,
+   "category": "equipment",
+   "belts": [],
+   "roof": true
+  },
+  {
+   "name": "Замерный люк DN 150",
+   "count": 4,
+   "mass_kg": 3.3,
+   "category": "equipment",
+   "belts": [],
+   "roof": true
+  },
+  {
+   "name": "Люк-лаз 600 (первый пояс)",
+   "count": 2,
+   "mass_kg": 170,
+   "category": "equipment",
+   "belts": [
+    1
+   ],
+   "roof": false
+  },
+  {
+   "name": "Люк-лаз 600х900 (первый пояс)",
+   "count": 2,
+   "mass_kg": 280,
+   "category": "equipment",
+   "belts": [
+    1
+   ],
+   "roof": false
+  },
+  {
+   "name": "ПРУ-Д 500",
+   "count": 2,
+   "mass_kg": 550,
+   "category": "equipment",
+   "belts": [
+    1
+   ],
+   "roof": false
+  },
+  {
+   "name": "«ТАЙФУН-16»",
+   "count": 1,
+   "mass_kg": 510,
+   "category": "equipment",
+   "belts": [
+    1
+   ],
+   "roof": false
+  },
+  {
+   "name": "Кран сифонный КС-80",
+   "count": 2,
+   "mass_kg": 50,
+   "category": "equipment",
+   "belts": [
+    1
+   ],
+   "roof": false
+  },
+  {
+   "name": "Люк-лаз 600х900 (второй пояс)",
+   "count": 2,
+   "mass_kg": 280,
+   "category": "equipment",
+   "belts": [
+    2
+   ],
+   "roof": false
+  },
+  {
+   "name": "Растворопровод кольцевой DN 100 (примечание: ось трубопровода расположена на расстоянии 10 см от теплоизоляции, толщина стенки принята 3,5 мм)",
+   "count": 1,
+   "mass_kg": 1102.27,
+   "category": "equipment",
+   "belts": [
+    2
+   ],
+   "roof": false
+  },
+  {
+   "name": "Пробоотборник ПСРПТ-1",
+   "count": 1,
+   "mass_kg": 100,
+   "category": "equipment",
+   "belts": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "roof": false
+  },
+  {
+   "name": "Растворопровод вертикальный DN 80",
+   "count": 4,
+   "mass_kg": 99.95,
+   "category": "equipment",
+   "belts": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "roof": false
+  },
+  {
+   "name": "Камера низкократной пены КНП-10",
+   "count": 4,
+   "mass_kg": 65,
+   "category": "equipment",
+   "belts": [
+    8
+   ],
+   "roof": false
+  },
+  {
+   "name": "Понтон алюминиевый в сборе (на стойках переменной высоты)",
+   "count": 1,
+   "mass_kg": 0,
+   "category": "equipment",
+   "belts": [
+    8
+   ],
+   "roof": false
+  }
+ ]
+}

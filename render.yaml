@@ -1,0 +1,21 @@
+# Развёртывание демо-сайта на Render (бесплатный тариф): New -> Blueprint -> выбрать репозиторий и ветку.
+services:
+  - type: web
+    name: rvs-geometry
+    runtime: python
+    plan: free
+    branch: claude/ansys-report-automation-8asxtm
+    buildCommand: pip install -r requirements-server.txt
+    startCommand: ASR_HOST=0.0.0.0 ASR_PORT=$PORT ASR_BASE_URL=$RENDER_EXTERNAL_URL ASR_HTTPS_ONLY=1 ASR_WORKERS=1 ASR_TRUST_PROXY=1 python -m server
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ASR_SECRET
+        generateValue: true
+      - key: ASR_DATA_DIR
+        value: /tmp/asr_data
+      - key: ASR_UNLIMITED_EMAILS      # почты без лимита генераций через запятую (задаётся в панели Render, в репозиторий не пишется)
+        sync: false
+      - key: ASR_MAX_REG_PER_IP
+        value: "20"

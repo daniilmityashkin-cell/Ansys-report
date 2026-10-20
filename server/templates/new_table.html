@@ -1,15 +1,67 @@
 {% extends "base.html" %}{% block body %}
-<h1>Ввод замеров таблицей</h1><p class="sub">Скопируйте таблицу отклонений из Excel или Word. Отклонения в мм: «+» наружу, «−» внутрь. Вмятины загружаются файлом проекта (<a href="/new">загрузка JSON</a>).</p>
-<form class="card" method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
+<h1>Ввод замеров таблицей</h1><p class="sub">Скопируйте таблицу отклонений из Excel или Word. Отклонения в мм: «+» наружу, «−» внутрь. </p>
+<div class="note"><b>Важно.</b> Файл проекта Ansys и все папки в пути к нему должны быть названы <b>строго на английском языке</b> (латинскими буквами), иначе проект не откроется.</div>
+<form class="card" method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf }}">
 {% if error %}<div class="err">{{ error }}</div>{% endif %}
 <label>Название (например, РВС-9985)</label><input type="text" name="title" value="{{ f.title or '' }}" maxlength="200">
-<div class="grid"><div><label>Диаметр, м</label><input type="text" name="diameter" value="{{ f.diameter or '' }}" placeholder="28.5"></div>
+<h2 class="fstep">1. Откуда взять замеры</h2>
+<div class="seg" role="tablist">
+<label><input type="radio" name="src" value="xlsx" {{ 'checked' if f.src not in ('manual','json') }}><span><b>Excel</b><small>геодезическая съёмка (.xlsx)</small></span></label>
+<label><input type="radio" name="src" value="manual" {{ 'checked' if f.src == 'manual' }}><span><b>Вручную</b><small>отметки от нивелира таблицей</small></span></label>
+<label><input type="radio" name="src" value="json" {{ 'checked' if f.src == 'json' }}><span><b>Файл проекта</b><small>.json из программы геометрии</small></span></label></div>
+
+<div class="srcbox" data-for="xlsx"><label>Файл Excel (.xlsx): геодезическая съёмка или таблица замеров</label><input type="file" name="xlsx" accept=".xlsx">
+<label>Лист файла (если в файле несколько резервуаров или состояний; для модели обычно берут «пустой»)</label><input type="text" name="sheet" value="{{ f.sheet or '' }}" placeholder="например: Т-001 пустой">
+<p><small>Диаметр и высота берутся из файла, если не заполнены ниже.</small></p></div>
+
+<div class="srcbox" data-for="json"><label>Файл проекта (.json)</label><input type="file" name="jsonfile" accept=".json,application/json">
+<p><small>В файле уже есть замеры, вмятины, толщины, патрубки, днище и крыша — вводить их ниже не нужно. Нагрузки можно рассчитать отдельно (блок ниже).</small></p></div>
+
+<div class="srcbox" data-for="xlsx manual"><div class="grid"><div><label>Диаметр, м</label><input type="text" name="diameter" value="{{ f.diameter or '' }}" placeholder="28.5"></div>
 <div><label>Высота стенки, м</label><input type="text" name="height" value="{{ f.height or '' }}" placeholder="18"></div></div>
-<label>Что в строках вашей таблицы</label>
+<label>Толщины поясов снизу вверх, мм (через пробел: 13 12 12 11 11 …)</label><input type="text" name="thicknesses" value="{{ f.thicknesses or '' }}"></div>
+
+<div class="srcbox" data-for="manual"><label>Что в строках вашей таблицы</label>
 <select name="rows_are" style="padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">
 <option value="gens" {{ 'selected' if f.rows_are != 'belts' }}>строки — образующие, столбцы — пояса (как в таблице 1.1 заказчика)</option>
 <option value="belts" {{ 'selected' if f.rows_are == 'belts' }}>строки — пояса, столбцы — образующие</option></select>
-<label>Таблица замеров (только числа, без заголовков)</label><textarea name="table" placeholder="-10&#9;-9&#9;-6&#10;-12&#9;-23&#9;-27">{{ f.table or '' }}</textarea>
-<label>Толщины поясов снизу вверх, мм (через пробел: 13 12 12 11 11 …)</label><input type="text" name="thicknesses" value="{{ f.thicknesses or '' }}">
+<label>Вставьте таблицу из Excel (только числа, без заголовков; «+» наружу, «−» внутрь, мм)</label><textarea name="table" placeholder="-10&#9;-9&#9;-6&#10;-12&#9;-23&#9;-27">{{ f.table or '' }}</textarea></div>
+<script>(function(){var form=document.querySelector("form.card");function apply(){var v=(form.querySelector('input[name=src]:checked')||{}).value||"xlsx";form.querySelectorAll(".srcbox").forEach(function(b){b.style.display=b.dataset["for"].split(" ").indexOf(v)>=0?"":"none";});form.querySelectorAll(".seg label").forEach(function(l){l.classList.toggle("on",l.querySelector("input").checked);});}
+form.querySelectorAll("input[name=src]").forEach(function(r){r.addEventListener("change",apply);});apply();})();</script>
+
+<h2 class="fstep" style="margin-top:26px">2. Расчёт нагрузок</h2>
+<div class="loads-block"><label class="chk"><input type="checkbox" name="l_on" value="1" {{ 'checked' if f.l_on else '' }}><span><b>Рассчитать нагрузки</b> (гидростатика, избыточное давление, вакуум, снег, ветер, массы) по ГОСТ 31385-2016</span></label>
+<div class="grid">
+<div><label>Плотность продукта, т/м³</label><input type="text" name="l_density" value="{{ f.l_density }}"></div>
+<div><label>Уровень налива продукта, м</label><input type="text" name="l_fill" value="{{ f.l_fill }}"></div>
+<div><label>Уровень воды при гидроиспытаниях, м</label><input type="text" name="l_hydro" value="{{ f.l_hydro }}"></div>
+<div><label>Избыточное давление в газовом пространстве, Па</label><input type="text" name="l_overp" value="{{ f.l_overp }}"></div>
+<div><label>Вакуум, Па</label><input type="text" name="l_vac" value="{{ f.l_vac }}"></div>
+<div><label>Предел текучести стали R<sub>yn</sub>, МПа</label><input type="text" name="l_ryn" value="{{ f.l_ryn }}"></div>
+<div><label>Снеговой район</label><select name="l_snow">{% for v in snow %}<option {{ 'selected' if v == f.l_snow }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Ветровой район</label><select name="l_wind">{% for v in wind %}<option {{ 'selected' if v == f.l_wind }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Тип местности (A, B, C)</label><select name="l_terrain">{% for v in terrains %}<option {{ 'selected' if v == f.l_terrain }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Высота подъёма крыши, м</label><input type="text" name="l_roof_rise" value="{{ f.l_roof_rise }}"></div>
+<div><label>Толщина настила крыши, мм</label><input type="text" name="l_deck" value="{{ f.l_deck }}"></div>
+<div><label>Теплоизоляция: толщина, мм (0 — нет)</label><input type="text" name="l_ins_t" value="{{ f.l_ins_t }}"></div>
+<div><label>Теплоизоляция: плотность, кг/м³</label><input type="text" name="l_ins_rho" value="{{ f.l_ins_rho }}"></div></div>
+<label>Оборудование: по строке на позицию «Название; количество; масса одной штуки, кг; пояса (1,2) или крыша»</label>
+<textarea name="l_equipment" style="min-height:90px" placeholder="Люк-лаз 600; 2; 170; 1&#10;Площадка на крыше; 1; 4297; крыша">{{ f.l_equipment }}</textarea></div>
+
+<div class="loads-block struct"><h2 class="fstep">3. Конструкция резервуара</h2><p class="sub">Необязательно (если вы загрузили файл проекта, берётся из него): патрубки, днище, крыша. Покажем их в 3D на странице проверки и передадим в расчётную модель.</p>
+<details class="blk" {{ 'open' if nz_rows }}><summary>Патрубки стенки</summary>
+<div id="nz-rows">{% for r in nz_rows or [] %}<div class="nzrow"><input name="s_nz_name" placeholder="Название" value="{{ r.name }}"><select name="s_nz_shape">{% for v in shapes %}<option {{ 'selected' if v == r.shape }}>{{ v }}</option>{% endfor %}</select><input name="s_nz_width" placeholder="Ø / ширина, мм" value="{{ r.width }}"><input name="s_nz_height" placeholder="Высота овала, мм" value="{{ r.height }}"><input name="s_nz_z" placeholder="Высота центра, м" value="{{ r.z }}"><input name="s_nz_angle" placeholder="Угол от образ. №1, °" value="{{ r.angle }}"><input name="s_nz_t" placeholder="Толщина, мм" value="{{ r.t }}"><input name="s_nz_in" placeholder="Длина внутри, мм" value="{{ r.in }}"><input name="s_nz_out" placeholder="Длина снаружи, мм" value="{{ r.out }}"><button type="button" class="x" title="Удалить">×</button></div>{% endfor %}</div>
+<p><button type="button" class="btn light" id="nz-add">+ Добавить патрубок</button></p>
+<p><small>Ось горизонтальная, радиальная. Размеры наружные; для круглого сечения высота овала не нужна. Угол отсчитывается от образующей №1.</small></p></details>
+<details class="blk" {{ 'open' if f.s_posted and f.s_bot_on }}><summary>Днище и окрайка</summary>
+<label class="chk"><input type="checkbox" name="s_bot_on" value="1" {{ 'checked' if f.s_bot_on or not f.s_posted }}><span>Добавить днище и окрайку</span></label><div class="grid"><div><label>Выступ окрайки наружу, мм</label><input type="text" name="s_bot_outside" value="{{ f.s_bot_outside }}"></div><div><label>Ширина окрайки, мм</label><input type="text" name="s_bot_width" value="{{ f.s_bot_width }}"></div><div><label>Нахлёст на окрайку, мм</label><input type="text" name="s_bot_overlap" value="{{ f.s_bot_overlap }}"></div><div><label>Уклон от центра к стенке 1 :</label><input type="text" name="s_bot_slope" value="{{ f.s_bot_slope }}"></div><div><label>Толщина днища, мм</label><input type="text" name="s_bot_plate_t" value="{{ f.s_bot_plate_t }}"></div><div><label>Толщина окрайки, мм</label><input type="text" name="s_bot_ann_t" value="{{ f.s_bot_ann_t }}"></div></div></details>
+<details class="blk" {{ 'open' if f.s_posted and f.s_roof_on }}><summary>Крыша: каркас, настил, узлы</summary>
+<label class="chk"><input type="checkbox" name="s_roof_on" value="1" {{ 'checked' if f.s_roof_on or not f.s_posted }}><span>Добавить крышу</span></label>
+<label>Вид крыши</label><select name="s_roof_shape">{% for v in roof_shapes %}<option {{ 'selected' if v == f.s_roof_shape }}>{{ v }}</option>{% endfor %}</select><div class="grid"><div><label>Радиус сферы, м</label><input type="text" name="s_roof_sphere_r" value="{{ f.s_roof_sphere_r }}"></div><div><label>Подъём конуса, м</label><input type="text" name="s_roof_cone_rise" value="{{ f.s_roof_cone_rise }}"></div><div><label>Радиус центрального кольца, м</label><input type="text" name="s_roof_central_r" value="{{ f.s_roof_central_r }}"></div><div><label>Радиальных балок</label><input type="text" name="s_roof_radial" value="{{ f.s_roof_radial }}"></div><div><label>Угол первой балки, °</label><input type="text" name="s_roof_first" value="{{ f.s_roof_first }}"></div><div><label>Промежуточных колец</label><input type="text" name="s_roof_rings" value="{{ f.s_roof_rings }}"></div><div><label>Толщина настила, мм</label><input type="text" name="s_roof_deck_t" value="{{ f.s_roof_deck_t }}"></div><div><label>Ширина опорной полосы, мм</label><input type="text" name="s_roof_band_w" value="{{ f.s_roof_band_w }}"></div><div><label>Толщина опорной полосы, мм</label><input type="text" name="s_roof_band_t" value="{{ f.s_roof_band_t }}"></div><div><label>Опускание полосы от верха, мм</label><input type="text" name="s_roof_band_drop" value="{{ f.s_roof_band_drop }}"></div><div><label>Опускание каркаса, мм</label><input type="text" name="s_roof_beam_drop" value="{{ f.s_roof_beam_drop }}"></div><div><label>Отступ края настила от стенки, мм</label><input type="text" name="s_roof_deck_inset" value="{{ f.s_roof_deck_inset }}"></div></div>
+<label class="chk"><input type="checkbox" name="s_node_on" value="1" {{ 'checked' if f.s_node_on or not f.s_posted }}><span>Добавить пластины узлов крыши</span></label><div class="grid"><div><label>Круговая пластина: высота, мм</label><input type="text" name="s_node_ring_h" value="{{ f.s_node_ring_h }}"></div><div><label>Круговая пластина: толщина, мм</label><input type="text" name="s_node_ring_t" value="{{ f.s_node_ring_t }}"></div><div><label>Верхние: длина внутрь, мм</label><input type="text" name="s_node_up_l" value="{{ f.s_node_up_l }}"></div><div><label>Верхние: высота вверх, мм</label><input type="text" name="s_node_up_h" value="{{ f.s_node_up_h }}"></div><div><label>Верхние: толщина, мм</label><input type="text" name="s_node_up_t" value="{{ f.s_node_up_t }}"></div><div><label>Нижние: длина внутрь, мм</label><input type="text" name="s_node_lo_l" value="{{ f.s_node_lo_l }}"></div><div><label>Нижние: высота вниз, мм</label><input type="text" name="s_node_lo_h" value="{{ f.s_node_lo_h }}"></div><div><label>Нижние: толщина, мм</label><input type="text" name="s_node_lo_t" value="{{ f.s_node_lo_t }}"></div></div>
+<h3 style="margin-top:18px">Сечения балок</h3><div class="grid"><div><label>Радиальные балки</label><input type="text" name="s_beam_radial" value="{{ f.s_beam_radial }}"></div><div><label>Центральное кольцо</label><input type="text" name="s_beam_central" value="{{ f.s_beam_central }}"></div><div><label>Кольцевые балки</label><input type="text" name="s_beam_rings" value="{{ f.s_beam_rings }}"></div><div><label>Периферийный швеллер</label><input type="text" name="s_beam_edge" value="{{ f.s_beam_edge }}"></div></div></details></div>
+<template id="nz-tpl"><div class="nzrow"><input name="s_nz_name" placeholder="Название" value=""><select name="s_nz_shape">{% for v in shapes %}<option >{{ v }}</option>{% endfor %}</select><input name="s_nz_width" placeholder="Ø / ширина, мм" value=""><input name="s_nz_height" placeholder="Высота овала, мм" value=""><input name="s_nz_z" placeholder="Высота центра, м" value=""><input name="s_nz_angle" placeholder="Угол от образ. №1, °" value=""><input name="s_nz_t" placeholder="Толщина, мм" value=""><input name="s_nz_in" placeholder="Длина внутри, мм" value=""><input name="s_nz_out" placeholder="Длина снаружи, мм" value=""><button type="button" class="x" title="Удалить">×</button></div></template>
+<script>(function(){var box=document.getElementById("nz-rows"),tpl=document.getElementById("nz-tpl");function add(){box.appendChild(tpl.content.cloneNode(true));}
+document.getElementById("nz-add").addEventListener("click",add);box.addEventListener("click",function(e){if(e.target.classList.contains("x"))e.target.parentNode.remove();});})();</script>
 <p><small>Образующие считаются равномерно по окружности, пояса — равной высоты (высота ÷ число поясов). Для других схем загрузите файл проекта.</small></p>
-<p><button class="btn">Проверить замеры</button> <a class="btn light" href="/new">Загрузить файл</a></p></form>{% endblock %}
+<p><button class="btn">Проверить замеры</button></p></form>{% endblock %}
