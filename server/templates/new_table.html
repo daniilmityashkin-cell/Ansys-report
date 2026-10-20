@@ -13,5 +13,23 @@
 <label>Файл Excel (.xlsx) с таблицей замеров</label><input type="file" name="xlsx" accept=".xlsx">
 <label>…или вставьте таблицу из Excel (только числа, без заголовков)</label><textarea name="table" placeholder="-10&#9;-9&#9;-6&#10;-12&#9;-23&#9;-27">{{ f.table or '' }}</textarea>
 <label>Толщины поясов снизу вверх, мм (через пробел: 13 12 12 11 11 …)</label><input type="text" name="thicknesses" value="{{ f.thicknesses or '' }}">
+
+<div class="loads-block"><label class="chk"><input type="checkbox" name="l_on" value="1" {{ 'checked' if f.l_on else '' }}><span><b>Рассчитать нагрузки</b> (гидростатика, избыточное давление, вакуум, снег, ветер, массы) по ГОСТ 31385-2016</span></label>
+<div class="grid">
+<div><label>Плотность продукта, т/м³</label><input type="text" name="l_density" value="{{ f.l_density }}"></div>
+<div><label>Уровень налива продукта, м</label><input type="text" name="l_fill" value="{{ f.l_fill }}"></div>
+<div><label>Уровень воды при гидроиспытаниях, м</label><input type="text" name="l_hydro" value="{{ f.l_hydro }}"></div>
+<div><label>Избыточное давление в газовом пространстве, Па</label><input type="text" name="l_overp" value="{{ f.l_overp }}"></div>
+<div><label>Вакуум, Па</label><input type="text" name="l_vac" value="{{ f.l_vac }}"></div>
+<div><label>Предел текучести стали R<sub>yn</sub>, МПа</label><input type="text" name="l_ryn" value="{{ f.l_ryn }}"></div>
+<div><label>Снеговой район</label><select name="l_snow">{% for v in snow %}<option {{ 'selected' if v == f.l_snow }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Ветровой район</label><select name="l_wind">{% for v in wind %}<option {{ 'selected' if v == f.l_wind }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Тип местности (A, B, C)</label><select name="l_terrain">{% for v in terrains %}<option {{ 'selected' if v == f.l_terrain }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Высота подъёма крыши, м</label><input type="text" name="l_roof_rise" value="{{ f.l_roof_rise }}"></div>
+<div><label>Толщина настила крыши, мм</label><input type="text" name="l_deck" value="{{ f.l_deck }}"></div>
+<div><label>Теплоизоляция: толщина, мм (0 — нет)</label><input type="text" name="l_ins_t" value="{{ f.l_ins_t }}"></div>
+<div><label>Теплоизоляция: плотность, кг/м³</label><input type="text" name="l_ins_rho" value="{{ f.l_ins_rho }}"></div></div>
+<label>Оборудование: по строке на позицию «Название; количество; масса одной штуки, кг; пояса (1,2) или крыша»</label>
+<textarea name="l_equipment" style="min-height:90px" placeholder="Люк-лаз 600; 2; 170; 1&#10;Площадка на крыше; 1; 4297; крыша">{{ f.l_equipment }}</textarea></div>
 <p><small>Образующие считаются равномерно по окружности, пояса — равной высоты (высота ÷ число поясов). Для других схем загрузите файл проекта.</small></p>
 <p><button class="btn">Проверить замеры</button></p></form>{% endblock %}

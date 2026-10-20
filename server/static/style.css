@@ -126,3 +126,6 @@ details.more summary:hover{color:var(--ink)}
 .packs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:18px 0}@media(max-width:800px){.packs{grid-template-columns:1fr}}
 .card.pack{margin:0;text-align:left}.card.pack .big{font-size:32px;font-weight:700;letter-spacing:-1px;margin:6px 0 2px}
 .balance{margin:0 0 10px;color:var(--muted)}.balance b{color:var(--accent);font-size:18px}
+
+.loads-block{margin-top:22px;padding-top:6px;border-top:1px solid var(--line)}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:16px 0 4px}.chk input{margin-top:4px}

@@ -19,7 +19,7 @@ def say(t):
     print(t)
 
 ns_globals = {}
-path = os.environ.get("ANSYS_REPORT_LOADS")
+path = os.environ.get("ANSYS_REPORT_LOADS") or os.path.join(out, "loads_data.py")      # при ручном запуске: положите loads_data.py в эту папку
 exec(io.open(path, encoding="utf-8").read(), ns_globals)
 L = ns_globals["LOADS"]
 D = L["geometry"]["diameter_mm"]

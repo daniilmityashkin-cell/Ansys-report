@@ -261,3 +261,29 @@ def test_preview_free_before_payment(site):
     assert img.status_code == 200 and img.headers["content-type"] == "image/png"
     assert c.get(g + "/all.zip").status_code == 404                         # файлы - только после оплаты
     assert TestClient(site).get(g + "/img/prev_unfold.png", follow_redirects=False).status_code in (303, 404)
+
+
+def test_loads_in_table_form_and_package(site):
+    """Нагрузки: вводятся в форме, считаются на странице бесплатно, пакет для Ansys выдаётся после оплаты."""
+    c = TestClient(site)
+    register(c)
+    tok = csrf_of(c, "/new/table")
+    data = {"csrf": tok, "title": "РВС-Н", "diameter": "28.5", "height": "18", "thicknesses": "13 12 11", "rows_are": "gens",
+            "table": "-10\t-9\t-6\n-12\t-23\t-27\n1\t-5\t-20\n60\t60\t52\n53\t64\t73",
+            "l_on": "1", "l_density": "0.934", "l_fill": "16", "l_hydro": "16", "l_overp": "2000", "l_vac": "250", "l_snow": "III", "l_wind": "II",
+            "l_terrain": "A", "l_roof_rise": "3", "l_deck": "4", "l_ryn": "345", "l_ins_t": "0", "l_ins_rho": "140",
+            "l_equipment": "Люк-лаз 600; 2; 170; 1\nПлощадка на крыше; 1; 4297; крыша"}
+    r = c.post("/new/table", data=data, follow_redirects=False)
+    assert r.status_code == 303, r.text[:400]
+    gen = r.headers["location"]
+    page = c.get(gen).text
+    assert "Нагрузки на резервуар" in page and "район III" in page and "Ветровая нагрузка по высоте" in page
+    _pay_fake(c, gen)
+    files = c.get(gen).text
+    assert "loads/loads_data.py" in files and "loads/apply_loads.py" in files and "Как_наложить_нагрузки.txt" in files
+    body = c.get(gen + "/files/loads/loads_data.py").text
+    assert "LOADS = " in body
+    bad = dict(data, l_snow="XX", csrf=csrf_of(c, "/new/table"))
+    assert c.post("/new/table", data=bad).status_code == 400
+    bad = dict(data, l_equipment="только название", csrf=csrf_of(c, "/new/table"))
+    assert "Оборудование" in c.post("/new/table", data=bad).text

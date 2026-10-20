@@ -19,11 +19,12 @@ from .models import User, Generation, Payment, now
 from .auth import (hash_password, verify_password, normalize_email, valid_email, csrf_token, csrf_ok, LoginLimiter,
                    canonical_email, is_disposable)
 from .fingerprint import data_key
+from .loadsinput import DEFAULTS, SNOW, WIND, TERRAINS
 from .payments import get_provider, settle
 from .jobs import JobRunner
 
 HERE = Path(__file__).parent
-PUBLIC_FILE_EXT = {".docx", ".step", ".igs", ".csv", ".json", ".html", ".png"}
+PUBLIC_FILE_EXT = {".docx", ".step", ".igs", ".csv", ".json", ".html", ".png", ".py", ".txt"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -233,7 +234,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return render(request, "new.html", u, error=err, title=title, text=text, status_code=400)
             return RedirectResponse(f"/g/{gid}", status_code=303)
 
-    def _create_generation(db, u: User, title: str, project: dict, summary: dict) -> Generation:
+    def _create_generation(db, u: User, title: str, project: dict, summary: dict, loads_input: dict | None = None) -> Generation:
         if db.scalar(select(func.count()).select_from(Generation).where(
                 Generation.user_id == u.id, Generation.created > now() - dt.timedelta(days=1))) >= st.max_drafts_per_day:
             raise ValueError("Слишком много проверок за сутки. Попробуйте завтра.")
@@ -244,6 +245,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         d = gen_dir(g.id)
         d.mkdir(parents=True, exist_ok=True)
         (d / "input.json").write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        if loads_input:
+            (d / "loads_input.json").write_text(json.dumps(loads_input, ensure_ascii=False), encoding="utf-8")
         runner.submit_preview(d)
         return g
 
@@ -253,17 +256,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             u = current_user(request, db)
             if not u:
                 return RedirectResponse("/login", status_code=303)
-            return render(request, "new_table.html", u, f={"rows_are": "gens"})
+            return render(request, "new_table.html", u, f={"rows_are": "gens", **DEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS)
 
     @app.post("/new/table")
     async def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
                                table: str = Form(""), thicknesses: str = Form(""), rows_are: str = Form("gens"), csrf: str = Form(""),
                                xlsx: UploadFile | None = File(None)):
+        raw_form = await request.form()                                 # поля расчёта нагрузок (l_*)
+        lform = {k: str(v) for k, v in raw_form.items() if k.startswith("l_")}
         bad = deny_csrf(request, csrf)
         if bad:
             return bad
         from .tableinput import build_project, table_from_xlsx
-        form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are}
+        from .loadsinput import build_loads_input
+        form = {"title": title, "diameter": diameter, "height": height, "table": table, "thicknesses": thicknesses, "rows_are": rows_are, **lform}
         with Session() as db:
             u = current_user(request, db)
             if not u:
@@ -276,9 +282,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     table = form["table"] = table_from_xlsx(raw)       # таблица из файла подставляется в поле
                 project = build_project(diameter, height, table, thicknesses, rows_are if rows_are in ("gens", "belts") else "gens")
                 summary = _preview(project)
-                gid = _create_generation(db, u, title, project, summary).id
+                loads_in = build_loads_input(lform, project)
+                gid = _create_generation(db, u, title, project, summary, loads_in).id
             except Exception as e:  # noqa: BLE001
-                return render(request, "new_table.html", u, error=str(e), f=form, status_code=400)
+                return render(request, "new_table.html", u, error=str(e), f=form, snow=SNOW, wind=WIND, terrains=TERRAINS, status_code=400)
             return RedirectResponse(f"/g/{gid}", status_code=303)
 
     def _owned(db, request: Request, gid: int):
@@ -308,8 +315,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return HTMLResponse("Не найдено", status_code=404)
             if g.status == "draft" and app.state.reconcile(u.id):      # вернулся с оплаты, а уведомление ещё не пришло
                 db.refresh(g)
+            loads_view = None
+            lp = gen_dir(g.id) / "loads_input.json"
+            if lp.exists():
+                try:
+                    from ansys_report.loads.rvs_loads import compute as compute_loads
+                    loads_view = compute_loads(json.loads(lp.read_text(encoding="utf-8")))
+                except Exception as e:  # noqa: BLE001
+                    loads_view = {"error": str(e)}
             mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
-            return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why,
+            return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view,
                           has_preview=(gen_dir(g.id) / "preview" / "prev_unfold.png").exists(),
                           files=_files(g.id) if g.status == "done" else [])
 
