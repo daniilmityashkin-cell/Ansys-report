@@ -38,7 +38,8 @@ def main(argv=None) -> int:
             ap.error("укажите проект Workbench (.wbpj/.wbpz) и --loads loads_data.py")
         from .ansys_connect import apply_loads_to_project, ConnectError
         try:
-            print("Проект с нагрузками:", apply_loads_to_project(a.project, a.loads, a.out, log=print, axis=a.axis))
+            apply_loads_to_project(a.project, a.loads, a.out, log=print, axis=a.axis)
+            print("Готово. Журнал наложения нагрузок:", Path(a.out) / "log_loads.txt")
         except ConnectError as e:
             print(f"Ошибка: {e}", file=sys.stderr)
             return 2

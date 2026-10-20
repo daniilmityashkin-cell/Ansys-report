@@ -138,7 +138,7 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             '    st("MECHANICAL OPEN")\n'
             + "\n".join(body) + "\n"
             "    model.Exit()\n"
-            + (f'    SaveAs(FilePath=r"{save_as}", Overwrite=True)\n' if save_as else "") +
+            + (f'    Save(FilePath=r"{save_as}", Overwrite=True)\n' if save_as else "") +
             "except:\n"
             '    st("ERROR " + traceback.format_exc().replace("\\n", " | "))\n',
             encoding="utf-8")
