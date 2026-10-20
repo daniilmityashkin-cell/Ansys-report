@@ -37,7 +37,12 @@
 <tr><td>Ветер (район {{ I.wind_district }}, местность {{ I.terrain }})</td><td>w₀ = {{ '%.2f'|format(I.w0_kpa) }} кПа{% if L.wind_pulsation_kpa is not none %}, пульсация {{ '%.3f'|format(L.wind_pulsation_kpa) }} кПа, ν = {{ '%.3f'|format(L.wind_correlation_nu) }}{% endif %}</td></tr>
 <tr><td>Масса металла крыши</td><td>{{ '%.0f'|format(loads_view.roof.metal_mass_kg) }} кг</td></tr>
 <tr><td>Масса теплоизоляции (стенка / крыша)</td><td>{{ '%.0f'|format(loads_view.wall.insulation_mass_kg) }} кг / {{ '%.0f'|format(loads_view.roof.insulation_mass_kg) }} кг</td></tr></table>
-{% if L.wind and L.wind[0].total_mpa is not none %}<h2 style="margin-top:18px">Ветровая нагрузка по высоте</h2><table><tr><th>Пояс</th><th>Высота, м</th><th>Нагрузка, кПа</th></tr>{% for w in L.wind %}<tr><td>{{ w.belt }}</td><td>{{ '%.1f'|format(w.z_top_m) }}</td><td>{{ '%.3f'|format(w.total_mpa * 1000) }}</td></tr>{% endfor %}</table>{% endif %}
+{% set hb = I.belt_height %}{% set op = L.hydrostatic_operation %}{% set ht = L.hydrostatic_hydrotest %}{% set th = summary.thickness_belts or [] %}
+<h2 style="margin-top:18px">Нагрузки по поясам стенки</h2>
+<p class="sub">Давление на нижней кромке пояса: гидростатика + избыточное давление; ветер — расчётный на высоте пояса (МПа × 1000 = кПа).</p>
+<div class="tablewrap"><table><tr><th>Пояс</th><th>Высота низа, м</th><th>Толщина, мм</th><th>Гидростатика, эксплуатация, кПа</th><th>Гидростатика, гидроиспытания, кПа</th><th>Ветер, кПа</th></tr>
+{% for w in L.wind %}{% set zb = w.z_bottom_m %}{% set pe = [op.fill_height_m - zb, 0]|max * op.density_kg_m3 * L.gravity_m_s2 / 1000 + L.overpressure_mpa * 1000 %}{% set ph = [ht.fill_height_m - zb, 0]|max * ht.density_kg_m3 * L.gravity_m_s2 / 1000 %}
+<tr><td>{{ w.belt }}</td><td>{{ '%.2f'|format(zb) }}</td><td>{{ th[loop.index0] if th|length > loop.index0 else '—' }}</td><td>{{ '%.1f'|format(pe) }}</td><td>{{ '%.1f'|format(ph) }}</td><td>{{ '%.3f'|format(w.total_mpa * 1000) if w.total_mpa is not none else '—' }}</td></tr>{% endfor %}</table></div>
 {% for n in loads_view.notes %}{% endfor %}</div>{% endif %}{% endif %}
 {% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card"><h2>Отчёт и файлы</h2><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
 {% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — в пакетах.{% elif mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% endif %}</p>

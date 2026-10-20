@@ -146,3 +146,4 @@ details.more summary:hover{color:var(--ink)}
 .vgrad{display:block;height:10px;flex:1;max-width:340px;border-radius:6px;background:linear-gradient(90deg,#00008f,#0000ff,#00ffff,#ffff00,#ff0000,#800000)}
 .vinfo{padding:8px 14px 12px;font-size:13px;color:var(--muted);background:var(--card);min-height:36px}
 td.warn{color:#ffb71b;font-weight:600}td.bad{color:#ff8a8a;font-weight:600}
+.tablewrap{overflow-x:auto}

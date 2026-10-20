@@ -289,7 +289,7 @@ def test_loads_in_table_form_and_package(site):
     assert r.status_code == 303, r.text[:400]
     gen = r.headers["location"]
     page = c.get(gen).text
-    assert "Нагрузки на резервуар" in page and "район III" in page and "Ветровая нагрузка по высоте" in page
+    assert "Нагрузки на резервуар" in page and "район III" in page and "Нагрузки по поясам стенки" in page and "Гидростатика, гидроиспытания, кПа" in page
     _pay_fake(c, gen)
     files = c.get(gen).text
     assert "loads/loads_data.py" in files and "loads/apply_loads.py" in files and "Как_наложить_нагрузки.txt" in files
