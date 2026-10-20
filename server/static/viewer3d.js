@@ -32,6 +32,7 @@ async function start(box) {
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, H / 2);
   controls.enableDamping = true;
+  controls.enableZoom = false;                       // колесо прокручивает страницу; масштаб - ползунком
   controls.update();
   scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 1.1));
   const sun = new THREE.DirectionalLight(0xffffff, 1.1);
@@ -107,7 +108,16 @@ async function start(box) {
   const bind = function (id, obj) { box.querySelector(id).addEventListener("change", function (e) { obj.visible = e.target.checked; }); };
   bind("#v-surf", surface); bind("#v-pts", points); bind("#v-wire", wire);
   ampInput.addEventListener("input", rebuild);
-  box.querySelector("#v-reset").addEventListener("click", function () { camera.position.copy(home); controls.target.set(0, 0, H / 2); controls.update(); });
+  const zoomInput = box.querySelector("#v-zoom"), zoomLabel = box.querySelector("#v-zoom-l");
+  const homeDist = home.distanceTo(controls.target);
+  function setZoom() {                                // 100% = исходный вид; больше - ближе
+    const k = Number(zoomInput.value) / 100, dir = camera.position.clone().sub(controls.target).normalize();
+    camera.position.copy(controls.target).addScaledVector(dir, homeDist / k);
+    zoomLabel.textContent = zoomInput.value + "%";
+    controls.update();
+  }
+  zoomInput.addEventListener("input", setZoom);
+  box.querySelector("#v-reset").addEventListener("click", function () { camera.position.copy(home); controls.target.set(0, 0, H / 2); zoomInput.value = 100; zoomLabel.textContent = "100%"; controls.update(); });
   box.querySelector("#v-full").addEventListener("click", function () { if (document.fullscreenElement) document.exitFullscreen(); else box.requestFullscreen && box.requestFullscreen(); });
 
   // --- подсказка при наведении
