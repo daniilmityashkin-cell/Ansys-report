@@ -1,4 +1,4 @@
-"""Сайт: регистрация и вход, кабинет, замеры → проверка → оплата → геометрия, подписка на технический отчёт."""
+"""Сайт: регистрация и вход, кабинет, замеры → проверка → оплата → геометрия, пакеты генераций."""
 from __future__ import annotations
 import datetime as dt
 import io
@@ -34,6 +34,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     templates.env.globals["asset_v"] = int((HERE / "static" / "style.css").stat().st_mtime)    # сброс кэша стилей при обновлении
+    templates.env.filters["rub"] = lambda n: f"{int(n):,}".replace(",", "\u00a0")       # 12000 -> 12 000
+    templates.env.globals["min_unit"] = min((p // n for n, p in st.packs.items()), default=0)    # самая низкая цена генерации в пакетах
     limiter = LoginLimiter()
 
     def gen_dir(gid: int) -> Path:
@@ -45,6 +47,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not g:
                 return
             g.status, g.error = ("done", "") if not error else ("error", error)
+            if error and g.charged == "credit":                      # ошибка расчёта: генерация возвращается в пакет
+                u = db.get(User, g.user_id)
+                u.credits = (u.credits or 0) + 1
+                g.charged = "refunded"
             db.commit()
     runner = JobRunner(st.workers, st.inline_jobs, on_done)
     app.state.settings, app.state.Session, app.state.runner = st, Session, runner
@@ -63,16 +69,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return (request.client.host if request.client else "")[:64]
 
     def pay_mode(db, u: User, g: Generation) -> tuple[str, str]:
-        """Как оформляется эта генерация: sub - по подписке, free - первая бесплатная, pay - разовая оплата, blocked - нужна подписка."""
-        if u.has_subscription:
-            return "sub", ""
+        """Как оформляется эта генерация: credit - из пакета, free - первая бесплатная, pay - разовая оплата, blocked - нужен пакет."""
+        if u.credit_count > 0:
+            return "credit", ""
         used = db.scalar(select(func.count()).select_from(Generation).where(
             Generation.user_id == u.id, Generation.id != g.id, Generation.status.in_(("paid", "running", "done"))))
         if used:
-            return "blocked", "Разовая генерация на этом аккаунте уже использована. Дальше генерации доступны по подписке."
+            return "blocked", "Разовая генерация на этом аккаунте уже использована. Дальше генерации доступны в пакетах."
         if g.data_key and db.scalar(select(func.count()).select_from(Generation).where(
                 Generation.data_key == g.data_key, Generation.user_id != u.id, Generation.status.in_(("paid", "running", "done")))):
-            return "blocked", "Эти замеры уже обрабатывались на другом аккаунте. Для повторной генерации нужна подписка."
+            return "blocked", "Эти замеры уже обрабатывались на другом аккаунте. Для повторной генерации нужен пакет."
         return ("free" if st.first_generation_free else "pay"), ""
 
     def current_user(request: Request, db) -> User | None:
@@ -321,7 +327,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mode, _ = pay_mode(db, u, g)
             if mode == "blocked":
                 return RedirectResponse(f"/g/{g.id}", status_code=303)
-            if mode in ("sub", "free"):                         # по подписке и первая бесплатная - без платежа
+            if mode in ("credit", "free"):                      # из пакета и первая бесплатная - без платежа
+                if mode == "credit":
+                    u.credits = u.credit_count - 1
+                g.charged = mode
                 start_job(db, g)
                 return RedirectResponse(f"/g/{g.id}", status_code=303)
             p = Payment(user_id=u.id, kind="generation", generation_id=g.id, amount_rub=st.price_generation_rub, provider=st.payment_provider)
@@ -389,14 +398,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return RedirectResponse(back, status_code=303)
 
     def _apply_payment(db, p: Payment) -> str:
-        applied = settle(db, p, st.subscription_days)
+        applied = settle(db, p)
         db.commit()
         if p.kind == "generation" and p.generation_id:
             g = db.get(Generation, p.generation_id)
             if applied and g and g.status == "paid":
                 start_job(db, g)
             return f"/g/{p.generation_id}"
-        return "/subscription"
+        return "/packs"
 
     def reconcile(user_id: int | None = None) -> int:
         """Сверка ожидающих платежей с провайдером (на случай, если уведомление не дошло: сервер был выключен, сбой сети).
@@ -452,19 +461,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 _apply_payment(db, p)
         return JSONResponse({"ok": True})
 
-    # --- подписка и технический отчёт ---
-    @app.get("/subscription", response_class=HTMLResponse)
-    def subscription(request: Request):
+    # --- пакеты генераций ---
+    @app.get("/packs", response_class=HTMLResponse)
+    def packs(request: Request):
         with Session() as db:
             u = current_user(request, db)
             if not u:
                 return RedirectResponse("/login", status_code=303)
             if app.state.reconcile(u.id):
                 db.refresh(u)
-            return render(request, "subscription.html", u)
+            return render(request, "packs.html", u)
 
-    @app.post("/subscription/buy")
-    def subscription_buy(request: Request, csrf: str = Form("")):
+    @app.get("/subscription")
+    def subscription_moved():
+        return RedirectResponse("/packs", status_code=303)
+
+    @app.post("/packs/buy")
+    def packs_buy(request: Request, size: str = Form(""), csrf: str = Form("")):
         bad = deny_csrf(request, csrf)
         if bad:
             return bad
@@ -472,10 +485,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             u = current_user(request, db)
             if not u:
                 return RedirectResponse("/login", status_code=303)
-            p = Payment(user_id=u.id, kind="subscription", amount_rub=st.price_subscription_rub, provider=st.payment_provider)
+            n = int(size) if size.isdigit() else 0
+            if n not in st.packs:
+                return RedirectResponse("/packs", status_code=303)
+            p = Payment(user_id=u.id, kind="pack", qty=n, amount_rub=st.packs[n], provider=st.payment_provider)
             db.add(p)
             db.flush()
-            url = get_provider(st.payment_provider).create(p, f"{st.base_url}/subscription", "Подписка на технический отчёт")
+            url = get_provider(st.payment_provider).create(p, f"{st.base_url}/packs", f"Пакет {n} генераций")
             db.commit()
             return RedirectResponse(url, status_code=303)
 

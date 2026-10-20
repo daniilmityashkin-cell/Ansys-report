@@ -11,6 +11,15 @@ def _bool(name: str, default: bool) -> bool:
     return default if v is None else v.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _packs(text: str) -> dict:
+    out = {}
+    for part in text.split(","):
+        n, _, price = part.partition(":")
+        if n.strip().isdigit() and price.strip().isdigit():
+            out[int(n)] = int(price)
+    return dict(sorted(out.items()))
+
+
 @dataclass
 class Settings:
     data_dir: Path = field(default_factory=lambda: Path(os.environ.get("ASR_DATA_DIR", "server_data")))
@@ -20,8 +29,7 @@ class Settings:
     base_url: str = field(default_factory=lambda: os.environ.get("ASR_BASE_URL", "http://127.0.0.1:8000"))
     payment_provider: str = field(default_factory=lambda: os.environ.get("ASR_PAYMENT_PROVIDER", "fake"))
     price_generation_rub: int = field(default_factory=lambda: int(os.environ.get("ASR_PRICE_GENERATION", "1500")))
-    price_subscription_rub: int = field(default_factory=lambda: int(os.environ.get("ASR_PRICE_SUBSCRIPTION", "9900")))
-    subscription_days: int = field(default_factory=lambda: int(os.environ.get("ASR_SUBSCRIPTION_DAYS", "30")))
+    packs: dict = field(default_factory=lambda: _packs(os.environ.get("ASR_PACKS", "10:12000,25:27500,50:50000")))   # размер пакета: цена, ₽
     max_upload_bytes: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_UPLOAD", str(2_000_000))))
     inline_jobs: bool = field(default_factory=lambda: _bool("ASR_INLINE_JOBS", False))   # тесты: считать в этом же процессе
     max_reg_per_ip: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_REG_PER_IP", "3")))     # регистраций с одного IP за сутки

@@ -1,4 +1,4 @@
 {% extends "base.html" %}{% block body %}
 <h1>Тестовая оплата</h1><p class="sub">Режим разработки: деньги не списываются.</p>
 <form class="card" method="post" style="max-width:480px"><input type="hidden" name="csrf" value="{{ csrf }}">
-<p>Платёж №{{ p.id }} на сумму <b>{{ p.amount_rub }} ₽</b> ({{ 'подписка' if p.kind == 'subscription' else 'генерация' }}).</p><button class="btn">Оплатить (тест)</button></form>{% endblock %}
+<p>Платёж №{{ p.id }} на сумму <b>{{ p.amount_rub }} ₽</b> ({{ ('пакет ' ~ p.qty ~ ' генераций') if p.kind == 'pack' else 'генерация' }}).</p><button class="btn">Оплатить (тест)</button></form>{% endblock %}

@@ -20,11 +20,12 @@ class User(Base):
     consent_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)      # согласие на обработку персональных данных
     email_key: Mapped[str | None] = mapped_column(String(254), nullable=True, index=True)  # почта без псевдонимов (точки, +метки): защита от дублей
     reg_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    credits: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)          # остаток генераций из купленных пакетов
     generations: Mapped[list["Generation"]] = relationship(back_populates="user")
 
     @property
-    def has_subscription(self) -> bool:
-        return bool(self.subscription_until and self.subscription_until > now())
+    def credit_count(self) -> int:
+        return self.credits or 0
 
 
 class Generation(Base):
@@ -38,6 +39,7 @@ class Generation(Base):
     summary: Mapped[str] = mapped_column(Text, default="{}")       # JSON: итоги проверки по допускам
     error: Mapped[str] = mapped_column(Text, default="")
     data_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)   # отпечаток замеров (одни и те же данные на разных аккаунтах)
+    charged: Mapped[str | None] = mapped_column(String(10), nullable=True)                # как оплачена: credit | free | payment | refunded
     user: Mapped[User] = relationship(back_populates="generations")
 
 
@@ -45,7 +47,8 @@ class Payment(Base):
     __tablename__ = "payments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    kind: Mapped[str] = mapped_column(String(20))                   # generation | subscription
+    kind: Mapped[str] = mapped_column(String(20))                   # generation | pack
+    qty: Mapped[int | None] = mapped_column(Integer, nullable=True)  # для пакета: число генераций
     generation_id: Mapped[int | None] = mapped_column(ForeignKey("generations.id"), nullable=True)
     amount_rub: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)     # pending | paid | canceled

@@ -1,4 +1,4 @@
-"""Сайт: регистрация, замеры → проверка → оплата (тестовый провайдер) → геометрия, доступ только владельцу, подписка."""
+"""Сайт: регистрация, замеры → проверка → оплата (тестовый провайдер) → геометрия, доступ только владельцу, пакеты генераций."""
 import json
 import re
 
@@ -94,24 +94,33 @@ def test_other_user_cannot_see_generation(site):
     assert anon.get(gen, follow_redirects=False).status_code == 303
 
 
-def test_subscription_and_report_gate(site):
+def _buy_pack(c, size=10):
+    tok = csrf_of(c, "/packs")
+    pay = c.post("/packs/buy", data={"csrf": tok, "size": str(size)}, follow_redirects=False).headers["location"]
+    c.post(pay, data={"csrf": csrf_of(c, pay)})
+    return pay
+
+
+def test_pack_purchase_and_credits(site):
     c = TestClient(site)
     register(c)
     gen = new_generation(c).headers["location"]
     assert "входит в оплаченную генерацию" in c.get(gen + "/report").text
-    tok = csrf_of(c, "/subscription")
-    pay = c.post("/subscription/buy", data={"csrf": tok}, follow_redirects=False)
-    pay_url = pay.headers["location"]
-    c.post(pay_url, data={"csrf": csrf_of(c, pay_url)})
-    r = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False)    # по подписке без оплаты
+    pay_url = _buy_pack(c, 10)
+    assert "Осталось генераций: <b>10</b>" in c.get("/packs").text
+    r = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False)    # из пакета, без платежа
     assert r.headers["location"] == gen
     with site.state.Session() as db:
-        from server.models import User
-        u = db.query(User).one()
-        first = u.subscription_until
-    c.post(pay_url, data={"csrf": csrf_of(c, pay_url)})            # тот же платёж повторно: срок не растёт
+        from server.models import User, Payment
+        assert db.query(User).one().credits == 9
+        assert db.query(Payment).count() == 1
+    c.post(pay_url, data={"csrf": csrf_of(c, pay_url)})            # тот же платёж повторно: пакет не зачисляется дважды
     with site.state.Session() as db:
-        assert db.query(User).one().subscription_until == first
+        assert db.query(User).one().credits == 9
+    bad = c.post("/packs/buy", data={"csrf": csrf_of(c, "/packs"), "size": "7"}, follow_redirects=False)
+    assert bad.headers["location"] == "/packs"                       # неизвестный размер пакета не продаётся
+    with site.state.Session() as db:
+        assert db.query(Payment).count() == 1                         # новый платёж не создан
 
 
 def test_table_input_to_generation(site):
@@ -190,7 +199,7 @@ def _pay_fake(c, gen):
     return r
 
 
-def test_one_generation_per_account_then_subscription(site):
+def test_one_generation_per_account_then_pack(site):
     c = TestClient(site)
     register(c)
     g1 = new_generation(c).headers["location"]
@@ -200,19 +209,17 @@ def test_one_generation_per_account_then_subscription(site):
     p2["diameter"] = "31.0"                                    # другие данные: проверяем именно правило «одна на аккаунт»
     g2 = new_generation(c, p2, "РВС-2").headers["location"]
     page = c.get(g2).text
-    assert "уже использована" in page and "1500 ₽" not in page
+    assert "уже использована" in page and "1\u00a0500" not in page
     r = c.post(g2 + "/pay", data={"csrf": csrf_of(c, g2)}, follow_redirects=False)
     assert r.headers["location"] == g2                         # платёж не создаётся
     with site.state.Session() as db:
         from server.models import Payment
         assert db.query(Payment).count() == 1
-    tok = csrf_of(c, "/subscription")                           # подписка снимает ограничение
-    pay = c.post("/subscription/buy", data={"csrf": tok}, follow_redirects=False).headers["location"]
-    c.post(pay, data={"csrf": csrf_of(c, pay)})
-    assert "по подписке" in c.get(g2).text
+    _buy_pack(c, 10)                                            # пакет снимает ограничение
+    assert "из пакета" in c.get(g2).text
 
 
-def test_same_data_on_other_account_needs_subscription(site):
+def test_same_data_on_other_account_needs_pack(site):
     a, b = TestClient(site), TestClient(site)
     register(a)
     _pay_fake(a, new_generation(a).headers["location"])

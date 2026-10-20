@@ -1,6 +1,0 @@
-{% extends "base.html" %}{% block body %}
-<h1>Подписка</h1>
-<div class="card"><p>На аккаунте доступна одна разовая генерация (она включает технический отчёт). Для следующих нужна подписка: пока она активна, генерации и отчёты оформляются без ограничений и доплат.</p>
-<p><b>{{ st.price_subscription_rub }} ₽</b> за {{ st.subscription_days }} дней.</p>
-{% if user.has_subscription %}<p class="muted">Активна до {{ user.subscription_until.strftime('%d.%m.%Y') }}. Оплата продлит срок.</p>{% endif %}
-<form method="post" action="/subscription/buy"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">{{ 'Продлить' if user.has_subscription else 'Оформить подписку' }}</button></form></div>{% endblock %}

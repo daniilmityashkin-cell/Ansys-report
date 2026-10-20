@@ -14,10 +14,10 @@
 <h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
 {% else %}<div class="card"><p class="muted">Строим просмотр геометрии… <a href="/g/{{ g.id }}">Обновить страницу</a></p></div>{% endif %}
-{% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card"><h2>Отчёт и файлы</h2><p>{{ why }}</p><p><a class="btn" href="/subscription">Оформить подписку</a></p></div>
-{% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — по подписке.{% elif mode == 'sub' %} По вашей подписке доплата не требуется.{% endif %}</p>
+{% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card"><h2>Отчёт и файлы</h2><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
+{% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — в пакетах.{% elif mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% endif %}</p>
 <form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
-<button class="btn">{% if mode == 'sub' %}Получить отчёт и файлы (по подписке){% elif mode == 'free' %}Получить отчёт и файлы бесплатно{% else %}Получить отчёт и файлы — {{ st.price_generation_rub }} ₽{% endif %}</button></form></div>{% endif %}
+<button class="btn">{% if mode == 'credit' %}Получить отчёт и файлы (из пакета){% elif mode == 'free' %}Получить отчёт и файлы бесплатно{% else %}Получить отчёт и файлы — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
 {% elif g.status in ('paid','running') %}<div class="card"><p>Готовим отчёт и файлы. Обычно это занимает меньше минуты. <a href="/g/{{ g.id }}">Обновить</a></p></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
 {% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
