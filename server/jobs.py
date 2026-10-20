@@ -58,6 +58,9 @@ def compute_preview(gen_dir: str) -> None:
         from ansys_report.geometry import check, figures
         res = check.analyze(check.load_project(gen / "input.json"))
         figures.make_preview(res, gen / "preview")
+        from ansys_report.geometry.viewer_data import viewer_data
+        import json
+        (gen / "preview" / "viewer.json").write_text(json.dumps(viewer_data(res), separators=(",", ":")), encoding="utf-8")
     except Exception as e:   # noqa: BLE001
         (gen / "preview").mkdir(parents=True, exist_ok=True)
         (gen / "preview" / "error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")

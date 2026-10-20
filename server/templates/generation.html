@@ -8,11 +8,24 @@
 <span>Максимальное отклонение</span><span>{{ summary.max_abs_mm }} мм ({{ summary.worst_belt }}-й пояс)</span>
 <span>Вмятины</span><span>{% if summary.dents %}{% for d in summary.dents %}{{ d.name }} — {{ d.depth_mm }} мм{% if not loop.last %}; {% endif %}{% endfor %}{% else %}нет{% endif %}</span>
 <span>Участки толщины</span><span>{% for gr in summary.groups %}{{ gr.thickness_mm }} мм ({{ gr.bottom_m }}–{{ gr.top_m }} м){% if not loop.last %}; {% endif %}{% endfor %}</span></div></div>
-{% if has_preview %}<div class="card"><h2>Геометрия по таблице измерений</h2>
+{% if has_preview %}<div class="card"><h2>3D-модель по результатам съёмки</h2>
 <p class="sub">{{ summary.n_points }} точек стенки · {{ summary.n_gens }} образующих · {{ summary.n_belts }} поясов{% if summary.dents %} · вмятин: {{ summary.dents|length }}{% endif %}. Цвет по |Δr|, отклонения на 3D-видах усилены в 20 раз.</p>
-<div class="grid"><div><h2>Точки</h2><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><h2>Поверхность</h2><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div>
+<div class="viewer" id="viewer" data-src="/g/{{ g.id }}/viewer.json">
+<canvas></canvas>
+<div class="vbar"><label><input type="checkbox" id="v-surf" checked> Поверхность</label><label><input type="checkbox" id="v-pts"> Точки замеров</label><label><input type="checkbox" id="v-wire"> Сетка</label>
+<label>Усиление отклонений <input type="range" id="v-amp" min="1" max="60" value="20"> <b id="v-amp-l">20×</b></label>
+<button type="button" class="btn light" id="v-reset">Сбросить вид</button><button type="button" class="btn light" id="v-full">На весь экран</button></div>
+<div class="vlegend"><span id="v-min"></span><i class="vgrad"></i><span id="v-max"></span><span>· цвет по |Δr|</span></div>
+<div id="v-info" class="vinfo">Вращайте мышью, колесо — масштаб, правая кнопка — сдвиг. Наведите курсор на поверхность или точку, чтобы увидеть отклонение.</div>
+</div>
+<details class="more"><summary>Если 3D не открывается: статичные картинки</summary><div class="grid"><div><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div></details>
 <h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
+{% if summary.belts %}<div class="card"><h2>Оценка замеров по допускам (ГОСТ 31385-2016)</h2><p class="sub">Для каждого пояса: допуск H/200 и расширенный H/200 + 30 мм от высоты пояса, наибольшее по модулю отклонение и число точек за допуском.</p>
+<table><tr><th>Пояс</th><th>Высота, м</th><th>Толщина, мм</th><th>H/200, мм</th><th>H/200+30, мм</th><th>Макс. |Δ|, мм</th><th>Образующая</th><th>Выше H/200</th><th>Выше H/200+30</th></tr>
+{% for b in summary.belts %}<tr><td>{{ b.belt }}</td><td>{{ b.z_m }}</td><td>{{ summary.thickness_belts[loop.index0] if summary.thickness_belts else '' }}</td><td>{{ b.lim_a }}</td><td>{{ b.lim_b }}</td><td{% if b.max_abs > b.lim_b %} class="bad"{% elif b.max_abs > b.lim_a %} class="warn"{% endif %}>{{ b.max_abs }}</td><td>{{ b.max_gen }}</td><td>{{ b.over_a }} из {{ b.n }}</td><td>{{ b.over_b }} из {{ b.n }}</td></tr>{% endfor %}</table>
+{% if summary.worst %}<h2 style="margin-top:18px">Точки с наибольшим превышением допуска H/200</h2><table><tr><th>Пояс</th><th>Образующая</th><th>Угол, °</th><th>Высота, м</th><th>Δ, мм</th><th>Допуск, мм</th><th>|Δ| / допуск</th></tr>
+{% for w in summary.worst %}<tr><td>{{ w.belt }}</td><td>{{ w.gen }}</td><td>{{ w.angle }}</td><td>{{ w.z_m }}</td><td>{{ w.dev }}</td><td>{{ w.lim_a }}</td><td>{{ w.ratio }}</td></tr>{% endfor %}</table>{% endif %}</div>{% endif %}
 {% else %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
 {% if loads_view %}{% if loads_view.error %}<div class="err">Нагрузки не рассчитаны: {{ loads_view.error }}</div>{% else %}{% set L = loads_view.loads %}{% set I = loads_view.inputs %}
 <div class="card"><h2>Нагрузки на резервуар</h2><p class="sub">Расчёт по методике ГОСТ 31385-2016 и СП 20.13330. Здесь значения без коэффициентов; расчётные сочетания войдут в пакет для Ansys.</p>
@@ -33,7 +46,9 @@
 {% elif g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
 {% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
-<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}<script>
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
+<script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}
+<script>
 (function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now();
 function fail(m){w.innerHTML='<div><b>'+m+'</b><p class="muted"><a href="">Обновить страницу</a></p></div>';}
 function tick(){fetch(url,{credentials:"same-origin"}).then(function(r){return r.json();}).then(function(d){

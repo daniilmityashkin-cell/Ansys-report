@@ -256,11 +256,23 @@ def test_preview_free_before_payment(site):
     register(c)
     g = new_generation(c).headers["location"]
     page = c.get(g).text
-    assert "Геометрия по таблице измерений" in page and "Получить отчёт и файлы" in page
+    assert "3D-модель по результатам съёмки" in page and "Получить отчёт и файлы" in page
     img = c.get(g + "/img/prev_unfold.png")
     assert img.status_code == 200 and img.headers["content-type"] == "image/png"
     assert c.get(g + "/all.zip").status_code == 404                         # файлы - только после оплаты
     assert TestClient(site).get(g + "/img/prev_unfold.png", follow_redirects=False).status_code in (303, 404)
+
+
+def test_viewer_json_owner_only(site):
+    c = TestClient(site)
+    register(c)
+    g = new_generation(c).headers["location"]
+    r = c.get(g + "/viewer.json")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["nt"] and d["nz"] and len(d["grid"]) == d["nz"] * d["nt"]
+    assert c.get("/static/vendor/three.module.min.js").status_code == 200
+    assert TestClient(site).get(g + "/viewer.json", follow_redirects=False).status_code in (303, 404)
 
 
 def test_loads_in_table_form_and_package(site):

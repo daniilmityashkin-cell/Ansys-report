@@ -134,3 +134,15 @@ details.more summary:hover{color:var(--ink)}
 .card.wait{display:flex;gap:18px;align-items:center}.card.wait p{margin:4px 0 0}
 .spin{flex:none;width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* 3D-просмотр */
+.viewer{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0b0d10;margin-bottom:14px}
+.viewer canvas{display:block;width:100%;height:560px;touch-action:none;cursor:grab}.viewer canvas:active{cursor:grabbing}
+.viewer:fullscreen canvas{height:calc(100vh - 150px)}
+.vbar{display:flex;gap:14px 20px;flex-wrap:wrap;align-items:center;padding:10px 14px;border-top:1px solid var(--line);background:var(--card)}
+.vbar label{margin:0;display:flex;gap:7px;align-items:center;color:var(--ink);font-size:13.5px}
+.vbar .btn{padding:7px 15px;font-size:13px}.vbar input[type=range]{width:140px}
+.vlegend{display:flex;gap:10px;align-items:center;padding:8px 14px;font-size:12.5px;color:var(--muted);background:var(--card)}
+.vgrad{display:block;height:10px;flex:1;max-width:340px;border-radius:6px;background:linear-gradient(90deg,#00008f,#0000ff,#00ffff,#ffff00,#ff0000,#800000)}
+.vinfo{padding:8px 14px 12px;font-size:13px;color:var(--muted);background:var(--card);min-height:36px}
+td.warn{color:#ffb71b;font-weight:600}td.bad{color:#ff8a8a;font-weight:600}

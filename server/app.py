@@ -386,6 +386,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"status": g.status, "preview": (pv / "prev_unfold.png").exists(),
                                  "preview_error": (pv / "error.txt").read_text(encoding="utf-8")[:300] if (pv / "error.txt").exists() else ""})
 
+    @app.get("/g/{gid}/viewer.json")
+    def viewer_json(request: Request, gid: int):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            p = gen_dir(g.id) / "preview" / "viewer.json" if g else None
+            if not u or not g or not p.exists():
+                return HTMLResponse("Не найдено", status_code=404)
+            return FileResponse(p, media_type="application/json")
+
     @app.get("/g/{gid}/img/{name}")
     def preview_img(request: Request, gid: int, name: str):
         with Session() as db:
@@ -559,4 +568,9 @@ def _preview(project: dict) -> dict:
             "n_belts": len(r["belts"]), "over_a": r["over_a"], "over_b": r["over_b"], "ok_a": r["ok_a"], "ok_b": r["ok_b"],
             "max_abs_mm": round(r["max_abs"], 1), "worst_belt": wb["belt"], "dents": [
                 {"name": d["name"], "depth_mm": round(d["depth_mm"], 1)} for d in r["dents"]],
-            "groups": [{"thickness_mm": g["thickness_mm"], "bottom_m": g["bottom_m"], "top_m": g["top_m"]} for g in r["groups"]]}
+            "groups": [{"thickness_mm": g["thickness_mm"], "bottom_m": g["bottom_m"], "top_m": g["top_m"]} for g in r["groups"]],
+            "belts": [{"belt": b["belt"], "z_m": round(b["z_m"], 2), "lim_a": round(b["lim_a"], 1), "lim_b": round(b["lim_b"], 1), "max_abs": round(b["max_abs"], 1),
+                       "max_gen": b["max_gen"], "over_a": b["over_a"], "over_b": b["over_b"], "n": b["n"]} for b in r["belts"]],
+            "worst": [{"belt": w["belt"], "gen": w["gen"], "angle": round(w["angle"], 1), "z_m": round(w["z_m"], 2), "dev": round(w["dev"], 1),
+                       "lim_a": round(w["lim_a"], 1), "ratio": round(w["ratio_a"], 2)} for w in r["worst"][:10]],
+            "thickness_belts": [round(b["thickness_mm"], 1) for b in r["bands"]]}
