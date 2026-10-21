@@ -60,6 +60,15 @@ def main(argv=None) -> int:
             anketa["loads_file"] = str(Path(a.loads).resolve())
             import os
             os.environ["ANSYS_REPORT_LOADS"] = anketa["loads_file"]      # скрипты выгрузки берут толщины поясов из loads_data.py
+            try:                                                           # плотность продукта и уровень налива - из первого случая с гидростатикой
+                ns: dict = {}
+                exec(Path(anketa["loads_file"]).read_text(encoding="utf-8"), ns)
+                Ld = ns["LOADS"]
+                h = next(c["hydro"] for c in Ld["cases"] if c.get("hydro"))
+                anketa.setdefault("fill_level", round(h["free_surface_mm"]))
+                anketa.setdefault("product_density", round(h["gradient_mpa_mm"] * 1e9 / (Ld["gravity_mm_s2"] / 1000.0)))
+            except Exception:       # noqa: BLE001
+                pass
         axis = str(anketa.pop("vertical_axis", "Z")).upper()          # модель с сайта: вертикаль - ось Z
         try:
             files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve, settings=ModelSettings(vertical_axis=axis, static_prefix="AR:", full_analysis="AR: Эксплуатация"))

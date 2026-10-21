@@ -241,7 +241,8 @@ class Report:
         rows = [[f"{ROMAN[i]} пояс", fmt(x), fmt(x)] for i, x in enumerate(th)]
         if t.get("edge_thickness"):
             rows.append(["Окрайка днища", fmt(t["edge_thickness"]), fmt(t["edge_thickness"])])
-        rows.append(["Днище резервуара", fmt(t["bottom_thickness"]), fmt(t["bottom_thickness"])])
+        if t.get("bottom_thickness"):
+            rows.append(["Днище резервуара", fmt(t["bottom_thickness"]), fmt(t["bottom_thickness"])])
         self.table(["Обозначение элемента", "Номинальная толщина стенки, мм", "Расчетная толщина стенки, мм"], rows,
                    caption="Толщина элементов")
         self.deviation_section()
@@ -445,7 +446,7 @@ class Report:
         s_ok = "прочность стенки обеспечена (мембранные напряжения не превышают 1,5[σ])" if c["strength_ok"] else "прочность стенки НЕ обеспечена: мембранные напряжения превышают 1,5[σ] на отдельных поясах"
         i = res.get("ideal")
         items = [
-            f"Расчеты прочности стенки {t['name']} при наливе продукта плотностью {t['product_density']} кг/м3 до расчетной высоты {fmt(t['fill_level']/1000)} м "
+            f"Расчеты прочности стенки {t['name']} при наливе продукта плотностью {t.get('product_density') or '–'} кг/м3 до расчетной высоты {fmt((t.get('fill_level') or 0)/1000)} м "
             f"с учетом фактической формы стенки показали, что {s_ok}.",
             (f"Максимальные эквивалентные напряжения в стенке идеального РВС составили {i['equivalent']} МПа, мембранные – {i['membrane']} МПа, фибровые (меридиональные) – {i['fiber']} МПа." if i else None),
             f"Максимальные эквивалентные напряжения в стенке РВС с отклонениями от идеальной формы составили {fmt(c['max_eq'])} МПа, "

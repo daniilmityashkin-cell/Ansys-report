@@ -19,6 +19,8 @@ tank:                       # только описание объекта (в A
   hazard_class: "{{hazard_class}}"
   roof_radius: {{roof_radius}}
   kmd: "{{kmd}}"
+  product_density: {{product_density}}      # кг/м3 (если в Ansys нет объекта гидростатики)
+  fill_level: {{fill_level}}                # мм
 
 material:                   # свойства стали берутся из Engineering Data проекта Ansys; здесь — марка, стандарт и то, чего в Ansys нет
   name: "{{steel_name}}"        # пусто = название материала в Ansys
