@@ -99,8 +99,16 @@ def _wall_faces_sorted():
                 for f in body.Faces:
                     fl_.append((f.Centroid[ax_], f.Id))
     if H:
-        k = 1000.0 if max(abs(v) for v, _ in fl_) < 0.05 * H else 1.0
-        fl_ = [(v, i) for v, i in fl_ if 0.002 * H < v * k < 0.998 * H]
+        mx_ = 0.0
+        for v_, i_ in fl_:
+            if abs(v_) > mx_:
+                mx_ = abs(v_)
+        k = 1000.0 if mx_ < 0.05 * H else 1.0
+        keep_ = []
+        for v_, i_ in fl_:
+            if 0.002 * H < v_ * k < 0.998 * H:
+                keep_.append((v_, i_))
+        fl_ = keep_
     fl_.sort()
     return fl_
 
