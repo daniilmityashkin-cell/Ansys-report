@@ -10,6 +10,15 @@
 import os, io, re
 import System
 
+
+def _rd(path, enc="utf-8"):
+    """Читает файл целиком и сразу закрывает (IronPython не закрывает неявно: повторное чтение даёт «файл занят»)."""
+    fh_ = io.open(path, encoding=enc)
+    try:
+        return fh_.read()
+    finally:
+        fh_.close()
+
 out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 log = []
@@ -86,7 +95,7 @@ def _wall_faces_sorted():
     lp = os.environ.get("ANSYS_REPORT_LOADS")
     if lp and os.path.exists(lp):
         ns_ = {}
-        exec(io.open(lp, encoding="utf-8").read(), ns_)
+        exec(_rd(lp), ns_)
         H = ns_["LOADS"]["geometry"]["wall_height_mm"]
     fl_ = []
     ax_ = {"X": 0, "Y": 1, "Z": 2}[AXIS]

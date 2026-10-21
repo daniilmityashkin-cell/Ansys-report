@@ -4,6 +4,15 @@
 import os, io
 import System
 
+
+def _rd(path, enc="utf-8"):
+    """Читает файл целиком и сразу закрывает (IronPython не закрывает неявно: повторное чтение даёт «файл занят»)."""
+    fh_ = io.open(path, encoding=enc)
+    try:
+        return fh_.read()
+    finally:
+        fh_.close()
+
 pkg = os.environ.get("AR_PKG") or ""
 out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(pkg, "out")
 System.IO.Directory.CreateDirectory(out)
@@ -24,7 +33,7 @@ model = ExtAPI.DataModel.Project.Model
 zones = []
 zpath = os.path.join(pkg, "thickness_zones.csv")
 if os.path.exists(zpath):
-    for i, line in enumerate(io.open(zpath, encoding="utf-8-sig").read().splitlines()):
+    for i, line in enumerate(_rd(zpath, "utf-8-sig").splitlines()):
         if i == 0 or not line.strip():
             continue
         p = line.replace(u",", u".").split(u";")
@@ -34,7 +43,7 @@ parts = {}
 try:                                                     # parts.json: толщины днища, окрайки и крыши (если они достроены в модели)
     ppath = os.path.join(pkg, "parts.json")
     if os.path.exists(ppath):
-        pj = io.open(ppath, encoding="utf-8").read()
+        pj = _rd(ppath)
         for key in (u"disc_mm", u"annular_mm", u"roof_mm"):
             m_ = __import__("re").search(u'"%s":\\s*([0-9.]+)' % key, pj)
             if m_:
@@ -102,7 +111,7 @@ except Exception as e:
 os.environ["ANSYS_REPORT_LOADS"] = os.path.join(pkg, "loads_data.py")
 os.environ["ANSYS_REPORT_REUSE_FIRST"] = "1"
 try:
-    exec(io.open(os.path.join(pkg, "apply_loads.py"), encoding="utf-8").read())
+    exec(_rd(os.path.join(pkg, "apply_loads.py")))
 except Exception as e:
     bsay(u"ОШИБКА наложения нагрузок: %s" % e)
 

@@ -6,6 +6,15 @@
 import os, io
 import System
 
+
+def _rd(path, enc="utf-8"):
+    """Читает файл целиком и сразу закрывает (IronPython не закрывает неявно: повторное чтение даёт «файл занят»)."""
+    fh_ = io.open(path, encoding=enc)
+    try:
+        return fh_.read()
+    finally:
+        fh_.close()
+
 out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 AXIS = (os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()       # вертикаль модели: геометрия из «RVS Geometry» - Z
@@ -20,7 +29,7 @@ def say(t):
 
 ns_globals = {}
 path = os.environ.get("ANSYS_REPORT_LOADS") or os.path.join(out, "loads_data.py")      # при ручном запуске: положите loads_data.py в эту папку
-exec(io.open(path, encoding="utf-8").read(), ns_globals)
+exec(_rd(path), ns_globals)
 L = ns_globals["LOADS"]
 D = L["geometry"]["diameter_mm"]
 H = L["geometry"]["wall_height_mm"]

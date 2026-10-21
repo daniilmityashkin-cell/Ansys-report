@@ -6,6 +6,15 @@
 import os, io, math, re
 import System
 
+
+def _rd(path, enc="utf-8"):
+    """Читает файл целиком и сразу закрывает (IronPython не закрывает неявно: повторное чтение даёт «файл занят»)."""
+    fh_ = io.open(path, encoding=enc)
+    try:
+        return fh_.read()
+    finally:
+        fh_.close()
+
 out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 data = {"errors": []}
@@ -89,7 +98,7 @@ def _wall_faces_sorted():
     lp = os.environ.get("ANSYS_REPORT_LOADS")
     if lp and os.path.exists(lp):
         ns_ = {}
-        exec(io.open(lp, encoding="utf-8").read(), ns_)
+        exec(_rd(lp), ns_)
         H = ns_["LOADS"]["geometry"]["wall_height_mm"]
     fl_ = []
     ax_ = {"X": 0, "Y": 1, "Z": 2}[AXIS]
@@ -118,7 +127,7 @@ def _wall_faces_sorted():
 try:
     if not [b for b in bodies if re.match(BELT_RE, b["name"])] and os.environ.get("ANSYS_REPORT_LOADS") and os.path.exists(os.environ["ANSYS_REPORT_LOADS"]):
         ns = {}
-        exec(io.open(os.environ["ANSYS_REPORT_LOADS"], encoding="utf-8").read(), ns)
+        exec(_rd(os.environ["ANSYS_REPORT_LOADS"]), ns)
         bt = ns["LOADS"].get("belt_thickness_mm") or []
         fl = _wall_faces_sorted()
         if bt and len(fl) == len(bt):
@@ -129,7 +138,7 @@ try:
             data["belts_from_faces"] = True
             pp = os.path.join(os.path.dirname(os.environ["ANSYS_REPORT_LOADS"]), "parts.json")
             if os.path.exists(pp):
-                pj = io.open(pp, encoding="utf-8").read()
+                pj = _rd(pp)
                 for key, nm in ((u"disc_mm", u"dno"), (u"annular_mm", u"okrayka"), (u"roof_mm", u"krovlya")):
                     m_ = re.search(u'"%s":\\s*([0-9.]+)' % key, pj)
                     if m_:
