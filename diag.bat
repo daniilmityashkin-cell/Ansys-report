@@ -9,6 +9,12 @@ for %%F in ("%W%\out\log_build.txt" "%W%\out\log_loads.txt" "%W%\out\wb_status.t
   echo ===== %%~F =====
   if exist "%%~F" (type "%%~F") else (echo [no file])
 )
+for /r "%W%\report" %%F in (model_data.json) do (
+  if exist "%%F" (
+    echo ===== %%F =====
+    powershell -NoProfile -Command "$j=Get-Content -Raw -Encoding UTF8 -LiteralPath '%%F' | ConvertFrom-Json; 'errors:'; $j.errors; 'bodies:'; $j.bodies | ForEach-Object { $_.name + ' ' + $_.thickness }; 'belts_from_faces: ' + $j.belts_from_faces; 'belt_regex: ' + $j.belt_regex"
+  )
+)
 for /r "%W%\report" %%F in (log.txt wb_status.txt) do (
   echo ===== %%F =====
   type "%%F"
