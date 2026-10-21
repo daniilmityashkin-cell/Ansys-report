@@ -84,6 +84,20 @@ for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
     m = re.match(BELT_RE, b.Name)
     if m:
         belts[int(m.group(1))] = b.GetGeoBody().Id
+if not belts:                          # пояса - грани одного тела (модель из пакета сайта): сортируем грани по высоте
+    try:
+        fl = []
+        for asm in ExtAPI.DataModel.GeoData.Assemblies:
+            for part in asm.Parts:
+                for body in part.Bodies:
+                    for f in body.Faces:
+                        c = f.Centroid
+                        fl.append((c[{"X": 0, "Y": 1, "Z": 2}[AXIS]], f.Id))
+        fl.sort()
+        for i, (vv, fid) in enumerate(fl):
+            belts[i + 1] = fid
+    except Exception as e:
+        log.append(u"пояса-грани: %s" % e)
 log.append(u"Найдено поясов: %d" % len(belts))
 
 stab = [u"analysis,mode,k"]
@@ -155,18 +169,18 @@ for a in model.Analyses:
             if tn == "TotalDeformation" and not a.Name.startswith(EIGEN_PREFIX) and "Modal" in str(a.AnalysisType):
                 try:
                     f = r.ReportedFrequency
-                    modes.append(u"%s,%s,%s,%.6g,%s" % (a.Name, a.AnalysisType, r.Mode, f.Value, f.Unit))
+                    modes.append(u'"%s","%s",%s,%.6g,%s' % (a.Name, a.AnalysisType, r.Mode, f.Value, f.Unit))
                 except Exception:
                     pass
             mx, mn = r.Maximum, r.Minimum
-            summary.append(u"%s,%s,%.6g,%.6g,%s" % (a.Name, r.Name, mx.Value, mn.Value, mx.Unit))
+            summary.append(u'"%s","%s",%.6g,%.6g,%s' % (a.Name, r.Name, mx.Value, mn.Value, mx.Unit))
         except Exception:
             pass
     # 2. устойчивость: коэффициент запаса = ReportedFrequency у результатов Eigenvalue Buckling
     if a.Name.startswith(EIGEN_PREFIX):
         for r in sol.Children:
             if r.GetType().Name == "TotalDeformation":
-                stab.append(u"%s,%d,%.4f" % (a.Name, r.Mode, r.ReportedFrequency.Value))
+                stab.append(u'"%s",%d,%.4f' % (a.Name, r.Mode, r.ReportedFrequency.Value))
     # 3. прочность: максимумы по поясам
     elif a.Name.startswith(STATIC_PREFIX):
         created = []
