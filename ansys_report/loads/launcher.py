@@ -84,6 +84,9 @@ set "OUT=%WORK%\\report"
 set "EXE="
 if exist "%ProgramFiles%\\AnsysReport\\AnsysReport.exe" set "EXE=%ProgramFiles%\\AnsysReport\\AnsysReport.exe"
 if exist "%LocalAppData%\\Programs\\AnsysReport\\AnsysReport.exe" set "EXE=%LocalAppData%\\Programs\\AnsysReport\\AnsysReport.exe"
+if not defined ANSYS_REPORT_HOME if exist "%USERPROFILE%\\Ansys-report\\ansys_report" set "ANSYS_REPORT_HOME=%USERPROFILE%\\Ansys-report"
+if not defined ANSYS_REPORT_HOME if exist "C:\\Ansys-report\\ansys_report" set "ANSYS_REPORT_HOME=C:\\Ansys-report"
+if defined ANSYS_REPORT_HOME set "PYTHONPATH=%ANSYS_REPORT_HOME%;%PYTHONPATH%"
 echo Building the technical report, please wait (solving + extracting results, 5-20 minutes)...
 if defined EXE (
   "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" -o "%OUT%"
@@ -119,7 +122,7 @@ README = """Модель резервуара с нагрузками - откр
 
 Технический отчёт: после сборки модели дважды щёлкните Make_report.bat (или сразу Run_all.bat - сборка модели и отчёт подряд).
 Скрипт запустит расчёт в Workbench в фоне, выгрузит результаты и соберёт Word/Excel в C:\\ansys_report_work\\model\\report.
-Для этого на компьютере должна быть установлена программа ANSYS REPORT (AnsysReport_Setup.exe) или Python с пакетом ansys_report.
+Для этого на компьютере должна быть установлена программа ANSYS REPORT (AnsysReport_Setup.exe) или Python с папкой проекта (C:\\Ansys-report или %USERPROFILE%\\Ansys-report, либо переменная ANSYS_REPORT_HOME) и пакеты из requirements.txt.
 Реквизиты отчёта (номер, позиция, площадка, исполнитель) можно поправить в anketa.json до запуска.
 
 Состав: model.step - геометрия (мм), thickness_zones.csv - участки толщины, loads_data.py - нагрузки, apply_loads.py и build_model.py - скрипты Mechanical,
