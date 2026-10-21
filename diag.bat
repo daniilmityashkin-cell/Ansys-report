@@ -5,9 +5,13 @@ cd /d "%~dp0"
 set "W=C:\ansys_report_work\model"
 if not exist diag mkdir diag
 (
-for %%F in ("%W%\out\log_build.txt" "%W%\out\log_loads.txt" "%W%\out\wb_status.txt" "%W%\report\_ansys_data\log.txt" "%W%\report\_ansys_data\wb_status.txt") do (
+for %%F in ("%W%\out\log_build.txt" "%W%\out\log_loads.txt" "%W%\out\wb_status.txt" ) do (
   echo ===== %%~F =====
   if exist "%%~F" (type "%%~F") else (echo [no file])
+)
+for /r "%W%\report" %%F in (log.txt wb_status.txt) do (
+  echo ===== %%F =====
+  type "%%F"
 )
 for /r "%W%\Tank_model_files" %%F in (solve.out file0.err file.err *.err) do (
   if exist "%%F" (

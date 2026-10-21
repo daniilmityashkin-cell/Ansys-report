@@ -53,6 +53,12 @@ try:
         except Exception as e:
             bsay(u"  толщина тела %s: %s" % (b.Name, e))
     bsay(u"Тел в модели: %d" % len(bodies))
+    for b in bodies:
+        try:
+            gb = b.GetGeoBody()
+            bsay(u"  тело %s: граней %d, площадь %.1f м2" % (b.Name, len(gb.Faces), sum([f.Area for f in gb.Faces]) / 1e6))
+        except Exception as e:
+            bsay(u"  тело %s: %s" % (b.Name, e))
 except Exception as e:
     bsay(u"ОШИБКА тел: %s" % e)
 
