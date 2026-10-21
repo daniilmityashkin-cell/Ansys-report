@@ -362,7 +362,8 @@ def crop_mesh_views(img_dir: Path, log=print) -> None:
 
 
 def _fname(analysis: str) -> str:
-    return analysis.replace(" ", "_")
+    """Имя случая в имени файла: так же, как в export_results.py (без символов, недопустимых в Windows)."""
+    return re.sub(r'[<>:"/\\|?*,;()\s]', "_", analysis)
 
 
 def _blocks(d: Path, settings) -> dict[str, str]:

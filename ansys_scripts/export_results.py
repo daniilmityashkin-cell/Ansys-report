@@ -105,7 +105,7 @@ modes = [u"analysis,type,mode,value,unit"]
 summary = [u"analysis,result,max,min,unit"]
 for a in model.Analyses:
     sol = a.Solution
-    aname = a.Name.replace(" ", "_")
+    aname = re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", a.Name)                    # без символов, недопустимых в именах файлов Windows
     try:                                   # расчёт не решён в проекте - при включённой опции решаем сейчас (проект не сохраняется)
         if os.environ.get("ANSYS_REPORT_SOLVE") == "1" and str(sol.Status) == "SolveRequired":
             log.append(u"%s: расчёт не решён, запускаю решение (может занять несколько минут)" % a.Name)
@@ -134,7 +134,7 @@ for a in model.Analyses:
                 except Exception:
                     pass
             fit_view(is_eigen)
-            Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
+            Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", r.Name))))
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
     # 1a. полные поля по всей стенке (эквивалентные, мембранные, фибровые), единицы МПа
@@ -150,7 +150,7 @@ for a in model.Analyses:
                 try:
                     r.Activate()
                     fit_view()
-                    Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, r.Name.replace(" ", "_"))))
+                    Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", r.Name))))
                 except Exception as e:
                     log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
         except Exception as e:
