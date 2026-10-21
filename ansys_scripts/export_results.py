@@ -134,6 +134,23 @@ for a in model.Analyses:
             log.append(u"%s: расчёт не решён, запускаю решение (может занять несколько минут)" % a.Name)
             sol.Solve(True)
             log.append(u"%s: после решения статус: %s" % (a.Name, sol.Status))
+            if str(sol.Status) == "SolveRequired":          # причина - в сообщениях Mechanical и в solve.out
+                try:
+                    for msg in ExtAPI.Application.Messages:
+                        log.append(u"  сообщение [%s]: %s" % (msg.Severity, msg.DisplayString))
+                except Exception as e:
+                    log.append(u"  сообщения: %s" % e)
+                try:
+                    wd = sol.WorkingDir
+                    log.append(u"  папка решателя: %s" % wd)
+                    for fn in (u"solve.out", u"file0.err", u"file.err"):
+                        fp = os.path.join(wd, fn)
+                        if os.path.exists(fp):
+                            lines = open(fp).read().splitlines()[-40:]
+                            log.append(u"  --- %s (хвост) ---" % fn)
+                            log.extend([unicode(x, "utf-8", "replace") for x in lines])
+                except Exception as e:
+                    log.append(u"  файлы решателя: %s" % e)
     except Exception as e:
         log.append(u"%s: ОШИБКА решения: %s" % (a.Name, e))
     try:                                   # в фоне результаты не вычислены, пока их не потребуют - вычисляем сразу
