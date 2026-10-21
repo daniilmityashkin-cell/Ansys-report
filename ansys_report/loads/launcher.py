@@ -20,7 +20,20 @@ def st(m):
     f.close()
 st("START")
 try:
-    template1 = GetTemplate(TemplateName="Static Structural")
+    template1 = None
+    for kw in ({"TemplateName": "Static Structural", "Solver": "ANSYS"},
+               {"TemplateName": "Static Structural", "Solver": "Mechanical"},
+               {"TemplateName": "Static Structural"},
+               {"TemplateName": "Static Structural (ANSYS)"},
+               {"TemplateName": "Static Structural (Samcef)"}):
+        try:
+            template1 = GetTemplate(**kw)
+            st("TEMPLATE OK: " + repr(kw))
+            break
+        except:
+            st("TEMPLATE FAIL " + repr(kw) + ": " + traceback.format_exc().splitlines()[-1])
+    if template1 is None:
+        raise Exception("Static Structural template not available in this Workbench (check licence / installed Mechanical)")
     system1 = template1.CreateSystem()
     geometry1 = system1.GetContainer(ComponentName="Geometry")
     geometry1.SetFile(FilePath=os.path.join(pkg, "model.step"))
