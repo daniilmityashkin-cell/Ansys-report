@@ -330,6 +330,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         diameter = form["diameter"] = diameter.strip() or f"{meta['diameter_m']:g}"
                         height = form["height"] = height.strip() or f"{meta['height_m']:g}"
                         form["sheet"] = meta["sheet"]
+                if not diameter.strip() and not height.strip():
+                    got = "файл получен, но лист со съёмкой в нём не найден" if (xlsx is not None and xlsx.filename) else "файл Excel не был передан (выберите его заново)"
+                    raise ValueError(f"Диаметр и высота не определены: {got}. Загрузите файл съёмки или впишите диаметр и высоту вручную.")
                 project = build_project(diameter, height, table, thicknesses, rows_are if rows_are in ("gens", "belts") else "gens")
                 summary = _preview(project)
                 loads_in = build_loads_input(lform, project)
