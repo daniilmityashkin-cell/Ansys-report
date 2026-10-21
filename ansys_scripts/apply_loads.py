@@ -50,29 +50,64 @@ def faces_of_model():
     return res
 
 faces = faces_of_model()
-scale = None
-cent = []
+if not faces:
+    raise Exception(u"в модели нет граней")
+
+
+def verts_of(f):
+    """Координаты вершин грани (GeoData отдаёт метры или мм); если у грани нет вершин - вершины её рёбер."""
+    pts = []
+    try:
+        for v in f.Vertices:
+            pts.append([v.X, v.Y, v.Z])
+    except Exception:
+        pass
+    if not pts:
+        try:
+            for e in f.Edges:
+                for v in e.Vertices:
+                    pts.append([v.X, v.Y, v.Z])
+        except Exception:
+            pass
+    if not pts:
+        c = f.Centroid
+        pts.append([c[0], c[1], c[2]])
+    return pts
+
+info = []
 for f in faces:
     c = f.Centroid
-    cent.append((f, [c[0], c[1], c[2]], f.Area))
-if not cent:
-    raise Exception(u"в модели нет граней")
-span = max(abs(vcoord(c)) for _, c, _ in cent)
-scale = 1.0 if span < H * 0.05 else (1000.0 if span < H * 50 else 1.0)       # GeoData отдаёт метры или мм: приводим к мм
-say(u"Грани: %d, масштаб координат к мм: %g" % (len(cent), scale))
+    info.append((f, [c[0], c[1], c[2]], f.Area, verts_of(f)))
+allv = [p for _, _, _, vs in info for p in vs]
+spans = [max(p[i] for p in allv) - min(p[i] for p in allv) for i in range(3)]
+span_all = max(spans)
+scale = 1000.0 if span_all < H * 0.05 else 1.0                                      # GeoData отдаёт метры или мм: приводим к мм
+# вертикаль модели определяем по геометрии: размер по вертикали = высота стенки (если высота не равна диаметру)
+cand = [i for i in range(3) if abs(spans[i] * scale - H) < 0.25 * H]
+if len(cand) == 1 and cand[0] != AX:
+    say(u"Вертикальная ось по геометрии: %s (в настройках была %s)" % (("X", "Y", "Z")[cand[0]], AXIS))
+    AX = cand[0]
+    VERT = ("X", "Y", "Z")[AX]
+say(u"Грани: %d, масштаб координат к мм: %g, размеры модели по X/Y/Z, мм: %.0f / %.0f / %.0f" % (len(info), scale, spans[0] * scale, spans[1] * scale, spans[2] * scale))
 wall_area = 3.14159 * D * H
 groups = {"wall": [], "roof": [], "bottom": [], "other": []}
-for f, c, a in cent:
-    z = vcoord(c) * scale
+for f, c, a, vs in info:
+    zs = [vcoord(p) * scale for p in vs]
+    zmin, zmax = min(zs), max(zs)
     area = a * scale * scale
+    flat = (zmax - zmin) < 0.01 * H
     if area < 0.02 * wall_area:
-        groups["other"].append(f)
-    elif z < 0.03 * H:
-        groups["bottom"].append(f)
-    elif z > 0.995 * H:
-        groups["roof"].append(f)
+        kind = "other"
+    elif flat and zmax < 0.03 * H:
+        kind = "bottom"
+    elif flat and zmin > 0.97 * H:
+        kind = "roof"
+    elif (zmax - zmin) >= 0.01 * H:
+        kind = "wall"
     else:
-        groups["wall"].append(f)
+        kind = "other"
+    groups[kind].append(f)
+    say(u"  грань: z %.0f..%.0f мм, площадь %.1f м2 -> %s" % (zmin, zmax, area / 1e6, kind))
 say(u"Стенка: %d, крыша: %d, днище: %d, прочие (патрубки и т.п.): %d" % (len(groups["wall"]), len(groups["roof"]), len(groups["bottom"]), len(groups["other"])))
 
 
