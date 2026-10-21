@@ -147,8 +147,8 @@ for a in model.Analyses:
     # 1. картинки существующих результатов (формы потери устойчивости смотрим сверху)
     is_eigen = a.Name.startswith(EIGEN_PREFIX)
     for r in sol.Children:
-        if r.Name.startswith("Solution Information"):
-            continue
+        if r.Name.startswith("Solution Information") or r.Name.startswith("Equivalent Stress ("):
+            continue                                      # картинки результатов по отдельным поясам (12 штук на случай) в отчёт не нужны
         try:
             r.Activate()
             if is_eigen:

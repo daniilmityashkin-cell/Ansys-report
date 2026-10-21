@@ -30,14 +30,15 @@ def build_full_step(wall_step: str | Path, out_step: str | Path, structure: dict
     from OCP.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
     from OCP.IFSelect import IFSelect_RetDone
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_SHELL
     from OCP.TopoDS import TopoDS
     from OCP.BRepBndLib import BRepBndLib
     from OCP.Bnd import Bnd_Box
     from OCP.gp import gp_Pnt, gp_Ax2, gp_Dir, gp_Circ
     from OCP.BRepBuilderAPI import (BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeEdge,
                                     BRepBuilderAPI_Sewing, BRepBuilderAPI_MakeVertex)
-    from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
+    from OCP.GeomAbs import GeomAbs_C0
     from OCP.BRepCheck import BRepCheck_Analyzer
 
     rd = STEPControl_Reader()
@@ -88,28 +89,45 @@ def build_full_step(wall_step: str | Path, out_step: str | Path, structure: dict
     sew.Add(disc)
     sew.Add(ring_face)
 
-    # --- крыша: купол по верхнему контуру стенки; сечения - окружности на сфере/конусе, вершина - апекс
+    # --- крыша: купол, ограниченный тем же ребром, что и верх стенки (общая кромка, сшивка без зазоров);
+    #     форма задаётся вершиной и точками на сфере/конусе
     ro = structure.get("roof") or {}
     rise = float(ro.get("rise_m", 0.1 * R / 1000.0)) * 1000.0
     shape = ro.get("shape", "Сферическая")
     Rs = (R * R + rise * rise) / (2 * rise) if rise > 0 else 1e12
-    ts = BRepOffsetAPI_ThruSections(False, False)
-    ts.AddWire(BRepBuilderAPI_MakeWire(ring_top).Wire())
-    n = 6
-    for i in range(1, n):
-        r = R * (1 - i / n)
-        z = H + (rise * (1 - r / R) if shape != "Сферическая" else (math.sqrt(Rs * Rs - r * r) - math.sqrt(Rs * Rs - R * R)))
-        c = gp_Circ(gp_Ax2(gp_Pnt(0, 0, z), gp_Dir(0, 0, 1)), r)
-        ts.AddWire(BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(c).Edge()).Wire())
-    ts.AddVertex(BRepBuilderAPI_MakeVertex(gp_Pnt(0, 0, H + rise)).Vertex())
-    ts.Build()
-    roof = ts.Shape()
-    sew.Add(roof)
+
+    def z_roof(r):
+        if shape != "Сферическая":
+            return H + rise * (1 - r / R)
+        return H + (math.sqrt(Rs * Rs - r * r) - math.sqrt(Rs * Rs - R * R))
+    fill = BRepOffsetAPI_MakeFilling(3, 15, 2, False, 1e-4, 1e-3, 0.01, 0.1, 8, 9)
+    fill.Add(ring_top, GeomAbs_C0)
+    fill.Add(gp_Pnt(0, 0, H + rise))
+    for i in range(1, 4):
+        r = R * (1 - i / 4)
+        for k in range(8):
+            t = 2 * math.pi * k / 8
+            fill.Add(gp_Pnt(r * math.cos(t), r * math.sin(t), z_roof(r)))
+    fill.Build()
+    if not fill.IsDone():
+        raise RuntimeError("не удалось построить поверхность крыши")
+    sew.Add(fill.Shape())
 
     sew.Perform()
     shell = sew.SewedShape()
     free = sew.NbFreeEdges()
     multi = sew.NbMultipleEdges()
+    # SewedShape() бывает составным: оболочка плюс отдельная грань. Собираем все грани в одну оболочку (рёбра уже общие).
+    from OCP.BRep import BRep_Builder
+    from OCP.TopoDS import TopoDS_Shell
+    builder = BRep_Builder()
+    one = TopoDS_Shell()
+    builder.MakeShell(one)
+    ex = TopExp_Explorer(shell, TopAbs_FACE)
+    while ex.More():
+        builder.Add(one, ex.Current())
+        ex.Next()
+    shell = one                                                  # ShapeFix_Shell тут не нужен: он делит оболочку при неоднозначной ориентации граней
     ok = BRepCheck_Analyzer(shell).IsValid()
     log(f"сшивка: свободных рёбер {free}, рёбер с 3+ гранями {multi}, валидность {ok}")
 

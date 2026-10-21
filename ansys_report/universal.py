@@ -103,6 +103,8 @@ class UniversalReport(Report):
             stem = fn[:-4]
             if stem in ("fig01_general", "fig02_mesh_wall_bottom", "fig03_mesh_wall_roof", "fig04_loads", "fig05_hydrostatic"):
                 continue
+            if "пояс" in stem or "участок" in stem or stem.endswith(("AR_Fiber", "AR_Membrane")):
+                continue                                  # по поясам и вспомогательные поля - только в таблицах, иначе отчёт тонет в рисунках
             key = f"u_{len(out) + 1}"
             raw[key] = fn
             out.append((key, stem.replace("_", " ")))
