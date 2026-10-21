@@ -81,6 +81,17 @@ try:
 except Exception as e:
     bsay(u"ОШИБКА наложения нагрузок: %s" % e)
 
+# --- вид: ось Z вверх, изометрия сверху, показать всё
+try:
+    from Ansys.ACT.Math import Vector3D
+    cam = Graphics.Camera
+    cam.UpVector = Vector3D(0, 0, 1)
+    cam.ViewVector = Vector3D(-1.0, -0.8, -0.5)
+    cam.SetFit()
+    bsay(u"Вид: Z вверх")
+except Exception as e:
+    bsay(u"Вид (Z вверх) не установлен: %s" % e)
+
 f = io.open(os.path.join(out, "log_build.txt"), "w", encoding="utf-8")
 f.write(u"\n".join(blog))
 f.close()
