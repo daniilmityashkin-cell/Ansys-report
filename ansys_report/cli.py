@@ -55,8 +55,12 @@ def main(argv=None) -> int:
         anketa = {k: d for k, _, d in FIELDS}
         if a.anketa:
             anketa.update({k: v for k, v in json.loads(Path(a.anketa).read_text(encoding="utf-8-sig")).items() if str(v).strip()})
+        from .settings import ModelSettings
+        if a.loads:
+            anketa["loads_file"] = str(Path(a.loads).resolve())
+        axis = str(anketa.pop("vertical_axis", "Z")).upper()          # модель с сайта: вертикаль - ось Z
         try:
-            files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve)
+            files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve, settings=ModelSettings(vertical_axis=axis))
         except (ConnectError, FileNotFoundError) as e:
             print(f"Ошибка: {e}", file=sys.stderr)
             return 2

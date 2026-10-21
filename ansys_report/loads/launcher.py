@@ -20,7 +20,20 @@ def st(m):
     f.close()
 st("START")
 try:
-    template1 = GetTemplate(TemplateName="Static Structural")
+    template1 = None
+    for kw in ({"TemplateName": "Static Structural", "Solver": "ANSYS"},
+               {"TemplateName": "Static Structural", "Solver": "Mechanical"},
+               {"TemplateName": "Static Structural"},
+               {"TemplateName": "Static Structural (ANSYS)"},
+               {"TemplateName": "Static Structural (Samcef)"}):
+        try:
+            template1 = GetTemplate(**kw)
+            st("TEMPLATE OK: " + repr(kw))
+            break
+        except:
+            st("TEMPLATE FAIL " + repr(kw) + ": " + traceback.format_exc().splitlines()[-1])
+    if template1 is None:
+        raise Exception("Static Structural template not available in this Workbench (check licence / installed Mechanical)")
     system1 = template1.CreateSystem()
     geometry1 = system1.GetContainer(ComponentName="Geometry")
     geometry1.SetFile(FilePath=os.path.join(pkg, "model.step"))
@@ -89,9 +102,9 @@ if not defined ANSYS_REPORT_HOME if exist "C:\\Ansys-report\\ansys_report" set "
 if defined ANSYS_REPORT_HOME set "PYTHONPATH=%ANSYS_REPORT_HOME%;%PYTHONPATH%"
 echo Building the technical report, please wait (solving + extracting results, 5-20 minutes)...
 if defined EXE (
-  "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" -o "%OUT%"
+  "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" -o "%OUT%"
 ) else (
-  python -m ansys_report report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" -o "%OUT%"
+  python -m ansys_report report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" -o "%OUT%"
 )
 echo.
 echo Report folder: %OUT%

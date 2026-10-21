@@ -152,7 +152,7 @@ for a in model.Analyses:
             continue
         try:
             tn = r.GetType().Name
-            if tn == "TotalDeformation" and not a.Name.startswith(EIGEN_PREFIX):
+            if tn == "TotalDeformation" and not a.Name.startswith(EIGEN_PREFIX) and "Modal" in str(a.AnalysisType):
                 try:
                     f = r.ReportedFrequency
                     modes.append(u"%s,%s,%s,%.6g,%s" % (a.Name, a.AnalysisType, r.Mode, f.Value, f.Unit))
