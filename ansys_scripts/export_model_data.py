@@ -83,29 +83,52 @@ for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
                    "thickness": s(getattr(b, "Thickness", "?")), "material": s(getattr(b, "Material", "?")),
                    "suppressed": s(getattr(b, "Suppressed", "?")),
                    "geo_id": getattr(b.GetGeoBody(), "Id", None) if hasattr(b, "GetGeoBody") else None})
-# пояса, заданные ГРАНЯМИ одного тела (модель из пакета сайта): добавляем их как тела P1..Pn (снизу вверх), толщины - из loads_data.py
+def _wall_faces_sorted():
+    """Грани стенки снизу вверх (днище и окрайка у отметки 0, крыша выше H исключаются). H - из loads_data.py."""
+    H = None
+    lp = os.environ.get("ANSYS_REPORT_LOADS")
+    if lp and os.path.exists(lp):
+        ns_ = {}
+        exec(io.open(lp, encoding="utf-8").read(), ns_)
+        H = ns_["LOADS"]["geometry"]["wall_height_mm"]
+    fl_ = []
+    ax_ = {"X": 0, "Y": 1, "Z": 2}[AXIS]
+    for asm in ExtAPI.DataModel.GeoData.Assemblies:
+        for part in asm.Parts:
+            for body in part.Bodies:
+                for f in body.Faces:
+                    fl_.append((f.Centroid[ax_], f.Id))
+    if H:
+        k = 1000.0 if max(abs(v) for v, _ in fl_) < 0.05 * H else 1.0
+        fl_ = [(v, i) for v, i in fl_ if 0.002 * H < v * k < 0.998 * H]
+    fl_.sort()
+    return fl_
+
+
+# пояса, заданные ГРАНЯМИ одного тела (модель из пакета сайта): добавляем их как тела p1..pN (снизу вверх), толщины - из loads_data.py;
+# днище, окрайка, крыша - как тела dno, okrayka, krovlya (толщины из parts.json рядом с loads_data.py)
 try:
     if not [b for b in bodies if re.match(BELT_RE, b["name"])] and os.environ.get("ANSYS_REPORT_LOADS") and os.path.exists(os.environ["ANSYS_REPORT_LOADS"]):
         ns = {}
         exec(io.open(os.environ["ANSYS_REPORT_LOADS"], encoding="utf-8").read(), ns)
         bt = ns["LOADS"].get("belt_thickness_mm") or []
-        fl = []
-        for asm in ExtAPI.DataModel.GeoData.Assemblies:
-            for part in asm.Parts:
-                for body in part.Bodies:
-                    for f in body.Faces:
-                        c = f.Centroid
-                        vv = vc(c[0], c[1], c[2])[0]
-                        fl.append((vv, f.Id))
-        fl.sort()
+        fl = _wall_faces_sorted()
         if bt and len(fl) == len(bt):
             mat = bodies[0]["material"] if bodies else u"?"
             for i, (vv, fid) in enumerate(fl):
                 bodies.append({"name": u"p%d" % (i + 1), "dimension": u"Surface", "thickness": u"%.6g [m]" % (bt[i] / 1000.0),
                                "material": mat, "suppressed": u"False", "geo_id": fid})
             data["belts_from_faces"] = True
+            pp = os.path.join(os.path.dirname(os.environ["ANSYS_REPORT_LOADS"]), "parts.json")
+            if os.path.exists(pp):
+                pj = io.open(pp, encoding="utf-8").read()
+                for key, nm in ((u"disc_mm", u"dno"), (u"annular_mm", u"okrayka"), (u"roof_mm", u"krovlya")):
+                    m_ = re.search(u'"%s":\\s*([0-9.]+)' % key, pj)
+                    if m_:
+                        bodies.append({"name": nm, "dimension": u"Surface", "thickness": u"%.6g [m]" % (float(m_.group(1)) / 1000.0),
+                                       "material": mat, "suppressed": u"False", "geo_id": None})
         else:
-            data["errors"].append(u"пояса-грани: граней %d, толщин %d" % (len(fl), len(bt)))
+            data["errors"].append(u"пояса-грани: граней стенки %d, толщин %d" % (len(fl), len(bt)))
 except Exception as e:
     data["errors"].append(u"пояса-грани: %s" % e)
 data["bodies"] = bodies

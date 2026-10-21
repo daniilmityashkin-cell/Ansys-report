@@ -6,3 +6,4 @@ ansys-mechanical-core>=0.11
 Pillow>=10
 numpy>=1.26
 matplotlib>=3.8
+cadquery-ocp>=7.7

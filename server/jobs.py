@@ -44,10 +44,28 @@ def compute(gen_dir: str, title: str) -> dict:
         from ansys_report.geometry import check as gcheck
         bm = gcheck.export_belt_model(json.loads((gen / "input.json").read_text(encoding="utf-8-sig")), gen / "result" / "belts_src")
         step, zones = bm["step"], bm["zones"]                        # пояса стенки - отдельные грани: результаты Ansys по поясам
+        parts = {}
+        try:                                                           # достраиваем окрайку, днище и крышу (нужен Open CASCADE)
+            from ansys_report.geometry.assembly import build_full_step, default_structure
+            sp = gen / "structure.json"
+            structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
+            li = json.loads(lp.read_text(encoding="utf-8"))
+            base = default_structure(float(li["diameter_m"]), float(li["wall_height_m"]), li.get("roof_rise_m"))
+            struct = {"bottom": {**base["bottom"], **(structure.get("bottom") or {})}, "roof": {**base["roof"], **(structure.get("roof") or {})}}
+            full = bm["step"].parent / "model_full.step"
+            info = build_full_step(step, full, struct)
+            if full.stat().st_size > 80_000_000:                       # очень подробная геометрия (много вмятин): полная модель слишком тяжёлая для Ansys
+                raise RuntimeError("полная модель %d МБ: оставлена только стенка" % (full.stat().st_size // 1_000_000))
+            step = full
+            b, r = struct["bottom"], struct["roof"]
+            parts = {"disc_mm": float(b["plate_thickness_mm"]), "annular_mm": float(b["annular_thickness_mm"]),
+                     "roof_mm": float(r.get("deck_thickness_mm") or li.get("roof_deck_thickness_m", 0.004) * 1000), "rise_mm": info["rise_mm"]}
+        except Exception as e:   # noqa: BLE001
+            (gen / "result" / "belts_src" / "assembly_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
         if step.exists() and zones.exists():                          # модель «открыть в Ansys» у заказчика
             from ansys_report.loads.launcher import write_open_package
             md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"],
-                                    anketa={"tag": title, "tank_name": title})
+                                    anketa={"tag": title, "tank_name": title}, parts=parts)
             files += [p for p in sorted(md.iterdir()) if p.is_file()]
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
 

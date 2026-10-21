@@ -1,6 +1,7 @@
 """Пакет «Открыть в Ansys»: заказчик запускает Open_in_Ansys.bat - Workbench собирает проект из STEP (материал, толщины, сетка), накладывает нагрузки
 и остаётся открытым. Работает на компьютере заказчика, с его установкой Ansys. Имена файлов - только латиницей (Workbench не любит кириллицу в путях)."""
 from __future__ import annotations
+import json
 import shutil
 from pathlib import Path
 
@@ -148,7 +149,7 @@ set "ANSYS_REPORT_FLIP=1" - добавьте её перед запуском Wo
 
 
 def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path, loads_data: str | Path, axis: str = "Z", mesh_mm: float = 150,
-                       anketa: dict | None = None) -> Path:
+                       anketa: dict | None = None, parts: dict | None = None) -> Path:
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copy2(step, dest / "model.step")
@@ -161,6 +162,7 @@ def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path
     (dest / "Make_report.bat").write_text(REPORT_BAT, encoding="ascii", newline="\r\n")
     (dest / "Run_all.bat").write_text(RUN_ALL_BAT, encoding="ascii", newline="\r\n")
     import json
+    (dest / "parts.json").write_text(json.dumps(parts or {}, ensure_ascii=False, indent=1), encoding="utf-8")
     (dest / "anketa.json").write_text(json.dumps(anketa or {}, ensure_ascii=False, indent=1), encoding="utf-8")
     (dest / "README_RU.txt").write_text(README, encoding="utf-8")
     return dest

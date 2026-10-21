@@ -78,23 +78,38 @@ def mpa(q):
         v = v / 1e6
     return v
 
+
+def _wall_faces_sorted():
+    """Грани стенки снизу вверх: центр грани между отметками 0 и H (днище и окрайка у 0, крыша выше H исключаются).
+    H берём из loads_data.py (ANSYS_REPORT_LOADS); GeoData отдаёт метры или мм."""
+    H = None
+    lp = os.environ.get("ANSYS_REPORT_LOADS")
+    if lp and os.path.exists(lp):
+        ns_ = {}
+        exec(io.open(lp, encoding="utf-8").read(), ns_)
+        H = ns_["LOADS"]["geometry"]["wall_height_mm"]
+    fl_ = []
+    ax_ = {"X": 0, "Y": 1, "Z": 2}[AXIS]
+    for asm in ExtAPI.DataModel.GeoData.Assemblies:
+        for part in asm.Parts:
+            for body in part.Bodies:
+                for f in body.Faces:
+                    fl_.append((f.Centroid[ax_], f.Id))
+    if H:
+        k = 1000.0 if max(abs(v) for v, _ in fl_) < 0.05 * H else 1.0
+        fl_ = [(v, i) for v, i in fl_ if 0.002 * H < v * k < 0.998 * H]
+    fl_.sort()
+    return fl_
+
 model = ExtAPI.DataModel.Project.Model
 belts = {}
 for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
     m = re.match(BELT_RE, b.Name)
     if m:
         belts[int(m.group(1))] = b.GetGeoBody().Id
-if not belts:                          # пояса - грани одного тела (модель из пакета сайта): сортируем грани по высоте
+if not belts:                          # пояса - грани одного тела (модель из пакета сайта): сортируем грани стенки по высоте
     try:
-        fl = []
-        for asm in ExtAPI.DataModel.GeoData.Assemblies:
-            for part in asm.Parts:
-                for body in part.Bodies:
-                    for f in body.Faces:
-                        c = f.Centroid
-                        fl.append((c[{"X": 0, "Y": 1, "Z": 2}[AXIS]], f.Id))
-        fl.sort()
-        for i, (vv, fid) in enumerate(fl):
+        for i, (vv, fid) in enumerate(_wall_faces_sorted()):
             belts[i + 1] = fid
     except Exception as e:
         log.append(u"пояса-грани: %s" % e)

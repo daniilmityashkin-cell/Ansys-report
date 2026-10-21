@@ -30,6 +30,18 @@ if os.path.exists(zpath):
         p = line.replace(u",", u".").split(u";")
         zones.append((float(p[3]) * 1000.0, float(p[4]) * 1000.0, float(p[5])))
 bsay(u"Участков толщины: %d" % len(zones))
+parts = {}
+try:                                                     # parts.json: толщины днища, окрайки и крыши (если они достроены в модели)
+    ppath = os.path.join(pkg, "parts.json")
+    if os.path.exists(ppath):
+        pj = io.open(ppath, encoding="utf-8").read()
+        for key in (u"disc_mm", u"annular_mm", u"roof_mm"):
+            m_ = __import__("re").search(u'"%s":\\s*([0-9.]+)' % key, pj)
+            if m_:
+                parts[key] = float(m_.group(1))
+except Exception as e:
+    bsay(u"parts.json: %s" % e)
+bsay(u"Части модели: %s" % parts)
 
 # --- толщина тел (первая зона; остальные задаются APDL по высоте) и материал по умолчанию
 try:
@@ -47,11 +59,18 @@ except Exception as e:
 
 def apdl_thickness():
     """Секции оболочек для участков толщины: элементы стенки (AR_WALL) получают секцию по высоте центра элемента."""
-    if len(zones) < 2:
+    if len(zones) < 2 and not parts:
         return u""
     t = [u"/PREP7", u"*GET,e1,ELEM,0,NUM,MIN", u"*GET,matid,ELEM,e1,ATTR,MAT"]
     for k, (lo, hi, th) in enumerate(zones):
         t += [u"SECTYPE,%d,SHELL" % (901 + k), u"SECDATA,%r,matid,0,3" % th]
+    for sec, key, comp in ((981, u"disc_mm", u"AR_BOTTOM"), (982, u"annular_mm", u"AR_ANNULAR"), (983, u"roof_mm", u"AR_ROOF")):
+        if key in parts:
+            t += [u"SECTYPE,%d,SHELL" % sec, u"SECDATA,%r,matid,0,3" % parts[key],
+                  u"ALLSEL,ALL", u"CMSEL,S,%s,NODE" % comp, u"ESLN,S,1", u"EMODIF,ALL,SECNUM,%d" % sec]
+    if len(zones) < 2:
+        t.append(u"ALLSEL,ALL")
+        return u"\n".join(t + [u"/SOLU"])
     t += [u"*DIM,zlo,ARRAY,%d" % len(zones), u"*DIM,zhi,ARRAY,%d" % len(zones)]
     for k, (lo, hi, th) in enumerate(zones, 1):
         t += [u"zlo(%d)=%r" % (k, lo - 0.01), u"zhi(%d)=%r" % (k, hi + 0.01 if k == len(zones) else hi)]

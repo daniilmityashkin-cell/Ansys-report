@@ -95,21 +95,27 @@ for f, c, a, vs in info:
     zs = [vcoord(p) * scale for p in vs]
     zmin, zmax = min(zs), max(zs)
     area = a * scale * scale
-    flat = (zmax - zmin) < 0.01 * H
-    if area < 0.02 * wall_area:
+    zc = vcoord(c) * scale
+    if area < 0.001 * wall_area:
         kind = "other"
-    elif flat and zmax < 0.03 * H:
-        kind = "bottom"
-    elif flat and zmin > 0.97 * H:
-        kind = "roof"
+    elif zmax < 0.03 * H:
+        kind = "bottom"                                    # днище и окрайка: плоские грани у отметки 0
+    elif zmin > 0.97 * H:
+        kind = "roof"                                      # купол: начинается на отметке верха стенки
     elif (zmax - zmin) >= 0.01 * H:
         kind = "wall"
     else:
         kind = "other"
-    groups[kind].append((zmin, f))
+    groups[kind].append((zc, f, area))
     say(u"  грань: z %.0f..%.0f мм, площадь %.1f м2 -> %s" % (zmin, zmax, area / 1e6, kind))
 for k_ in groups:
-    groups[k_] = [f for _, f in sorted(groups[k_], key=lambda t: t[0])]         # грани стенки снизу вверх: номер грани = номер пояса
+    groups[k_] = sorted(groups[k_], key=lambda t: t[0])
+groups["annular"] = []
+if len(groups["bottom"]) >= 2:                              # самая большая плоская грань - днище, меньшая - окрайка
+    b_ = sorted(groups["bottom"], key=lambda t: -t[2])
+    groups["bottom"], groups["annular"] = [b_[0]], b_[1:]
+for k_ in groups:
+    groups[k_] = [t[1] for t in groups[k_]]                 # грани стенки снизу вверх: номер грани = номер пояса
 say(u"Стенка: %d, крыша: %d, днище: %d, прочие (патрубки и т.п.): %d" % (len(groups["wall"]), len(groups["roof"]), len(groups["bottom"]), len(groups["other"])))
 
 
@@ -132,6 +138,7 @@ def named_selection(name, entities):
 ns_wall = named_selection("AR_WALL", groups["wall"])
 ns_roof = named_selection("AR_ROOF", groups["roof"])
 ns_bottom = named_selection("AR_BOTTOM", groups["bottom"])
+ns_annular = named_selection("AR_ANNULAR", groups["annular"])
 edges = []
 for f in groups["wall"] + groups["bottom"]:
     for e in f.Edges:
@@ -220,12 +227,14 @@ for ci, case in enumerate(L["cases"]):
     try:
         an = base if (REUSE_FIRST and ci == 0 and base is not None) else model.AddStaticStructuralAnalysis()
         an.Name = u"AR: " + case["name"]
-        if ns_base is not None:
+        if ns_bottom is not None or ns_annular is not None:      # закрепление по днищу (как в ГОСТ Р 58622): днище и окрайка закреплены по всем степеням свободы
+            for nsx in (ns_bottom, ns_annular):
+                if nsx is not None:
+                    fx = an.AddFixedSupport()
+                    fx.Location = nsx
+        elif ns_base is not None:
             fx = an.AddFixedSupport()
             fx.Location = ns_base
-        if ns_bottom is not None:
-            fl = an.AddFrictionlessSupport()
-            fl.Location = ns_bottom
         sn = an.AddCommandSnippet()
         sn.Name = u"AR нагрузки: " + case["name"]
         sn.AppendText((extra_apdl + u"\n" if extra_apdl else u"") + apdl_case(case))
