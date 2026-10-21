@@ -18,7 +18,8 @@ for /r "%W%\Tank_model_files" %%F in (solve.out file0.err file.err *.err) do (
 ) > diag\diag.txt 2>&1
 git checkout -B diag-logs >nul 2>&1
 git add -f diag\diag.txt
-git commit -m "diag logs" >nul 2>&1
+git status --short
+git -c user.name=ansys-report -c user.email=ansys-report@local commit -m "diag logs"
 git push -f origin diag-logs
 echo Logs sent (branch diag-logs).
 git checkout - >nul 2>&1
