@@ -73,6 +73,23 @@ def analyze(project: dict) -> dict:
     }
 
 
+def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 0.1, log=lambda s: None) -> dict:
+    """Модель для расчётного пакета: STEP, где КАЖДЫЙ пояс - своя грань (общие рёбра), и thickness_zones.csv по поясам.
+    Нужна, чтобы Ansys выдавал результаты по поясам стенки (в отличие от файла для заказчика, где пояса одной толщины объединены)."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    model = rc.TankModel(project)
+    poles, tu, tv, _ = rc.make_cad(model, tolerance_mm, log)
+    groups = [dict(index=b["number"], first_belt=b["number"], last_belt=b["number"], bottom_m=b["bottom_m"], top_m=b["top_m"],
+                   thickness_mm=b["thickness_mm"]) for b in model.bands]
+    step = out_dir / "model_belts.step"
+    rc.step_write(step, poles, tu, tv, groups)
+    zones = out_dir / "thickness_zones_belts.csv"
+    zones.write_text("Участок;Первый пояс;Последний пояс;Низ, м;Верх, м;Толщина, мм\n" + "\n".join(
+        ";".join(str(g[k]) for k in ("index", "first_belt", "last_belt", "bottom_m", "top_m", "thickness_mm")) for g in groups), encoding="utf-8-sig")
+    return {"step": step, "zones": zones, "belts": len(groups)}
+
+
 def export_geometry(project: dict, out_dir: Path, tolerance_mm: float = 0.1, fmt: str = "STEP + IGES", log=print) -> dict:
     """Строит CAD-оболочку (STEP/IGES, мм, 1:1) и записывает вспомогательные файлы. Возвращает сведения о проверке."""
     out_dir = Path(out_dir)

@@ -58,9 +58,11 @@ def main(argv=None) -> int:
         from .settings import ModelSettings
         if a.loads:
             anketa["loads_file"] = str(Path(a.loads).resolve())
+            import os
+            os.environ["ANSYS_REPORT_LOADS"] = anketa["loads_file"]      # скрипты выгрузки берут толщины поясов из loads_data.py
         axis = str(anketa.pop("vertical_axis", "Z")).upper()          # модель с сайта: вертикаль - ось Z
         try:
-            files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve, settings=ModelSettings(vertical_axis=axis))
+            files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve, settings=ModelSettings(vertical_axis=axis, static_prefix="AR:", full_analysis="AR: Эксплуатация"))
         except (ConnectError, FileNotFoundError) as e:
             print(f"Ошибка: {e}", file=sys.stderr)
             return 2

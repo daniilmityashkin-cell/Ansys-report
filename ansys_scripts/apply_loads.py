@@ -106,8 +106,10 @@ for f, c, a, vs in info:
         kind = "wall"
     else:
         kind = "other"
-    groups[kind].append(f)
+    groups[kind].append((zmin, f))
     say(u"  грань: z %.0f..%.0f мм, площадь %.1f м2 -> %s" % (zmin, zmax, area / 1e6, kind))
+for k_ in groups:
+    groups[k_] = [f for _, f in sorted(groups[k_], key=lambda t: t[0])]         # грани стенки снизу вверх: номер грани = номер пояса
 say(u"Стенка: %d, крыша: %d, днище: %d, прочие (патрубки и т.п.): %d" % (len(groups["wall"]), len(groups["roof"]), len(groups["bottom"]), len(groups["other"])))
 
 
@@ -238,7 +240,7 @@ for ci, case in enumerate(L["cases"]):
                 sel.Entities = [f]
                 ez = sol.AddEquivalentStress()
                 ez.Location = sel
-                ez.Name = u"Equivalent Stress (участок %d)" % k
+                ez.Name = u"Equivalent Stress (пояс %d)" % k
         except Exception as e:
             say(u"  результаты не добавлены: %s" % e)
         say(u"Случай '%s': создан, нагрузки заданы" % case["name"])

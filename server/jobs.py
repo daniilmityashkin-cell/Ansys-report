@@ -41,8 +41,9 @@ def compute(gen_dir: str, title: str) -> dict:
         shutil.copy2(SCRIPTS / "apply_loads.py", pack_dir / "apply_loads.py")
         (pack_dir / "Как_наложить_нагрузки.txt").write_text(README_LOADS, encoding="utf-8")
         files += [pack["json"], pack["data"], pack["summary"], pack_dir / "apply_loads.py", pack_dir / "Как_наложить_нагрузки.txt"]
-        step = next(Path(f) for f in files if Path(f).suffix.lower() == ".step")
-        zones = step.parent / "Участки толщины.csv"
+        from ansys_report.geometry import check as gcheck
+        bm = gcheck.export_belt_model(json.loads((gen / "input.json").read_text(encoding="utf-8-sig")), gen / "result" / "belts_src")
+        step, zones = bm["step"], bm["zones"]                        # пояса стенки - отдельные грани: результаты Ansys по поясам
         if step.exists() and zones.exists():                          # модель «открыть в Ansys» у заказчика
             from ansys_report.loads.launcher import write_open_package
             md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"],

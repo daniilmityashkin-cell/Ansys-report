@@ -49,6 +49,7 @@ def write_package(res: dict, out_dir: str | Path, design: bool = True) -> dict:
         "point_masses": [{"name": m["name"], "category": m["category"], "mass_kg": m["mass_kg"], "location": m["location"]} for m in L["point_masses"]
                          if not m["name"].startswith("Пояс стенки")],
         "belt_z_mm": [[b * I["belt_height"] * 1000, (b + 1) * I["belt_height"] * 1000] for b in range(I["n_belts"])],
+        "belt_thickness_mm": [float(t["nominal_mm"]) for t in res["thickness"]],
         "design_factors": design,
         "resistance_mpa": {"operation": float(min(res["materials"]["R_operation"])), "hydrotest": float(res["materials"]["R_hydrotest"])},
     }

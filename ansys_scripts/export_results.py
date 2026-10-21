@@ -84,6 +84,20 @@ for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
     m = re.match(BELT_RE, b.Name)
     if m:
         belts[int(m.group(1))] = b.GetGeoBody().Id
+if not belts:                          # пояса - грани одного тела (модель из пакета сайта): сортируем грани по высоте
+    try:
+        fl = []
+        for asm in ExtAPI.DataModel.GeoData.Assemblies:
+            for part in asm.Parts:
+                for body in part.Bodies:
+                    for f in body.Faces:
+                        c = f.Centroid
+                        fl.append((c[{"X": 0, "Y": 1, "Z": 2}[AXIS]], f.Id))
+        fl.sort()
+        for i, (vv, fid) in enumerate(fl):
+            belts[i + 1] = fid
+    except Exception as e:
+        log.append(u"пояса-грани: %s" % e)
 log.append(u"Найдено поясов: %d" % len(belts))
 
 stab = [u"analysis,mode,k"]

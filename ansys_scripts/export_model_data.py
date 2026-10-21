@@ -83,6 +83,31 @@ for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
                    "thickness": s(getattr(b, "Thickness", "?")), "material": s(getattr(b, "Material", "?")),
                    "suppressed": s(getattr(b, "Suppressed", "?")),
                    "geo_id": getattr(b.GetGeoBody(), "Id", None) if hasattr(b, "GetGeoBody") else None})
+# пояса, заданные ГРАНЯМИ одного тела (модель из пакета сайта): добавляем их как тела P1..Pn (снизу вверх), толщины - из loads_data.py
+try:
+    if not [b for b in bodies if re.match(BELT_RE, b["name"])] and os.environ.get("ANSYS_REPORT_LOADS") and os.path.exists(os.environ["ANSYS_REPORT_LOADS"]):
+        ns = {}
+        exec(io.open(os.environ["ANSYS_REPORT_LOADS"], encoding="utf-8").read(), ns)
+        bt = ns["LOADS"].get("belt_thickness_mm") or []
+        fl = []
+        for asm in ExtAPI.DataModel.GeoData.Assemblies:
+            for part in asm.Parts:
+                for body in part.Bodies:
+                    for f in body.Faces:
+                        c = f.Centroid
+                        vv = vc(c[0], c[1], c[2])[0]
+                        fl.append((vv, f.Id))
+        fl.sort()
+        if bt and len(fl) == len(bt):
+            mat = bodies[0]["material"] if bodies else u"?"
+            for i, (vv, fid) in enumerate(fl):
+                bodies.append({"name": u"P%d" % (i + 1), "dimension": u"Surface", "thickness": u"%.6g [m]" % (bt[i] / 1000.0),
+                               "material": mat, "suppressed": u"False", "geo_id": fid})
+            data["belts_from_faces"] = True
+        else:
+            data["errors"].append(u"пояса-грани: граней %d, толщин %d" % (len(fl), len(bt)))
+except Exception as e:
+    data["errors"].append(u"пояса-грани: %s" % e)
 data["bodies"] = bodies
 data["belt_regex"] = BELT_RE
 data["vertical_axis"] = AXIS
@@ -95,7 +120,11 @@ try:
     md = ExtAPI.DataModel.MeshDataByName("Global")
     data["node_count"] = md.NodeCount
     data["element_count"] = md.ElementCount
-    nodes = [vc(n.X, n.Y, n.Z) for n in md.Nodes]
+    raw_nodes = [vc(n.X, n.Y, n.Z) for n in md.Nodes]
+    raw_r = max(math.sqrt(y * y + z * z) for x, y, z in raw_nodes)
+    UK = 0.001 if raw_r > 500 else 1.0                      # координаты сетки в мм (проект в мм) -> приводим к метрам
+    data["coord_scale_to_m"] = UK
+    nodes = [(x * UK, y * UK, z * UK) for x, y, z in raw_nodes]
     rmax = max(math.sqrt(y * y + z * z) for x, y, z in nodes)
     data["bbox"] = {"xmax": max(n[0] for n in nodes), "xmin": min(n[0] for n in nodes), "rmax": rmax}
     # верхнее кольцо каждого пояса p1..p12 только по узлам этого тела (без швеллера и других тел)
@@ -106,7 +135,7 @@ try:
             continue
         try:
             reg = md.MeshRegionById(b["geo_id"])
-            pts = [vc(md.NodeById(i).X, md.NodeById(i).Y, md.NodeById(i).Z) for i in reg.NodeIds]
+            pts = [tuple(c * UK for c in vc(md.NodeById(i).X, md.NodeById(i).Y, md.NodeById(i).Z)) for i in reg.NodeIds]
             xt = max(p[0] for p in pts)
             top = [(round(math.degrees(math.atan2(z, y)), 2), round(math.sqrt(y * y + z * z), 5))
                    for x, y, z in pts if abs(x - xt) < 1e-3]
