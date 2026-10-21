@@ -4,6 +4,7 @@ services:
     name: rvs-geometry
     runtime: python
     plan: free
+    autoDeploy: true
     branch: claude/ansys-report-automation-8asxtm
     buildCommand: pip install -r requirements-server.txt
     startCommand: ASR_HOST=0.0.0.0 ASR_PORT=$PORT ASR_BASE_URL=$RENDER_EXTERNAL_URL ASR_HTTPS_ONLY=1 ASR_WORKERS=1 ASR_TRUST_PROXY=1 python -m server
