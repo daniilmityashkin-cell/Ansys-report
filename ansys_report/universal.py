@@ -203,6 +203,10 @@ class UniversalReport(Report):
         if self._find_image("fig02_mesh_wall_bottom"):
             self.figure("fig02_mesh_wall_bottom", "Конечно-элементная модель (сетка)")
 
+    def _n(self, base: int) -> int:
+        """Номер раздела: после «Исходных нагрузок» (раздел 4, если он есть) последующие сдвигаются на 1."""
+        return base + (1 if getattr(self, "_loads_shown", False) else 0)
+
     def sec_loads(self):
         """Раздел «Исходные нагрузки»: из файла loads_data.py пакета (если передан в анкете как loads_file)."""
         lf = self.anketa.get("loads_file")
@@ -215,6 +219,7 @@ class UniversalReport(Report):
         except Exception:       # noqa: BLE001
             return
         f = lambda v, n=2: ("%.*f" % (n, float(v))).replace(".", ",")          # noqa: E731
+        self._loads_shown = True
         self.h1("4 Исходные нагрузки")
         self.body("Нагрузки рассчитаны по методике ГОСТ 31385-2016 и СП 20.13330 и наложены на модель сценарием Mechanical. "
                   "Значения приведены расчётные (с коэффициентами сочетаний, принятыми в расчёте нагрузок).")
@@ -251,13 +256,13 @@ class UniversalReport(Report):
 
     def sec_analyses(self):
         self.sec_loads()
-        self.h1("5 Расчётные случаи")
+        self.h1(f"{self._n(4)} Расчётные случаи")
         analyses = self.md.get("analyses", [])
         if not analyses:
             self.body("В проекте расчётные случаи не найдены.")
             return
         for i, a in enumerate(analyses, 1):
-            self.h2(f"5.{i} {a['name']}")
+            self.h2(f"{self._n(4)}.{i} {a['name']}")
             self.body(f"Тип расчёта: {TYPE_RU.get(a.get('type'), a.get('type') or '–')}.")
             st = next((c for c in a["children"] if c["type"] == "ANSYSAnalysisSettings"), None)
             if st:
@@ -275,10 +280,10 @@ class UniversalReport(Report):
                            caption=f"Нагрузки и граничные условия, «{a['name']}»", size=10)
 
     def sec_results(self):
-        self.h1("6 Результаты расчёта")
+        self.h1(f"{self._n(5)} Результаты расчёта")
         shown = False
         if self.modes:
-            self.h2("6.1 Собственные частоты и формы колебаний")
+            self.h2(f"{self._n(5)}.1 Собственные частоты и формы колебаний")
             rows = [[r["analysis"], r["mode"], ("%g" % float(r["value"])).replace(".", ","), r.get("unit", "")]
                     for r in self.modes]
             self.table(["Расчёт", "Мода", "Значение", "Ед."], rows, widths=[7.5, 2.2, 3.8, 2.5],
@@ -286,14 +291,14 @@ class UniversalReport(Report):
             shown = True
         summ = _read_modes(self.dir / "results_summary.csv")
         if summ:
-            self.h2("6.2 Сводка результатов" if self.modes else "6.1 Сводка результатов")
+            self.h2(f"{self._n(5)}.2 Сводка результатов" if self.modes else f"{self._n(5)}.1 Сводка результатов")
             rows = [[r["analysis"], r["result"], _num(r["max"]), _num(r["min"]), r.get("unit", "")] for r in summ]
             self.table(["Расчёт", "Результат", "Максимум", "Минимум", "Ед."], rows, widths=[4.2, 5.2, 2.6, 2.6, 1.8],
                        caption="Экстремальные значения результатов", size=10)
             shown = True
         if self.images:
-            self.h2("6.3 Графические результаты" if (self.modes and summ) else
-                    "6.2 Графические результаты" if (self.modes or summ) else "6.1 Графические результаты")
+            self.h2(f"{self._n(5)}.3 Графические результаты" if (self.modes and summ) else
+                    f"{self._n(5)}.2 Графические результаты" if (self.modes or summ) else f"{self._n(5)}.1 Графические результаты")
             for key, cap in self.images:
                 self._shrink(self.p.raw["images"][key])
                 self.figure(key, cap)
