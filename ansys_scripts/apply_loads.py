@@ -227,6 +227,20 @@ for ci, case in enumerate(L["cases"]):
         sn = an.AddCommandSnippet()
         sn.Name = u"AR нагрузки: " + case["name"]
         sn.AppendText((extra_apdl + u"\n" if extra_apdl else u"") + apdl_case(case))
+        try:                                   # стандартные результаты: попадают в сводку и отчёт без ручных действий
+            sol = an.Solution
+            td = sol.AddTotalDeformation(); td.Name = u"Total Deformation"
+            eq = sol.AddEquivalentStress(); eq.Name = u"Equivalent Stress"
+            k = 0
+            for f in groups["wall"]:
+                k += 1
+                sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
+                sel.Entities = [f]
+                ez = sol.AddEquivalentStress()
+                ez.Location = sel
+                ez.Name = u"Equivalent Stress, участок %d" % k
+        except Exception as e:
+            say(u"  результаты не добавлены: %s" % e)
         say(u"Случай '%s': создан, нагрузки заданы" % case["name"])
     except Exception as e:
         say(u"ОШИБКА случая '%s': %s" % (case["name"], e))

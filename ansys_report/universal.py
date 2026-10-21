@@ -148,8 +148,9 @@ class UniversalReport(Report):
         self.h2(f"2.1 Геометрия")
         s = f"Модель состоит из {len(bodies)} тел"
         if bb:
-            s += (f"; габарит по вертикальной оси {ax}: {self._m(bb['xmax'] - bb['xmin'])} м, "
-                  f"наибольший радиус: {self._m(bb['rmax'])} м")
+            k = 0.001 if bb["rmax"] > 500 else 1.0                  # координаты узлов в мм (проект в мм) или в м
+            s += (f"; габарит по вертикали: {self._m((bb['xmax'] - bb['xmin']) * k)} м, "
+                  f"наибольший радиус: {self._m(bb['rmax'] * k)} м")
         self.body(s + ".")
         if self._find_image("fig01_general"):
             self.figure("fig01_general", "Общий вид модели")
@@ -202,14 +203,61 @@ class UniversalReport(Report):
         if self._find_image("fig02_mesh_wall_bottom"):
             self.figure("fig02_mesh_wall_bottom", "Конечно-элементная модель (сетка)")
 
+    def sec_loads(self):
+        """Раздел «Исходные нагрузки»: из файла loads_data.py пакета (если передан в анкете как loads_file)."""
+        lf = self.anketa.get("loads_file")
+        if not lf or not Path(lf).exists():
+            return
+        ns: dict = {}
+        try:
+            exec(Path(lf).read_text(encoding="utf-8"), ns)
+            L = ns["LOADS"]
+        except Exception:       # noqa: BLE001
+            return
+        f = lambda v, n=2: ("%.*f" % (n, float(v))).replace(".", ",")          # noqa: E731
+        self.h1("4 Исходные нагрузки")
+        self.body("Нагрузки рассчитаны по методике ГОСТ 31385-2016 и СП 20.13330 и наложены на модель сценарием Mechanical. "
+                  "Значения приведены расчётные (с коэффициентами сочетаний, принятыми в расчёте нагрузок).")
+        g = L.get("gravity_mm_s2", 9800.0) / 1000.0
+        geo = L.get("geometry") or {}
+        if geo:
+            self.body(f"Резервуар: диаметр {f(geo.get('diameter_mm', 0) / 1000)} м, высота стенки {f(geo.get('wall_height_mm', 0) / 1000)} м, "
+                      f"поясов {geo.get('n_belts', '–')}, высота пояса {f(geo.get('belt_height_mm', 0) / 1000)} м. Ускорение свободного падения {f(g, 2)} м/с².")
+        rows = []
+        for c in L.get("cases") or []:
+            h = c.get("hydro") or {}
+            parts = ["собственный вес" if c.get("gravity") else "", "массы оборудования и изоляции" if c.get("masses") else ""]
+            if h:
+                grad = float(h.get("gradient_mpa_mm", 0))
+                top = float(h.get("free_surface_mm", 0))
+                rho = grad * 1e9 / g if g else 0
+                parts.append(f"гидростатика: плотность {f(rho, 0)} кг/м³, уровень {f(top / 1000)} м, давление у днища {f(grad * top * 1000)} кПа")
+            if c.get("uniform_mpa"):
+                parts.append(f"давление в газовом пространстве {f(c['uniform_mpa'] * 1000)} кПа")
+            if c.get("roof_extra_mpa"):
+                parts.append(f"нагрузка на крышу {f(c['roof_extra_mpa'] * 1000, 3)} кПа")
+            w = c.get("wind") or []
+            if w:
+                ps = [abs(x["p_mpa"]) * 1000 for x in w]
+                parts.append(f"ветер: {f(min(ps), 3)}–{f(max(ps), 3)} кПа по высоте")
+            rows.append([c["name"], "; ".join(x for x in parts if x)])
+        if rows:
+            self.table(["Расчётный случай", "Нагрузки"], rows, widths=[4.5, 12], caption="Нагрузки по расчётным случаям", size=10)
+        wind = next((c["wind"] for c in L.get("cases") or [] if c.get("wind")), [])
+        if wind:
+            self.table(["Участок по высоте, м", "Ветровая нагрузка, кПа"],
+                       [[f"{f(x['z_lo_mm'] / 1000)}–{f(x['z_hi_mm'] / 1000)}", f(abs(x["p_mpa"]) * 1000, 3)] for x in wind],
+                       widths=[6, 6], caption="Ветровая нагрузка по высоте", size=10)
+
     def sec_analyses(self):
-        self.h1("4 Расчётные случаи")
+        self.sec_loads()
+        self.h1("5 Расчётные случаи")
         analyses = self.md.get("analyses", [])
         if not analyses:
             self.body("В проекте расчётные случаи не найдены.")
             return
         for i, a in enumerate(analyses, 1):
-            self.h2(f"4.{i} {a['name']}")
+            self.h2(f"5.{i} {a['name']}")
             self.body(f"Тип расчёта: {TYPE_RU.get(a.get('type'), a.get('type') or '–')}.")
             st = next((c for c in a["children"] if c["type"] == "ANSYSAnalysisSettings"), None)
             if st:
@@ -227,10 +275,10 @@ class UniversalReport(Report):
                            caption=f"Нагрузки и граничные условия, «{a['name']}»", size=10)
 
     def sec_results(self):
-        self.h1("5 Результаты расчёта")
+        self.h1("6 Результаты расчёта")
         shown = False
         if self.modes:
-            self.h2("5.1 Собственные частоты и формы колебаний")
+            self.h2("6.1 Собственные частоты и формы колебаний")
             rows = [[r["analysis"], r["mode"], ("%g" % float(r["value"])).replace(".", ","), r.get("unit", "")]
                     for r in self.modes]
             self.table(["Расчёт", "Мода", "Значение", "Ед."], rows, widths=[7.5, 2.2, 3.8, 2.5],
@@ -238,14 +286,14 @@ class UniversalReport(Report):
             shown = True
         summ = _read_modes(self.dir / "results_summary.csv")
         if summ:
-            self.h2("5.2 Сводка результатов" if self.modes else "5.1 Сводка результатов")
+            self.h2("6.2 Сводка результатов" if self.modes else "6.1 Сводка результатов")
             rows = [[r["analysis"], r["result"], _num(r["max"]), _num(r["min"]), r.get("unit", "")] for r in summ]
             self.table(["Расчёт", "Результат", "Максимум", "Минимум", "Ед."], rows, widths=[4.2, 5.2, 2.6, 2.6, 1.8],
                        caption="Экстремальные значения результатов", size=10)
             shown = True
         if self.images:
-            self.h2("5.3 Графические результаты" if (self.modes and summ) else
-                    "5.2 Графические результаты" if (self.modes or summ) else "5.1 Графические результаты")
+            self.h2("6.3 Графические результаты" if (self.modes and summ) else
+                    "6.2 Графические результаты" if (self.modes or summ) else "6.1 Графические результаты")
             for key, cap in self.images:
                 self._shrink(self.p.raw["images"][key])
                 self.figure(key, cap)

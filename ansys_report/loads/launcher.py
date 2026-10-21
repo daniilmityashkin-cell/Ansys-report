@@ -102,9 +102,9 @@ if not defined ANSYS_REPORT_HOME if exist "C:\\Ansys-report\\ansys_report" set "
 if defined ANSYS_REPORT_HOME set "PYTHONPATH=%ANSYS_REPORT_HOME%;%PYTHONPATH%"
 echo Building the technical report, please wait (solving + extracting results, 5-20 minutes)...
 if defined EXE (
-  "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" -o "%OUT%"
+  "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" -o "%OUT%"
 ) else (
-  python -m ansys_report report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" -o "%OUT%"
+  python -m ansys_report report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" -o "%OUT%"
 )
 echo.
 echo Report folder: %OUT%
