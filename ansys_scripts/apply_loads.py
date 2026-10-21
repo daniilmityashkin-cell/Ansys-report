@@ -238,7 +238,7 @@ for ci, case in enumerate(L["cases"]):
                 sel.Entities = [f]
                 ez = sol.AddEquivalentStress()
                 ez.Location = sel
-                ez.Name = u"Equivalent Stress, участок %d" % k
+                ez.Name = u"Equivalent Stress (участок %d)" % k
         except Exception as e:
             say(u"  результаты не добавлены: %s" % e)
         say(u"Случай '%s': создан, нагрузки заданы" % case["name"])

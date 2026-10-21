@@ -279,6 +279,33 @@ class UniversalReport(Report):
                 self.table(["Нагрузка / закрепление", "Тип", "Параметры"], rows, widths=[4.5, 4, 8],
                            caption=f"Нагрузки и граничные условия, «{a['name']}»", size=10)
 
+    def _strength_rows(self, summ) -> list[list]:
+        """Строки проверки прочности: максимум Equivalent Stress по участкам толщины против расчётного сопротивления (loads_file)."""
+        lf = self.anketa.get("loads_file")
+        if not lf or not Path(lf).exists():
+            return []
+        try:
+            ns: dict = {}
+            exec(Path(lf).read_text(encoding="utf-8"), ns)
+            res = ns["LOADS"].get("resistance_mpa") or {}
+        except Exception:       # noqa: BLE001
+            return []
+        if not res:
+            return []
+        rows = []
+        for r in summ:
+            m = re.match(r"^Equivalent Stress \(участок (\d+)\)$", r["result"])
+            if not m:
+                continue
+            try:
+                sig = float(r["max"])
+            except ValueError:
+                continue
+            rr = res["hydrotest"] if "идроисп" in r["analysis"] else res["operation"]
+            ok = sig <= rr
+            rows.append([r["analysis"], m.group(1), _num(sig), _num(rr), _num(rr / sig if sig else 0), "обеспечена" if ok else "не обеспечена"])
+        return rows
+
     def sec_results(self):
         self.h1(f"{self._n(5)} Результаты расчёта")
         shown = False
@@ -295,6 +322,15 @@ class UniversalReport(Report):
             rows = [[r["analysis"], r["result"], _num(r["max"]), _num(r["min"]), r.get("unit", "")] for r in summ]
             self.table(["Расчёт", "Результат", "Максимум", "Минимум", "Ед."], rows, widths=[4.2, 5.2, 2.6, 2.6, 1.8],
                        caption="Экстремальные значения результатов", size=10)
+            shown = True
+        if self._strength_rows(summ):
+            n = f"{self._n(5)}.{3 if (self.modes and summ) else 2 if (self.modes or summ) else 1}"
+            self.h2(f"{n} Проверка прочности по эквивалентным напряжениям")
+            self.body("Эквивалентные напряжения по Мизесу сопоставлены с расчётным сопротивлением стали, определённым в расчёте нагрузок "
+                      "(для гидроиспытаний принимается своё значение коэффициента условий работы). Максимумы получены по конечно-элементной модели "
+                      "с фактической геометрией стенки.")
+            self.table(["Расчётный случай", "Участок", "σ экв, МПа", "Расчётное сопротивление, МПа", "Запас", "Вывод"],
+                       self._strength_rows(summ), widths=[4.6, 2.4, 2.2, 3.0, 1.8, 2.8], caption="Проверка прочности", size=10)
             shown = True
         if self.images:
             self.h2(f"{self._n(5)}.3 Графические результаты" if (self.modes and summ) else
