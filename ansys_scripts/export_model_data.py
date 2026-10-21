@@ -101,7 +101,7 @@ try:
         if bt and len(fl) == len(bt):
             mat = bodies[0]["material"] if bodies else u"?"
             for i, (vv, fid) in enumerate(fl):
-                bodies.append({"name": u"P%d" % (i + 1), "dimension": u"Surface", "thickness": u"%.6g [m]" % (bt[i] / 1000.0),
+                bodies.append({"name": u"p%d" % (i + 1), "dimension": u"Surface", "thickness": u"%.6g [m]" % (bt[i] / 1000.0),
                                "material": mat, "suppressed": u"False", "geo_id": fid})
             data["belts_from_faces"] = True
         else:
