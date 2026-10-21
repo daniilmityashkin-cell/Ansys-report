@@ -166,3 +166,4 @@ h2.fstep{font-size:16px;margin:22px 0 10px}
 .seg label.on span{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:rgba(255,170,0,.07)}
 .srcbox{margin-top:8px}
 .chk2{display:inline-flex;gap:6px;align-items:center;margin:0 12px 0 0;font-size:13px}
+.card.done{border-color:#2f9d5a;background:linear-gradient(180deg,rgba(47,157,90,.12),transparent)}.card.done h2{margin-top:0}
