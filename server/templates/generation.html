@@ -80,11 +80,12 @@
 <p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview or structure %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
 {% if has_preview %}<script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}{% if structure %}<script type="module" src="/static/structure3d.js?v={{ asset_v }}"></script>{% endif %}{% endif %}
 <script>
-(function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now();
+(function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now(),slow=false;
 function fail(m){w.innerHTML='<div><b>'+m+'</b><p class="muted"><a href="">Обновить страницу</a></p></div>';}
 function tick(){fetch(url,{credentials:"same-origin"}).then(function(r){return r.json();}).then(function(d){
  if(d.preview_error&&what==="preview"){fail("Не удалось построить просмотр: "+d.preview_error);return;}
  if((what==="preview"&&d.preview)||(what==="done"&&(d.status==="done"||d.status==="error"))){location.reload();return;}
- if(Date.now()-t0>180000){fail("Это занимает дольше обычного.");return;}setTimeout(tick,1500);}).catch(function(){setTimeout(tick,3000);});}
+ if(Date.now()-t0>180000&&!slow){slow=true;var m=w.querySelector("p");if(m)m.textContent="Сервер сейчас занят, это дольше обычного. Страница обновится сама, ничего нажимать не нужно.";}
+ setTimeout(tick,Date.now()-t0>60000?3000:1500);}).catch(function(){setTimeout(tick,3000);});}
 setTimeout(tick,800);})();
 </script>{% endblock %}
