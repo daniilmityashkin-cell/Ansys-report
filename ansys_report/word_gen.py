@@ -113,10 +113,12 @@ class Report:
         trPr = row._tr.get_or_add_trPr()
         el = OxmlElement("w:tblHeader"); el.set(qn("w:val"), "true"); trPr.append(el)
 
-    def figure(self, key: str, caption: str, width_cm=12.5):
-        """Вставляет картинку из images_dir (файл <key>.png|jpg); иначе — заметная заглушка."""
-        self.fig += 1
+    def figure(self, key: str, caption: str, width_cm=12.5, optional=False):
+        """Вставляет картинку из images_dir (файл <key>.png|jpg); иначе — заметная заглушка (optional: рисунок пропускается)."""
         img = self._find_image(key)
+        if optional and not img:
+            return
+        self.fig += 1
         if img:
             pp = self.para(indent=0, align=CENTER, keep_next=True, space_before=6)
             pp.add_run().add_picture(str(img), width=Cm(width_cm))
@@ -289,7 +291,7 @@ class Report:
         self.body("Допущения, принятые в модели:")
         self.bullets(T.ASSUMPTIONS)
         self.figure("fig04_loads", "Нагрузки")
-        self.figure("fig05_hydrostatic", "Гидростатическое давление")
+        self.figure("fig05_hydrostatic", "Гидростатическое давление", optional=True)
 
     # ---------- нагрузки и свойства объекта ----------
     AXIS = {"X": "оси X (вертикаль)", "Y": "оси Y", "Z": "оси Z"}

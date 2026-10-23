@@ -169,6 +169,8 @@ def _from_ansys(md: dict, f: Path, m: dict, ai) -> None:
     belts = [b for b in md["bodies"] if re.match(md.get("belt_regex") or r"^p\s*(\d+)$", b["name"])]
     names = [b.get("material") for b in belts if b.get("material") in mats]
     name = names[0] if names else None
+    if name is None and mats:               # материал тел не выгружен (STEP без назначения) - стандартный Structural Steel из Ansys или единственный
+        name = "Structural Steel" if "Structural Steel" in mats else next(iter(mats))
     if name is None:
         return
     summ = ai.material_summary(mats[name])
