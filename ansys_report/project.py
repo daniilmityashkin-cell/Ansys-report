@@ -141,7 +141,7 @@ def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
     f = root / "engineering_data.xml"
     m = raw.setdefault("material", {})
     try:
-        _from_ansys(raw, md, root, f, m)
+        _from_ansys(md, f, m, ai)
     finally:
         _apply_entered_steel(m)
 
@@ -155,7 +155,7 @@ def _apply_entered_steel(m: dict) -> None:
             m["source_entered"] = True
 
 
-def _from_ansys(raw, md, root, f, m) -> None:
+def _from_ansys(md: dict, f: Path, m: dict, ai) -> None:
     if not f.exists():
         return
     try:
