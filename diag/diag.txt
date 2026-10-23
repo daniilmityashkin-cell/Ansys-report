@@ -1,0 +1,104 @@
+===== C:\ansys_report_work\model\out\log_build.txt =====
+Участков толщины: 12
+Части модели: {'annular_mm': 12.0, 'disc_mm': 8.0, 'roof_mm': 7.0}
+Тел в модели: 1
+  тело Open CASCADE STEP translator 8.0 1|Surface: граней 15, площадь 2907.4 м2
+Сетка построена, размер элемента 150 мм
+Вид: Z вверх===== C:\ansys_report_work\model\out\log_loads.txt =====
+Грани: 15, масштаб координат к мм: 1, размеры модели по X/Y/Z, мм: 264 / 0 / 17880
+  грань: z 0..1490 мм, площадь 133.4 м2 -> wall
+  грань: z 1490..2980 мм, площадь 133.4 м2 -> wall
+  грань: z 2980..4470 мм, площадь 133.4 м2 -> wall
+  грань: z 4470..5960 мм, площадь 133.4 м2 -> wall
+  грань: z 5960..7450 мм, площадь 133.4 м2 -> wall
+  грань: z 7450..8940 мм, площадь 133.4 м2 -> wall
+  грань: z 8940..10430 мм, площадь 133.4 м2 -> wall
+  грань: z 10430..11920 мм, площадь 133.4 м2 -> wall
+  грань: z 11920..13410 мм, площадь 133.4 м2 -> wall
+  грань: z 13410..14900 мм, площадь 133.4 м2 -> wall
+  грань: z 14900..16390 мм, площадь 133.3 м2 -> wall
+  грань: z 16390..17880 мм, площадь 133.3 м2 -> wall
+  грань: z 0..0 мм, площадь 637.7 м2 -> bottom
+  грань: z 17880..17880 мм, площадь 650.2 м2 -> roof
+  грань: z 0..0 мм, площадь 19.0 м2 -> bottom
+Стенка: 12, крыша: 1, днище: 1, прочие (патрубки и т.п.): 0
+  (не удалось проверить прежние выборки: 'NoneType' object has no attribute 'GetChildren')
+Именованные выборки: AR_WALL=True AR_ROOF=True AR_BOTTOM=True AR_BASE_EDGE=2 рёбер
+Случай 'Эксплуатация': создан, нагрузки заданы
+Случай 'Эксплуатация с ветром': создан, нагрузки заданы
+Случай 'Гидроиспытания': создан, нагрузки заданы
+Случай 'Вакуум, снег и ветер (пустой резервуар)': создан, нагрузки заданы===== C:\ansys_report_work\model\out\wb_status.txt =====
+START
+TEMPLATE OK: {'TemplateName': 'Static Structural', 'Solver': 'ANSYS'}
+MECHANICAL OPEN
+BUILD DONE
+SAVED
+===== C:\ansys_report_work\model\report\Report_Rezervuar\_ansys_data\model_data.json =====
+errors:
+bodies:
+Open CASCADE STEP translator 8.0 1|Surface 13 [mm]
+p1 0.013 [m]
+p2 0.012 [m]
+p3 0.012 [m]
+p4 0.011 [m]
+p5 0.011 [m]
+p6 0.011 [m]
+p7 0.011 [m]
+p8 0.011 [m]
+p9 0.011 [m]
+p10 0.011 [m]
+p11 0.011 [m]
+p12 0.011 [m]
+dno 0.008 [m]
+okrayka 0.012 [m]
+krovlya 0.007 [m]
+belts_from_faces: True
+belt_regex: ^p\s*(\d+)$
+===== C:\ansys_report_work\model\report\log.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\wb_status.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_Rezervuar\log.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_Rezervuar\wb_status.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_Rezervuar\_ansys_data\log.txt =====
+единицы: Н, мм, МПа
+Найдено поясов: 12
+AR: Эксплуатация: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Эксплуатация: после решения статус: Done
+AR: Эксплуатация: статус решения: Done
+AR: Эксплуатация: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Эксплуатация: выгружено 12 поясов
+AR: Эксплуатация с ветром: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Эксплуатация с ветром: после решения статус: Done
+AR: Эксплуатация с ветром: статус решения: Done
+AR: Эксплуатация с ветром: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-1\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Эксплуатация с ветром: выгружено 12 поясов
+AR: Гидроиспытания: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Гидроиспытания: после решения статус: Done
+AR: Гидроиспытания: статус решения: Done
+AR: Гидроиспытания: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-2\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Гидроиспытания: выгружено 12 поясов
+AR: Вакуум, снег и ветер (пустой резервуар): расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Вакуум, снег и ветер (пустой резервуар): после решения статус: Done
+AR: Вакуум, снег и ветер (пустой резервуар): статус решения: Done
+AR: Вакуум, снег и ветер (пустой резервуар): статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-3\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Вакуум, снег и ветер (пустой резервуар): выгружено 12 поясов===== C:\ansys_report_work\model\report\Report_Rezervuar\_ansys_data\wb_status.txt =====
+JOURNAL START
+SYSTEM SYS
+SYSTEM SYS 1
+SYSTEM SYS 2
+SYSTEM SYS 3
+MECHANICAL OPEN
+DONE export_model_data.py
+DONE export_results.py
+DONE export_model_images.py
+===== C:\ansys_report_work\model\report\Report_Rezervuar\_ansys_data\images\log.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_Rezervuar\_ansys_data\images\wb_status.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
