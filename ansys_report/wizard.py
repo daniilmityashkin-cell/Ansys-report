@@ -58,6 +58,17 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
         import shutil
         shutil.copy2(survey_full, data / "survey_full.csv")
         log("Замеры «полного» обновлены для Excel и файлов точек (расчёт Ansys не перезапускался)")
+    import os
+    lf = os.environ.get("ANSYS_REPORT_LOADS")
+    if lf and os.path.exists(lf):                  # схемы нагрузок по loads_data.py (в Ansys нагрузки заданы командами и на картинке не видны)
+        try:
+            from .loads.figures import make_load_figures
+            for stem in ("fig04_loads", "fig05_hydrostatic"):          # рисунок Ansys (видны только опоры) заменяем нашей схемой
+                (data / f"{stem}.png").unlink(missing_ok=True)
+            make_load_figures(lf, data / "images")
+            log("Схемы нагрузок построены (рисунки 4 и 5)")
+        except Exception as e:      # noqa: BLE001
+            log(f"Схемы нагрузок не построены: {e}")
     from .ansys_connect import _has_belts
     if not _has_belts(data):
         from .universal import build_universal
