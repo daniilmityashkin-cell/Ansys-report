@@ -118,7 +118,11 @@ def _apply_ansys(raw: dict, root: Path):
         if v is not None:
             t[key] = v
     xmax = (md.get("bbox") or {}).get("xmax")
-    if xmax:
+    hw = _wall_height_from_loads()          # габарит модели включает купол крыши, высоту стенки берём из данных нагрузок
+    if hw:
+        t["wall_height"] = round(hw)
+        t["belt_height"] = round(hw / len(belts))
+    elif xmax:
         t["wall_height"] = round(xmax * 1000)
         t["belt_height"] = round(xmax * 1000 / len(belts))
     t["diameter"] = a.get("nominal_diameter_mm") or round(2 * ai.mean_radius_m(md) * 100) * 10
@@ -173,6 +177,20 @@ def _from_ansys(md: dict, f: Path, m: dict, ai) -> None:
     m["source"] = "Ansys"
     if not (m.get("name") or "").strip():
         m["name"] = name
+
+
+def _wall_height_from_loads():
+    """Высота стенки (мм) из loads_data.py пакета сайта (путь в ANSYS_REPORT_LOADS); None, если файла нет."""
+    import os
+    lp = os.environ.get("ANSYS_REPORT_LOADS")
+    if not lp or not os.path.exists(lp):
+        return None
+    try:
+        ns: dict = {}
+        exec(Path(lp).read_text(encoding="utf-8"), ns)
+        return float(ns["LOADS"]["geometry"]["wall_height_mm"])
+    except Exception:       # noqa: BLE001
+        return None
 
 
 def _num(x) -> float:
