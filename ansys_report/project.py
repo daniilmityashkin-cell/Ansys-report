@@ -140,6 +140,22 @@ def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
     марка и стандарт из анкеты имеют приоритет по названию. Нет файла - остаются значения анкеты."""
     f = root / "engineering_data.xml"
     m = raw.setdefault("material", {})
+    try:
+        _from_ansys(raw, md, root, f, m)
+    finally:
+        _apply_entered_steel(m)
+
+
+def _apply_entered_steel(m: dict) -> None:
+    """Предел текучести и прочность, введённые на сайте/в анкете, приоритетнее значений Ansys (допускаемые напряжения - по введённой стали)."""
+    for key, over in (("yield_mpa", "yield_override"), ("ultimate_mpa", "ultimate_override")):
+        v = m.pop(over, None)
+        if v not in (None, ""):
+            m[key] = int(float(v)) if float(v).is_integer() else float(v)
+            m["source_entered"] = True
+
+
+def _from_ansys(raw, md, root, f, m) -> None:
     if not f.exists():
         return
     try:

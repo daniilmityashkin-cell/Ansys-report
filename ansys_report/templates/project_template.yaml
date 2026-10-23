@@ -30,6 +30,8 @@ material:                   # свойства стали берутся из En
   poisson: 0.3
   yield_mpa: 325
   ultimate_mpa: 480
+  yield_override: {{steel_yield_mpa}}      # введённая на сайте/в анкете сталь (пусто = из Ansys)
+  ultimate_override: {{steel_ultimate_mpa}}
   elongation_pct: {{elongation_pct}}
   thickness_range: "{{steel_thickness_range}}"
 

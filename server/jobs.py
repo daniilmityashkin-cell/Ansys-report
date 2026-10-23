@@ -65,7 +65,8 @@ def compute(gen_dir: str, title: str) -> dict:
         if step.exists() and zones.exists():                          # модель «открыть в Ansys» у заказчика
             from ansys_report.loads.launcher import write_open_package
             md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"],
-                                    anketa={"tag": title, "tank_name": title}, parts=parts)
+                                    anketa={"tag": title, "tank_name": title,
+                                            "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
             files += [p for p in sorted(md.iterdir()) if p.is_file()]
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
 
