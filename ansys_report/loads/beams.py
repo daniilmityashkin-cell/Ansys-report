@@ -1,0 +1,39 @@
+"""Каркас крыши и кольцо опоры крыши из файла проекта программы геометрии -> beams.json для пакета Ansys.
+Сечения задаются свойствами (площадь, моменты инерции), а не контуром: так результат не зависит от ориентации профиля в КЭ."""
+from __future__ import annotations
+import math
+
+
+def _sec(s: dict, strong_only: bool) -> dict:
+    c = s.get("computed") or s.get("reference") or {}
+    A = float(c.get("area_cm2", 0)) * 100.0                     # мм2
+    ix, iy = float(c.get("Ix_cm4", 0)) * 1e4, float(c.get("Iy_cm4", 0)) * 1e4      # мм4
+    d = s.get("dimensions_m", {})
+    D, B, tw, tf = (float(d.get(k, 0)) * 1000 for k in ("D", "Base", "TW", "TF"))
+    if strong_only:          # радиальные балки работают на вертикальный изгиб: берём сильную ось в обе стороны (настил раскрепляет в плоскости крыши)
+        i1 = i2 = max(ix, iy)
+    else:                    # кольцевые балки: изгиб в двух плоскостях - среднее значение
+        i1 = i2 = (ix + iy) / 2.0
+    J = (2 * B * tf ** 3 + max(D - 2 * tf, 0) * tw ** 3) / 3.0
+    return {"name": s.get("name", ""), "A": round(A, 3), "Iyy": round(i1, 1), "Izz": round(i2, 1), "J": round(max(J, 1.0), 1), "D": round(D, 2), "B": round(B, 2)}
+
+
+def beams_package(project: dict, wall_radius_mm: float) -> dict | None:
+    """None, если в проекте нет крыши с каркасом (сечения заданы только подписями - такие данные в файле программы геометрии есть, в ручном вводе нет)."""
+    bs, roof = project.get("beam_sections"), project.get("roof")
+    if not isinstance(bs, dict) or not isinstance(roof, dict) or not roof.get("enabled"):
+        return None
+    n_rad = int(float(roof.get("radial_count", 0)))
+    n_ring = int(float(roof.get("ring_count", 0)))
+    rc = float(roof.get("central_radius_m", 0)) * 1000.0
+    out = {"wall_radius_mm": wall_radius_mm, "central_radius_mm": rc, "radial_count": n_rad, "first_angle_deg": float(roof.get("first_angle_deg", 0)),
+           "radial": _sec(bs["radial"], True) if "radial" in bs else None,
+           "central": _sec(bs["central_ring"], False) if "central_ring" in bs else None,
+           "edge": _sec(bs["channel"], False) if "channel" in bs else None,
+           "rings": [_sec(bs[f"hoop_{j}"], False) for j in range(1, n_ring + 1) if f"hoop_{j}" in bs],
+           "assumption": "кольцевые балки расположены на равных расстояниях между центральным кольцом и стенкой; оси сечений - по средним/сильным моментам инерции"}
+    nodes = project.get("roof_nodes") or {}
+    if nodes.get("enabled") and nodes.get("ring_thickness_mm") and nodes.get("ring_height_mm"):
+        t, h = float(nodes["ring_thickness_mm"]), float(nodes["ring_height_mm"])
+        out["top_ring"] = {"A": t * h, "Iyy": t * h ** 3 / 12.0, "Izz": h * t ** 3 / 12.0, "J": h * t ** 3 / 3.0, "D": h, "B": t}
+    return out

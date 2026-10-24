@@ -98,6 +98,105 @@ def apdl_thickness():
 
 EXTRA_APDL = apdl_thickness()                       # apply_loads.py добавляет этот блок в каждый расчётный случай
 
+
+_lns = {}
+try:                                                # exec вне функции с вложенными функциями (ограничение IronPython)
+    exec(_rd(os.path.join(pkg, "loads_data.py")), _lns)
+    WALL_H = float(_lns["LOADS"]["geometry"]["wall_height_mm"])
+except Exception as e:
+    WALL_H = 0.0
+
+
+def apdl_beams():
+    """Балки каркаса крыши (радиальные, кольцевые, центральное и периферийное кольца) и опорное кольцо на верхнем поясе стенки:
+    BEAM188 по узлам оболочки (общие узлы - совместная работа). Узлы выбираются по геометрии из сетки, цепочки сортируются по углу/радиусу."""
+    import json, math
+    bp_path = os.path.join(pkg, "beams.json")
+    if not os.path.exists(bp_path):
+        return u""
+    bp = json.loads(_rd(bp_path))
+    H = WALL_H
+    R = float(bp["wall_radius_mm"])
+    ax = {"X": 0, "Y": 1, "Z": 2}[(os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()]
+    ia, ib = [i for i in (0, 1, 2) if i != ax]
+    size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 150)
+    tol = 0.6 * size
+    md = ExtAPI.DataModel.MeshDataByName("Global")
+    roof, top = [], []
+    for nd in md.Nodes:
+        c = (nd.X, nd.Y, nd.Z)
+        h = c[ax]
+        if h >= H - 1.0:
+            x, y = c[ia], c[ib]
+            rr = math.sqrt(x * x + y * y)
+            roof.append((nd.Id, x, y, rr, math.atan2(y, x)))
+            if h <= H + 1.0 and abs(rr - R) < 5.0:
+                top.append((nd.Id, math.atan2(y, x)))
+    bsay(u"Балки: узлов крыши %d, узлов верхнего пояса %d" % (len(roof), len(top)))
+    secs, elems = [], []                                   # секции: (id, данные); элементы: (id секции, n1, n2)
+
+    def add_sec(d):
+        secs.append(d)
+        return 951 + len(secs) - 1
+
+    def chain(pairs, closed, sec_id, maxgap):
+        # pairs: [(узел, ключ сортировки, x, y)], соседние по ключу соединяются балкой
+        pairs.sort(key=lambda p: p[1])
+        n = len(pairs)
+        cnt = 0
+        for i in range(n - 1 + (1 if closed else 0)):
+            a, b = pairs[i], pairs[(i + 1) % n]
+            if a[0] == b[0]:
+                continue
+            if math.sqrt((a[2] - b[2]) ** 2 + (a[3] - b[3]) ** 2) > maxgap:
+                continue
+            elems.append((sec_id, a[0], b[0]))
+            cnt += 1
+        return cnt
+    total = 0
+    if bp.get("top_ring") and top:
+        sid = add_sec(bp["top_ring"])
+        total += chain([(i, a, R * math.cos(a), R * math.sin(a)) for (i, a) in top], True, sid, 3 * size)
+    rc = float(bp["central_radius_mm"])
+    rings = []
+    if bp.get("central"):
+        rings.append((rc, bp["central"]))
+    rl = bp.get("rings") or []
+    for j, sdat in enumerate(rl, 1):
+        rings.append((rc + (R - rc) * j / (len(rl) + 1.0), sdat))
+    if bp.get("edge"):
+        rings.append((R, bp["edge"]))
+    for (r, sdat) in rings:
+        sid = add_sec(sdat)
+        sel = [(i, a, x, y) for (i, x, y, rr, a) in roof if abs(rr - r) < tol]
+        total += chain(sel, True, sid, 3 * size)
+    if bp.get("radial") and bp.get("radial_count"):
+        sid = add_sec(bp["radial"])
+        n = int(bp["radial_count"])
+        for k in range(n):
+            th = math.radians(float(bp["first_angle_deg"]) + 360.0 * k / n)
+            ct, st = math.cos(th), math.sin(th)
+            sel = [(i, rr, x, y) for (i, x, y, rr, a) in roof if rc - tol <= rr <= R and abs(-x * st + y * ct) < tol and (x * ct + y * st) > 0]
+            total += chain(sel, False, sid, 3 * size)
+    bsay(u"Балки: секций %d, элементов %d" % (len(secs), total))
+    if not elems:
+        return u""
+    t = [u"/PREP7", u"*GET,etm,ETYP,0,NUM,MAX", u"et_b=etm+1", u"ET,et_b,188", u"*GET,e1,ELEM,0,NUM,MIN", u"*GET,matid,ELEM,e1,ATTR,MAT"]
+    for k, d in enumerate(secs):
+        t += [u"SECTYPE,%d,BEAM,ASEC" % (951 + k), u"SECDATA,%r,%r,0,%r,0,%r,0,0,0,0,%r,%r" % (d["A"], d["Iyy"], d["Izz"], d["J"], d["D"], d["B"])]
+    t += [u"TYPE,et_b", u"MAT,matid"]
+    cur = None
+    for sid, a, b in elems:
+        if sid != cur:
+            t.append(u"SECNUM,%d" % sid)
+            cur = sid
+        t.append(u"E,%d,%d" % (a, b))
+    t += [u"ALLSEL,ALL", u"/SOLU"]
+    return u"\n".join(t)
+
+
+# --- сетка
+
 # --- сетка
 try:
     size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 150)
@@ -106,6 +205,13 @@ try:
     bsay(u"Сетка построена, размер элемента %g мм" % size)
 except Exception as e:
     bsay(u"ОШИБКА сетки: %s" % e)
+try:
+    _bm = apdl_beams()
+    if _bm:
+        EXTRA_APDL = (EXTRA_APDL + u"\n" if EXTRA_APDL else u"") + _bm
+        bsay(u"Балки каркаса крыши добавлены в расчёт")
+except Exception as e:
+    bsay(u"Балки не добавлены: %s" % e)
 
 # --- нагрузки
 os.environ["ANSYS_REPORT_LOADS"] = os.path.join(pkg, "loads_data.py")

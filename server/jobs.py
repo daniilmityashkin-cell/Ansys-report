@@ -67,6 +67,14 @@ def compute(gen_dir: str, title: str) -> dict:
             md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"],
                                     anketa={"tag": title, "tank_name": title,
                                             "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
+            try:                                                       # каркас крыши и опорное кольцо (если заданы в файле проекта) - балочные элементы в Ansys
+                from ansys_report.loads.beams import beams_package
+                proj = json.loads((gen / "input.json").read_text(encoding="utf-8-sig"))
+                bp = beams_package(proj, float(proj["diameter"]) * 500.0)
+                if bp:
+                    (md / "beams.json").write_text(json.dumps(bp, ensure_ascii=False), encoding="utf-8")
+            except Exception as e:   # noqa: BLE001
+                (gen / "result" / "belts_src" / "beams_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
             files += [p for p in sorted(md.iterdir()) if p.is_file()]
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
 
