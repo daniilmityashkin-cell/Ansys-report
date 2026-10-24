@@ -55,14 +55,46 @@ def write(name, lines):
     f.write(u"\n".join(lines))
     f.close()
 
+def _view_set_mesh_off():
+    Graphics.ViewOptions.ShowMesh = False
+
+def _view_wireframe_a():
+    Graphics.ViewOptions.ResultPreference.ExtraModelDisplay = Ansys.Mechanical.DataModel.Enums.ExtraModelDisplay.NoWireframe
+
+def _view_wireframe_b():
+    from Ansys.Mechanical.DataModel.Enums import ExtraModelDisplay as EMD
+    Graphics.ViewOptions.ResultPreference.ExtraModelDisplay = EMD.NoWireframe
+
+def _view_wireframe_c():
+    from Ansys.Mechanical.DataModel.Enums import ExtraModelDisplay as EMD
+    Ansys.Mechanical.Graphics.ViewOptions.ResultPreference.ExtraModelDisplay = EMD.NoWireframe
+
 def prep_results_view():
     """Вид результатов как в эталонном отчёте: сплошная цветовая заливка без линий сетки (иначе мелкая сетка закрывает цвета)."""
-    for name, fn in ((u"ShowMesh", lambda: setattr(Graphics.ViewOptions, "ShowMesh", False)),
-                     (u"ExtraModelDisplay", lambda: setattr(Graphics.ViewOptions.ResultPreference, "ExtraModelDisplay", Ansys.Mechanical.DataModel.Enums.ExtraModelDisplay.NoWireframe))):
+    for name, fn in ((u"ShowMesh", _view_set_mesh_off),):
         try:
             fn()
         except Exception as e:
             log.append(u"вид результатов: %s: %s" % (name, e))
+    done = False
+    for name, fn in ((u"ExtraModelDisplay(a)", _view_wireframe_a), (u"ExtraModelDisplay(b)", _view_wireframe_b), (u"ExtraModelDisplay(c)", _view_wireframe_c)):
+        try:
+            fn()
+            done = True
+            log.append(u"вид результатов: без каркаса сетки (%s)" % name)
+            break
+        except Exception as e:
+            log.append(u"вид результатов: %s: %s" % (name, e))
+    if not done:
+        try:
+            rp = Graphics.ViewOptions.ResultPreference
+            log.append(u"вид результатов: свойства ResultPreference: %s" % u", ".join([n for n in dir(rp) if not n.startswith("_")]))
+        except Exception as e:
+            log.append(u"вид результатов: ResultPreference недоступен: %s" % e)
+        try:
+            log.append(u"вид результатов: свойства ViewOptions: %s" % u", ".join([n for n in dir(Graphics.ViewOptions) if not n.startswith("_")]))
+        except Exception as e:
+            pass
 
 
 def export_img(path):
