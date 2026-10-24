@@ -11,7 +11,7 @@ from pathlib import Path
 from .rvs_loads import PSI, CE
 
 
-def build_cases(res: dict, design: bool = True) -> list[dict]:
+def build_cases(res: dict, design: bool = True, fill_levels_m=None) -> list[dict]:
     """Расчётные случаи. design=True - с коэффициентами надёжности и сочетаний из методики (1,2·p; 1,4·снег; 1,2·ψ·вакуум; 0,5·ψ·ветер)."""
     L, I = res["loads"], res["inputs"]
     g = L["gravity_m_s2"]
@@ -24,20 +24,24 @@ def build_cases(res: dict, design: bool = True) -> list[dict]:
 
     def hydro(h):  # градиент МПа/мм и уровень свободной поверхности, мм
         return {"gradient_mpa_mm": h["density_kg_m3"] * g * 1e-9, "free_surface_mm": h["fill_height_m"] * 1000}
-    return [
+    cases = [
         {"id": "op", "name": "Эксплуатация", "gravity": True, "masses": True, "hydro": hydro(ho), "uniform_mpa": p_over, "roof_extra_mpa": -snow, "wind": []},
         {"id": "op_wind", "name": "Эксплуатация с ветром", "gravity": True, "masses": True, "hydro": hydro(ho), "uniform_mpa": p_over, "roof_extra_mpa": -snow, "wind": wind},
         {"id": "hydrotest", "name": "Гидроиспытания", "gravity": True, "masses": True, "hydro": hydro(hg), "uniform_mpa": 0.0, "roof_extra_mpa": 0.0, "wind": []},
         {"id": "vacuum", "name": "Вакуум, снег и ветер (пустой резервуар)", "gravity": True, "masses": True, "hydro": None,
          "uniform_mpa": -vac, "roof_extra_mpa": -snow, "wind": wind},
     ]
+    for lv in (fill_levels_m or []):          # серия уровней налива для определения допустимой высоты (те же давление и снег, без ветра)
+        cases.append({"id": "fill_%g" % lv, "name": "Налив %g м" % lv, "gravity": True, "masses": True,
+                      "hydro": hydro({"density_kg_m3": ho["density_kg_m3"], "fill_height_m": lv}), "uniform_mpa": p_over, "roof_extra_mpa": -snow, "wind": []})
+    return cases
 
 
 def _json_default(o):
     raise TypeError(type(o))
 
 
-def write_package(res: dict, out_dir: str | Path, design: bool = True) -> dict:
+def write_package(res: dict, out_dir: str | Path, design: bool = True, fill_levels_m=None) -> dict:
     """Записывает loads.json (для просмотра), loads_data.py (для скрипта в Mechanical), loads_summary.csv (таблица для отчёта)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -45,7 +49,7 @@ def write_package(res: dict, out_dir: str | Path, design: bool = True) -> dict:
     data = {
         "geometry": {"diameter_mm": I["D"] * 1000, "wall_height_mm": I["H"] * 1000, "n_belts": I["n_belts"], "belt_height_mm": I["belt_height"] * 1000},
         "gravity_mm_s2": L["gravity_m_s2"] * 1000,
-        "cases": build_cases(res, design),
+        "cases": build_cases(res, design, fill_levels_m),
         "point_masses": [{"name": m["name"], "category": m["category"], "mass_kg": m["mass_kg"], "location": m["location"]} for m in L["point_masses"]
                          if not m["name"].startswith("Пояс стенки")],
         "belt_z_mm": [[b * I["belt_height"] * 1000, (b + 1) * I["belt_height"] * 1000] for b in range(I["n_belts"])],

@@ -348,3 +348,29 @@ def test_report_with_ideal_tank(tmp_path):
     path, _ = build_report(p, tmp_path / "i.docx")
     text = "\n".join(x.text for x in docx.Document(path).paragraphs)
     assert "идеального РВС" in text and "111,1" in text and "k = 2,5" in text
+
+
+def test_report_with_fill_series(tmp_path):
+    """Допустимая высота налива по серии уровней: таблица 5.3 и вывод."""
+    import docx
+    p = load_project(YAML)
+    p.raw["results"]["fill_series"] = [{"level_m": 7.2, "membrane": 100.0, "fiber": 150.0, "equivalent": 160.0},
+                                       {"level_m": 11.0, "membrane": 200.0, "fiber": 250.0, "equivalent": 260.0},
+                                       {"level_m": 17.1, "membrane": 900.0, "fiber": 950.0, "equivalent": 960.0}]
+    path, _ = build_report(p, tmp_path / "f.docx")
+    text = "\n".join(x.text for x in docx.Document(path).paragraphs)
+    assert "5.3 Допустимая высота налива" in text and "Допустимая высота налива продукта по условию прочности" in text
+
+
+def test_loads_cases_with_fill_levels():
+    from ansys_report.loads.rvs_loads import compute
+    from ansys_report.loads.export import build_cases
+    from tests.test_calc import _points_project  # noqa: F401
+    inp = {"diameter_m": 28.5, "wall_height_m": 18.0, "belt_height_m": 1.5, "n_belts": 12, "thicknesses_mm": [12] * 12, "product_density_t_m3": 0.934, "fill_height_m": 11.0,
+           "hydrotest_height_m": 11.0, "max_fill_height_m": 11.0, "overpressure_pa": 0, "vacuum_pa": 0, "snow_district": "IV", "wind_district": "II", "terrain": "A", "aero_coef": 0.8,
+           "roof_rise_m": 3.7, "roof_deck_thickness_m": 0.004, "ryn_mpa": 420, "e_mpa": 206000, "steel_density_kg_m3": 7850, "g": 9.8, "water_density_kg_m3": 1000,
+           "gamma_m": 1.1, "gamma_n": 1.1, "gamma_c1": 0.7, "gamma_c2": 0.8, "gamma_c_rest": 0.8, "gamma_c_hydro": 0.9, "corrosion_weak_mm_year": 0.05,
+           "corrosion_medium_mm_year": 0.1, "service_life_years": 40, "anticorrosion_life_years": 10, "diagnostics_interval_years": 10, "insulation_thickness_m": 0,
+           "insulation_density_kg_m3": 140, "equipment": []}
+    cs = build_cases(compute(inp), True, [7.2, 17.1])
+    assert [c["name"] for c in cs][-2:] == ["Налив 7.2 м", "Налив 17.1 м"] and cs[-1]["hydro"]["free_surface_mm"] == 17100.0
