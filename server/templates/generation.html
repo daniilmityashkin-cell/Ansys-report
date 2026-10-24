@@ -7,10 +7,11 @@
 {% elif g.status == 'done' %}<div class="card" id="agent"><h2>Технический отчёт: расчёт в Ansys на вашем компьютере</h2>
 <p class="muted">Нажмите кнопку: откроется помощник, сам скачает модель, запустит Ansys, посчитает и пришлёт готовый отчёт сюда. Ничего искать в папках не нужно. Нужен установленный Ansys и помощник (ставится один раз: <a href="/agent/setup">инструкция</a>).</p>
 <p><a class="btn" id="agentbtn" href="{{ agent_url }}">Собрать отчёт в Ansys</a> <a class="btn light" href="#files">Файлы</a></p>
+<details class="more"><summary>Не запускается? Запуск вручную</summary><p class="muted">Скопируйте и выполните в PowerShell:</p><pre style="white-space:pre-wrap;word-break:break-all">cd C:\Ansys-report; python -m ansys_report agent "{{ agent_url }}"</pre></details>
 <div id="agentstat" class="muted">{{ agent.message if agent and agent.message else '' }}</div>
 <div id="agentfiles"></div></div>
 <script>(function(){var gid={{ g.id }},st=document.getElementById('agentstat'),fl=document.getElementById('agentfiles');
-var names={idle:'',download:'Скачиваю модель…',build:'Строю модель и сетку в Ansys…',solve:'Считаю и собираю отчёт (до 40 минут)…',upload:'Отправляю отчёт…',done:'Готово',error:'Ошибка'};
+var names={idle:'Ожидание запуска помощника',download:'Скачиваю модель…',build:'Строю модель и сетку в Ansys…',solve:'Считаю и собираю отчёт (до 40 минут)…',upload:'Отправляю отчёт…',done:'Готово',error:'Ошибка'};
 function tick(){fetch('/g/'+gid+'/agent.json').then(function(r){return r.json()}).then(function(a){
 var t=(names[a.stage]||a.stage||'');if(a.message)t+=(t?' · ':'')+a.message;st.textContent=t;
 fl.innerHTML=(a.files||[]).map(function(n){return '<p><a class="btn light" href="/g/'+gid+'/agent-files/'+encodeURIComponent(n)+'">'+n+'</a></p>'}).join('');

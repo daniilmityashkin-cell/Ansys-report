@@ -15,6 +15,17 @@ WORK = Path(os.environ.get("ANSYS_REPORT_AGENT_DIR") or r"C:\ansys_report_work")
 SKIP_DIAG = {"AR_NODIAG": "1", "AR_NOPAUSE": "1"}
 
 
+def say(msg: str) -> None:
+    """Печатает в окно и дописывает в журнал помощника (C:\\ansys_report_work\\agent.log)."""
+    print(msg, flush=True)
+    try:
+        WORK.mkdir(parents=True, exist_ok=True)
+        with open(WORK / "agent.log", "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except OSError:
+        pass
+
+
 def parse_link(link: str) -> dict:
     q = urllib.parse.urlparse(link)
     p = {k: v[0] for k, v in urllib.parse.parse_qs(q.query).items()}
@@ -60,6 +71,7 @@ def _run_bat(bat: Path, env_extra: dict) -> int:
 
 
 def run(link: str) -> int:
+    say(f"Запуск помощника: {link[:80]}…")
     info = parse_link(link)
     site = Site(info["server"], info["gid"], info["token"])
     home = str(Path(__file__).resolve().parent.parent)                      # папка, где лежит пакет ansys_report
@@ -67,18 +79,18 @@ def run(link: str) -> int:
     try:
         pkg = WORK / f"pkg_{info['gid']}"
         pkg.mkdir(parents=True, exist_ok=True)
-        print("Скачиваю модель…")
+        say("Скачиваю модель…")
         site.status("download")
         zpath = WORK / f"pkg_{info['gid']}.zip"
         site.download(zpath)
         with zipfile.ZipFile(zpath) as z:
             z.extractall(pkg)
-        print("Строю модель в Ansys (несколько минут)…")
+        say("Строю модель в Ansys (несколько минут)…")
         site.status("build")
         rc = _run_bat(pkg / "Open_in_Ansys.bat", env)
         if rc != 0:
             raise RuntimeError(f"Open_in_Ansys.bat завершился с кодом {rc}")
-        print("Считаю и собираю отчёт (до 40 минут)…")
+        say("Считаю и собираю отчёт (до 40 минут)…")
         site.status("solve")
         rc = _run_bat(pkg / "Make_report.bat", env)
         out = WORK / "model" / "report"
@@ -89,21 +101,24 @@ def run(link: str) -> int:
         for f in files:
             site.upload(f)
         site.status("done", "Отчёт сформирован")
-        print("Готово: отчёт отправлен на сайт.")
+        say("Готово: отчёт отправлен на сайт.")
         return 0
     except Exception as e:      # noqa: BLE001
         site.status("error", str(e)[:400])
-        print("Ошибка:", e)
+        say(f"Ошибка: {e}")
         return 1
 
 
 def install() -> int:
-    """Регистрирует ссылки ansysreport:// для текущего пользователя Windows (без прав администратора)."""
+    """Регистрирует ссылки ansysreport:// для текущего пользователя Windows (без прав администратора).
+    Помощник запускается из папки программы (иначе python не найдёт модуль) и при ошибке оставляет окно открытым."""
     import winreg
-    cmd = f'"{sys.executable}" -m ansys_report agent "%1"'
+    home = str(Path(__file__).resolve().parent.parent)
+    cmd = f'cmd /c "cd /d "{home}" && "{sys.executable}" -m ansys_report agent "%1" || pause"'
     key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\ansysreport")
     winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "URL:ANSYS REPORT")
     winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
     winreg.SetValue(winreg.HKEY_CURRENT_USER, r"Software\Classes\ansysreport\shell\open\command", winreg.REG_SZ, cmd)
     print("Готово: ссылки «Собрать отчёт в Ansys» на сайте теперь открывают помощника.")
+    print("Команда запуска:", cmd)
     return 0
