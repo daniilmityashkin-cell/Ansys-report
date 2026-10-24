@@ -55,11 +55,12 @@ def _ansys_pack(gen: Path, project: dict, belts_dir: Path, dest: Path, title: st
                             anketa={"tag": title, "tank_name": title, "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
     try:                                                           # каркас крыши и опорное кольцо (если заданы в файле проекта) - балочные элементы в Ansys
         from ansys_report.loads.beams import beams_package
-        bp = beams_package(project, float(project["diameter"]) * 500.0)
+        bp = beams_package(project, float(str(project["diameter"]).replace(",", ".")) * 500.0)
         if bp:
             (md / "beams.json").write_text(json.dumps(bp, ensure_ascii=False), encoding="utf-8")
     except Exception as e:   # noqa: BLE001
         (belts_dir / "beams_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+        (md / "beams_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
     return md
 
 

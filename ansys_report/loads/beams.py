@@ -25,8 +25,8 @@ def beams_package(project: dict, wall_radius_mm: float) -> dict | None:
         return None
     n_rad = int(float(roof.get("radial_count", 0)))
     n_ring = int(float(roof.get("ring_count", 0)))
-    rc = float(roof.get("central_radius_m", 0)) * 1000.0
-    out = {"wall_radius_mm": wall_radius_mm, "central_radius_mm": rc, "radial_count": n_rad, "first_angle_deg": float(roof.get("first_angle_deg", 0)),
+    rc = float(str(roof.get("central_radius_m", 0)).replace(",", ".")) * 1000.0
+    out = {"wall_radius_mm": wall_radius_mm, "central_radius_mm": rc, "radial_count": n_rad, "first_angle_deg": float(str(roof.get("first_angle_deg", 0)).replace(",", ".")),
            "radial": _sec(bs["radial"], True) if "radial" in bs else None,
            "central": _sec(bs["central_ring"], False) if "central_ring" in bs else None,
            "edge": _sec(bs["channel"], False) if "channel" in bs else None,

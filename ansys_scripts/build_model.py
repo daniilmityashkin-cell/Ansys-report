@@ -113,6 +113,7 @@ def apdl_beams():
     import json, math
     bp_path = os.path.join(pkg, "beams.json")
     if not os.path.exists(bp_path):
+        bsay(u"Балки: файла beams.json нет в пакете (%s) - каркас крыши не моделируется" % pkg)
         return u""
     bp = json.loads(_rd(bp_path))
     H = WALL_H
