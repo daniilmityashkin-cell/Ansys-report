@@ -299,6 +299,22 @@ try:
         bk.AnalysisSettings.MaximumModesToFind = 3
     except Exception as e:
         say(u"  число форм: %s" % e)
+    try:                                   # только положительные множители: запас по заданной (прямой) нагрузке
+        ast_ = bk.AnalysisSettings
+        done_ = False
+        for src_ in (u"IncludeNegativeLoadMultiplier",):
+            if hasattr(ast_, src_):
+                cur_ = getattr(ast_, src_)
+                for nm_ in (u"No", u"Off"):
+                    try:
+                        setattr(ast_, src_, getattr(type(cur_), nm_))
+                        done_ = True
+                        break
+                    except Exception:
+                        pass
+        say(u"Устойчивость: только положительные множители нагрузки: %s" % (u"включено" if done_ else u"не удалось (свойства: %s)" % u", ".join([n for n in dir(ast_) if "Neg" in n or "Multiplier" in n])))
+    except Exception as e:
+        say(u"  отрицательные множители: %s" % e)
     bsol = bk.Solution
     for mi in (1, 2, 3):
         td = bsol.AddTotalDeformation()
