@@ -23,6 +23,7 @@ tick();setInterval(tick,5000);})();</script>
 {% elif g.status == 'done' %}<div class="card done"><h2>Готово: отчёт и файлы сформированы</h2><p class="muted">Скачайте архив и распакуйте его: внутри папка <b>ansys_model</b> (модель и скрипты для Ansys) и технический отчёт.</p>
 <p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a> <a class="btn light" href="#files">Список файлов</a></p></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>{% endif %}
+{% if not has_preview %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
 <div class="card"><h2>Результат проверки</h2>
 <div class="kv"><span>Диаметр × высота</span><span>{{ summary.diameter_m }} × {{ summary.height_m }} м</span>
 <span>Замеров</span><span>{{ summary.n_points }} ({{ summary.n_gens }} образующих × {{ summary.n_belts }} поясов)</span>
@@ -52,7 +53,7 @@ tick();setInterval(tick,5000);})();</script>
 {% for b in summary.belts %}<tr><td>{{ b.belt }}</td><td>{{ b.z_m }}</td><td>{{ summary.thickness_belts[loop.index0] if summary.thickness_belts else '' }}</td><td>{{ b.lim_a }}</td><td>{{ b.lim_b }}</td><td{% if b.max_abs > b.lim_b %} class="bad"{% elif b.max_abs > b.lim_a %} class="warn"{% endif %}>{{ b.max_abs }}</td><td>{{ b.max_gen }}</td><td>{{ b.over_a }} из {{ b.n }}</td><td>{{ b.over_b }} из {{ b.n }}</td></tr>{% endfor %}</table>
 {% if summary.worst %}<h2 style="margin-top:18px">Точки с наибольшим превышением допуска H/200</h2><table><tr><th>Пояс</th><th>Образующая</th><th>Угол, °</th><th>Высота, м</th><th>Δ, мм</th><th>Допуск, мм</th><th>|Δ| / допуск</th></tr>
 {% for w in summary.worst %}<tr><td>{{ w.belt }}</td><td>{{ w.gen }}</td><td>{{ w.angle }}</td><td>{{ w.z_m }}</td><td>{{ w.dev }}</td><td>{{ w.lim_a }}</td><td>{{ w.ratio }}</td></tr>{% endfor %}</table>{% endif %}</div>{% endif %}
-{% else %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
+{% else %}{% endif %}
 {% if loads_view %}{% if loads_view.error %}<div class="err">Нагрузки не рассчитаны: {{ loads_view.error }}</div>{% else %}{% set L = loads_view.loads %}{% set I = loads_view.inputs %}
 <div class="card"><h2>Нагрузки на резервуар</h2><p class="sub">Расчёт по методике ГОСТ 31385-2016 и СП 20.13330. Здесь значения без коэффициентов; расчётные сочетания войдут в пакет для Ansys.</p>
 <table><tr><th>Нагрузка</th><th>Значение</th></tr>
