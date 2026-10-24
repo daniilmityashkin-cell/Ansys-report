@@ -14,7 +14,8 @@
 var names={idle:'Ожидание запуска помощника',download:'Скачиваю модель…',build:'Строю модель и сетку в Ansys…',solve:'Считаю и собираю отчёт (до 40 минут)…',upload:'Отправляю отчёт…',done:'Готово',error:'Ошибка'};
 function tick(){fetch('/g/'+gid+'/agent.json').then(function(r){return r.json()}).then(function(a){
 var t=(names[a.stage]||a.stage||'');if(a.message)t+=(t?' · ':'')+a.message;st.textContent=t;
-fl.innerHTML=(a.files||[]).map(function(n){return '<p><a class="btn light" href="/g/'+gid+'/agent-files/'+encodeURIComponent(n)+'">'+n+'</a></p>'}).join('');
+function lab(n){var l=n.toLowerCase();if(l.slice(-5)=='.docx')return 'Технический отчёт (Word)';if(l.slice(-5)=='.xlsx')return 'Таблицы замеров (Excel)';if(l.indexOf('points_')==0&&l.indexOf('full')>0)return 'Точки: полный резервуар (текст)';if(l.indexOf('points_')==0)return 'Точки: пустой резервуар (текст)';return n}
+fl.innerHTML=(a.files||[]).map(function(n){return '<p><a class="btn light" href="/g/'+gid+'/agent-files/'+encodeURIComponent(n)+'" title="'+n+'">'+lab(n)+'</a></p>'}).join('');
 }).catch(function(){});}
 tick();setInterval(tick,5000);})();</script>
 {% endif %}
