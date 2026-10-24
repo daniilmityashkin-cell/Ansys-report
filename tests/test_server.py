@@ -461,5 +461,6 @@ def test_agent_link_parse():
     from ansys_report.agent import parse_link
     p = parse_link("ansysreport://run?server=https://x.example/&g=5&t=abc")
     assert p == {"server": "https://x.example", "gid": 5, "token": "abc"}
+    assert parse_link("ansysreport://run/?server=http://127.0.0.1:8000&amp;g=8&amp;t=ab")["gid"] == 8        # экранированные амперсанды
     with pytest.raises(ValueError):
         parse_link("http://evil/?server=1&g=1&t=1")

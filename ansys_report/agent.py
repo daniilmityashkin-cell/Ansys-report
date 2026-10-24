@@ -27,6 +27,8 @@ def say(msg: str) -> None:
 
 
 def parse_link(link: str) -> dict:
+    import html
+    link = html.unescape(link.strip().strip('"'))          # на случай «&amp;» вместо «&»
     q = urllib.parse.urlparse(link)
     p = {k: v[0] for k, v in urllib.parse.parse_qs(q.query).items()}
     if q.scheme != "ansysreport" or not {"server", "g", "t"} <= set(p):
