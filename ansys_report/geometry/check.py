@@ -73,13 +73,13 @@ def analyze(project: dict) -> dict:
     }
 
 
-def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 0.1, log=lambda s: None) -> dict:
+def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 50.0, log=lambda s: None) -> dict:
     """Модель для расчётного пакета: STEP, где КАЖДЫЙ пояс - своя грань (общие рёбра), и thickness_zones.csv по поясам.
     Нужна, чтобы Ansys выдавал результаты по поясам стенки (в отличие от файла для заказчика, где пояса одной толщины объединены)."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     model = rc.TankModel(project)
-    poles, tu, tv, _ = rc.make_cad(model, tolerance_mm, log)
+    poles, tu, tv, _ = rc.make_cad(model, tolerance_mm, log, max_nt=int(model.C / 0.2) + 1, max_nz=int(model.H / 0.2) + 2)     # шаг CAD ~200 мм: для сетки КЭ 150 мм мельче не нужно, а STEP остаётся лёгким
     groups = [dict(index=b["number"], first_belt=b["number"], last_belt=b["number"], bottom_m=b["bottom_m"], top_m=b["top_m"],
                    thickness_mm=b["thickness_mm"]) for b in model.bands]
     step = out_dir / "model_belts.step"

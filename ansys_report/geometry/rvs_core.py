@@ -181,12 +181,14 @@ def cad_value(poles,tu,tv,u,v):
     a=basis(tu,3,u);b=basis(tv,3,v);i=np.flatnonzero(abs(a)>1e-14);j=np.flatnonzero(abs(b)>1e-14)
     return np.einsum('i,ijc,j->c',a[i],poles[np.ix_(i,j)],b[j])
 
-def make_cad(model,tolerance=.1,log=print):
-    # Resolution follows actual measurement spacing; error checked off-grid.
+def make_cad(model,tolerance=.1,log=print,max_nt=None,max_nz=None):
+    # Resolution follows actual measurement spacing; error checked off-grid. max_nt/max_nz ограничивают начальную сетку (модель для сеточного расчёта).
     nt=max(96,len(model.theta)*4);nz=max(33,len(model.z)*4)
     for d in model.defects:
         nt=max(nt,int(math.ceil(model.C/(np.min(np.diff(d.x))/2))))
         nz=max(nz,int(math.ceil(model.H/(np.min(np.diff(d.y))/2)))+1)
+    if max_nt:nt=min(nt,max_nt)
+    if max_nz:nz=min(nz,max_nz)
     tests=[(float(t),float(z)) for t in np.linspace(.0001,2*np.pi-.0001,20) for z in np.linspace(0,model.H,9)]
     tests.extend((float(t),float(z)) for t in model.theta for z in model.z)
     for d in model.defects:

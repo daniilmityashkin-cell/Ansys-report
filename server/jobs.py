@@ -54,7 +54,7 @@ def compute(gen_dir: str, title: str) -> dict:
             struct = {"bottom": {**base["bottom"], **(structure.get("bottom") or {})}, "roof": {**base["roof"], **(structure.get("roof") or {})}}
             full = bm["step"].parent / "model_full.step"
             info = build_full_step(step, full, struct)
-            if full.stat().st_size > 80_000_000:                       # очень подробная геометрия (много вмятин): полная модель слишком тяжёлая для Ansys
+            if full.stat().st_size > 100_000_000:                       # очень подробная геометрия (много вмятин): полная модель слишком тяжёлая для Ansys
                 raise RuntimeError("полная модель %d МБ: оставлена только стенка" % (full.stat().st_size // 1_000_000))
             step = full
             b, r = struct["bottom"], struct["roof"]
