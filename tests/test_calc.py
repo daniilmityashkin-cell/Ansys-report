@@ -374,3 +374,14 @@ def test_loads_cases_with_fill_levels():
            "insulation_density_kg_m3": 140, "equipment": []}
     cs = build_cases(compute(inp), True, [7.2, 17.1])
     assert [c["name"] for c in cs][-2:] == ["Налив 7.2 м", "Налив 17.1 м"] and cs[-1]["hydro"]["free_surface_mm"] == 17100.0
+
+
+def test_stability_ring_limit_matches_excel():
+    import json
+    from pathlib import Path
+    from ansys_report.loads.rvs_loads import compute
+    r = compute(json.loads((Path(__file__).parent.parent / "examples" / "loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    b = r["stability"]["belts"]
+    assert abs(b[0]["utilization"] - 1.2417) < 1e-3
+    assert abs(b[5]["ring_hr_max_m"] - 0.5115) < 1e-3 and abs(b[7]["ring_hr_max_m"] - 2.369) < 1e-3
+    assert abs(r["ring_modulus_cm3"] - 120.1) < 0.1
