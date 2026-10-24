@@ -104,6 +104,9 @@ def run(link: str) -> int:
             site.upload(f)
         site.status("done", "Отчёт сформирован")
         say("Готово: отчёт отправлен на сайт.")
+        diag = Path(home) / "diag.bat"
+        if diag.exists() and (Path(home) / ".git").exists():       # рабочая копия разработчика: логи и отчёт уходят в ветку diag-logs
+            _run_bat(diag, {"AR_NOPAUSE": "1"})
         return 0
     except Exception as e:      # noqa: BLE001
         site.status("error", str(e)[:400])
