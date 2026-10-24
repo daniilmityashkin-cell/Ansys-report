@@ -1,5 +1,6 @@
 """Генерация технического отчёта (Word) по принятой форме технического отчёта."""
 from __future__ import annotations
+import re
 from pathlib import Path
 import docx
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -39,6 +40,8 @@ class Report:
     def para(self, text="", style="Normal", bold=False, align=WD_ALIGN_PARAGRAPH.JUSTIFY, italic=False,
              size=12, indent=1.0, keep_next=False, space_before=0, space_after=0):
         par = self.d.add_paragraph(style=style)
+        text = re.sub(r"(?i)(резервуар\w*) Резервуар\b", r"\1", text)      # название по умолчанию «Резервуар» не дублируем
+        text = re.sub(r" {2,}", " ", text)
         if text:
             self._run(par, text, size, bold, italic)
         pf = par.paragraph_format
@@ -228,7 +231,7 @@ class Report:
         self.body("Общий вид резервуара показан на рисунке 1.")
         if t.get("fill_level"):
             self.body(f"Расчётный уровень налива продукта – {fmt(t['fill_level']/1000)} м. "
-                      f"Плотность хранимого продукта составляет {fmt(t['product_density']/1000)} т/м3.")
+                      f"Плотность хранимого продукта составляет {fmt(t['product_density']/1000, 3)} т/м3.")
         th = t["belts_thickness"]
         self.body("Номинальные толщины стенки по поясам: " + T.thickness_groups(th) + ".")
         self.body("Предельное отклонение от вертикали каждого листа любого пояса стенки ограничивается величиной "
@@ -265,12 +268,16 @@ class Report:
         self.math(f"Уторный узел (с учетом пластических деформаций): R = {sy}·1,2·1,0 / (1,05·1,05) = {fmt(c['Rutor'],2)} МПа")
         self.body(f"Напряжения в первом поясе не должны превышать {c['R1']:.0f} МПа, со второго по {len(th)}-й пояс – "
                   f"{c['R2']:.0f} МПа. При субмоделировании уторного шва напряжения не должны превышать {c['Rutor']:.0f} МПа.")
-        self.body(f"В модели материала стенки и окрайки днища использовалась упругопластическая модель с билинейной диаграммой "
-                  f"деформирования: предел текучести σу = {sy} МПа, модуль упругости второго участка")
-        self.math(f"E2 = (σвр − σу) / (Δ/100 − σу/E) = {fmt(c['E2'],1)} МПа")
-        self.bullets([f"σвр = {m['ultimate_mpa']} МПа – временное сопротивление стали {m['name']};",
-                      f"σу = {sy} МПа – предел текучести;", f"Δ = {m['elongation_pct']} – относительное удлинение, %;",
-                      f"Е = {m['young_modulus_mpa']} МПа – модуль упругости."])
+        if m.get("bilinear"):
+            self.body(f"В модели материала стенки и окрайки днища использовалась упругопластическая модель с билинейной диаграммой "
+                      f"деформирования: предел текучести σу = {sy} МПа, модуль упругости второго участка")
+            self.math(f"E2 = (σвр − σу) / (Δ/100 − σу/E) = {fmt(c['E2'],1)} МПа")
+            self.bullets([f"σвр = {m['ultimate_mpa']} МПа – временное сопротивление стали {m['name']};",
+                          f"σу = {sy} МПа – предел текучести;", f"Δ = {m['elongation_pct']} – относительное удлинение, %;",
+                          f"Е = {m['young_modulus_mpa']} МПа – модуль упругости."])
+        else:
+            self.body(f"В расчете принята линейно-упругая модель материала стенки, днища и крыши: модуль упругости Е = {m['young_modulus_mpa']} МПа, "
+                      f"коэффициент Пуассона ν = {fmt(m['poisson'], 2)}, предел текучести σу = {sy} МПа (используется для определения допускаемых напряжений).")
         self.para("2.2 Необходимый состав расчета", bold=True)
         for line in T.COMPOSITION: self.body(line)
 
@@ -456,7 +463,7 @@ class Report:
             (f"Минимальный запас устойчивости стенки составил k = {fmt(c['kmin'])} (требуется не менее {fmt(res['required_k'])}) – запас устойчивости " + ("достаточный." if c["stability_ok"] else "НЕДОСТАТОЧНЫЙ.")
              + (f" Коэффициент не получен для случаев: {', '.join(c['stability_missing'])}." if c["stability_missing"] else ""))
             if c["kmin"] is not None else "Коэффициент запаса устойчивости из проекта Ansys не получен (нет результатов расчёта на устойчивость).",
-            f"Допустимый уровень налива продукта по условию прочности составил {fmt(res['max_fill_m'])} м." if c["strength_ok"] else
+            f"Прочность стенки обеспечена при расчетном уровне налива продукта {fmt(res['max_fill_m'])} м." if c["strength_ok"] else
             "Для продолжения эксплуатации требуется снижение уровня налива или вывод резервуара в ремонт; допустимый уровень налива следует определить повторным расчетом."]
         items = [x for x in items if x]
         for k, x in enumerate(items, 1):

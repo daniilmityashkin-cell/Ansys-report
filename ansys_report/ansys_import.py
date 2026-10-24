@@ -111,10 +111,21 @@ def loads(md: dict, analysis: str | None = None) -> tuple[str, list[dict]]:
     return chosen["name"], out
 
 
+def _size_mm(raw) -> float:
+    """Размер элемента в мм: по единице из строки; без единицы - значения от 5 считаем миллиметрами, меньше - метрами."""
+    v = _num(raw, 0) or 0
+    t = str(raw or "")
+    if re.search(r"\bmm\b|мм", t):
+        return round(v, 3)
+    if re.search(r"\bm\b|\[m\]", t):
+        return round(v * 1000, 3)
+    return round(v if v >= 5 else v * 1000, 3)
+
+
 def mesh_info(md: dict) -> dict:
     mo = md.get("mesh_object", {})
     return {"nodes": md.get("node_count"), "elements": md.get("element_count") or int(_num(mo.get("Elements"), 0)),
-            "element_size_mm": round((_num(mo.get("ElementSize"), 0) or 0) * 1000, 3),
+            "element_size_mm": _size_mm(mo.get("ElementSize")),
             "order": mo.get("ElementOrder", ""), "mesher": mo.get("DefaultShellMesher", "")}
 
 
