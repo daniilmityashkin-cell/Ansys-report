@@ -273,7 +273,7 @@ try:
     if src is None:
         raise Exception("нет статического случая 'vacuum' для связи")
     bk = model.AddEigenvalueBucklingAnalysis()
-    bk.Name = u"Eigenvalue: Устойчивость (пустой резервуар, вакуум, снег и ветер)"
+    bk.Name = u"Eigenvalue Устойчивость пустого резервуара"
     linked = False
     cands = [bk]
     try:

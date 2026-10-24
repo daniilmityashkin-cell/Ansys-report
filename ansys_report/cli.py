@@ -71,7 +71,8 @@ def main(argv=None) -> int:
                 pass
         axis = str(anketa.pop("vertical_axis", "Z")).upper()          # модель с сайта: вертикаль - ось Z
         try:
-            files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve, settings=ModelSettings(vertical_axis=axis, static_prefix="AR:", full_analysis="AR: Эксплуатация"))
+            files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve, settings=ModelSettings(vertical_axis=axis, static_prefix="AR:", full_analysis="AR: Эксплуатация",
+                                                                                          buckling_labels={"Eigenvalue Устойчивость пустого резервуара": "Пустой резервуар: вакуум, снег и ветер"}))
         except (ConnectError, FileNotFoundError) as e:
             print(f"Ошибка: {e}", file=sys.stderr)
             return 2
