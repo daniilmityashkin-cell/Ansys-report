@@ -381,13 +381,15 @@ def _blocks(d: Path, settings) -> dict[str, str]:
     eigen = []
     st = d / "stability.csv"
     if st.exists():
-        for row in st.read_text(encoding="utf-8").splitlines()[1:]:
-            name = row.split(",")[0]
+        import csv as _csv
+        for row in list(_csv.reader(st.read_text(encoding="utf-8").splitlines()))[1:]:
+            name = row[0] if row else ""
             if name and name not in eigen:
                 eigen.append(name)
     lines += ["  stability_csv: stability.csv", "  stability_modes: 2", "  stability_labels:"]
+    q = lambda t: json.dumps(str(t), ensure_ascii=False)          # строка YAML в двойных кавычках с экранированием
     for n in eigen:
-        lines.append(f'    "{n}": "{(settings.buckling_labels or {}).get(n, n)}"')
+        lines.append(f'    {q(n)}: {q((settings.buckling_labels or {}).get(n, n))}')
     lines += ["  required_k: 1.0", "", "images_dir: images", "images:"]
     img = d / "images"
 
