@@ -10,7 +10,7 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     ap.add_argument("--loads", help="apply-loads: файл loads_data.py из пакета нагрузок")
@@ -18,6 +18,32 @@ def main(argv=None) -> int:
     ap.add_argument("--no-solve", action="store_true", help="report-from-ansys: не запускать расчёт, взять готовые результаты проекта")
     ap.add_argument("--axis", default="Z", help="apply-loads: вертикальная ось модели (X, Y или Z)")
     a = ap.parse_args(argv)
+    if a.command == "package":
+        # файл проекта программы геометрии (.json) -> готовый пакет для Ansys (ansys_model) без сайта
+        if not a.project:
+            ap.error("укажите файл проекта (.json)")
+        import json, shutil, tempfile
+        from server.loadsinput import build_loads_input
+        from server.structinput import structure_from_project
+        from server.jobs import compute
+        proj = json.loads(Path(a.project).read_text(encoding="utf-8-sig"))
+        gen = Path(tempfile.mkdtemp(prefix="ar_pkg_"))
+        (gen / "input.json").write_text(json.dumps(proj, ensure_ascii=False), encoding="utf-8")
+        (gen / "structure.json").write_text(json.dumps(structure_from_project(proj), ensure_ascii=False), encoding="utf-8")
+        (gen / "loads_input.json").write_text(json.dumps(build_loads_input({"l_on": "1"}, proj), ensure_ascii=False), encoding="utf-8")
+        print("Строю геометрию и нагрузки (1-2 минуты)...")
+        compute(str(gen), "Резервуар")
+        err = gen / "result" / "belts_src" / "assembly_error.txt"
+        if err.exists():
+            print("ВНИМАНИЕ: днище/крыша не достроены:", err.read_text(encoding="utf-8"))
+        src = gen / "result" / "ansys_model"
+        dst = Path(a.out)
+        if dst.exists():
+            shutil.rmtree(dst, ignore_errors=True)
+        shutil.copytree(src, dst)
+        step = dst / "model.step"
+        print(f"Пакет готов: {dst} (model.step {step.stat().st_size / 1e6:.1f} МБ)")
+        return 0
     if a.command == "loads":
         if not a.project:
             ap.error("укажите файл исходных данных для расчёта нагрузок (JSON)")
