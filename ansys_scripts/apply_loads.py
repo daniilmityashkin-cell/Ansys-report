@@ -237,7 +237,7 @@ for ci, case in enumerate(L["cases"]):
     try:
         an = base if (REUSE_FIRST and ci == 0 and base is not None) else model.AddStaticStructuralAnalysis()
         an.Name = u"AR: " + case["name"]
-        if os.environ.get("ANSYS_REPORT_LARGE_DEFLECTION", "1") == "1":       # ГОСТ Р 58622 п. 7.2.7.1: геометрически нелинейный (большие перемещения) упругий расчёт
+        if os.environ.get("ANSYS_REPORT_LARGE_DEFLECTION", "0") == "1" and case["id"] != "vacuum":       # вакуум - база для устойчивости: линейный, иначе множитель считается от деформированного состояния и теряет смысл; # по умолчанию выключено: в прогоне с большими перемещениями решения не сходились (Unconverged); ГОСТ Р 58622 п. 7.2.7.1: геометрически нелинейный (большие перемещения) упругий расчёт
             try:
                 an.AnalysisSettings.LargeDeflection = True
                 an.AnalysisSettings.AutomaticTimeStepping = AutomaticTimeStepping.On

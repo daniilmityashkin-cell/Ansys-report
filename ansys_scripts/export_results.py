@@ -58,8 +58,7 @@ def write(name, lines):
 def prep_results_view():
     """Вид результатов как в эталонном отчёте: сплошная цветовая заливка без линий сетки (иначе мелкая сетка закрывает цвета)."""
     for name, fn in ((u"ShowMesh", lambda: setattr(Graphics.ViewOptions, "ShowMesh", False)),
-                     (u"ExtraModelDisplay", lambda: setattr(Graphics.ViewOptions.ResultPreference, "ExtraModelDisplay", ExtraModelDisplay.NoWireframe)),
-                     (u"ShowEdges", lambda: setattr(Graphics.ViewOptions, "ShowEdges", False))):
+                     (u"ExtraModelDisplay", lambda: setattr(Graphics.ViewOptions.ResultPreference, "ExtraModelDisplay", Ansys.Mechanical.DataModel.Enums.ExtraModelDisplay.NoWireframe))):
         try:
             fn()
         except Exception as e:
