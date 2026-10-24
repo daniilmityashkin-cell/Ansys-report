@@ -237,6 +237,15 @@ for ci, case in enumerate(L["cases"]):
     try:
         an = base if (REUSE_FIRST and ci == 0 and base is not None) else model.AddStaticStructuralAnalysis()
         an.Name = u"AR: " + case["name"]
+        if os.environ.get("ANSYS_REPORT_LARGE_DEFLECTION", "1") == "1":       # ГОСТ Р 58622 п. 7.2.7.1: геометрически нелинейный (большие перемещения) упругий расчёт
+            try:
+                an.AnalysisSettings.LargeDeflection = True
+                an.AnalysisSettings.AutomaticTimeStepping = AutomaticTimeStepping.On
+                an.AnalysisSettings.InitialSubsteps = 5
+                an.AnalysisSettings.MinimumSubsteps = 5
+                an.AnalysisSettings.MaximumSubsteps = 30
+            except Exception as e:
+                say(u"  большие перемещения для '%s': %s" % (case["name"], e))
         statics[case["id"]] = an
         if ns_bottom is not None or ns_annular is not None:      # закрепление по днищу (как в ГОСТ Р 58622): днище и окрайка закреплены по всем степеням свободы
             for nsx in (ns_bottom, ns_annular):

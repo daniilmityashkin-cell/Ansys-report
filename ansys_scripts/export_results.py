@@ -169,6 +169,15 @@ for a in model.Analyses:
             log.append(u"%s: расчёт не решён, запускаю решение (может занять несколько минут)" % a.Name)
             sol.Solve(True)
             log.append(u"%s: после решения статус: %s" % (a.Name, sol.Status))
+            if str(sol.Status) == "SolveRequired" and a.Name.startswith(STATIC_PREFIX):       # нелинейный расчёт не сошёлся - решаем линейно
+                try:
+                    if a.AnalysisSettings.LargeDeflection:
+                        a.AnalysisSettings.LargeDeflection = False
+                        log.append(u"%s: нелинейный расчёт не решён, повторяю линейный" % a.Name)
+                        sol.Solve(True)
+                        log.append(u"%s: после линейного решения статус: %s" % (a.Name, sol.Status))
+                except Exception as e:
+                    log.append(u"  линейный повтор: %s" % e)
             if str(sol.Status) == "SolveRequired":          # причина - в сообщениях Mechanical и в solve.out
                 try:
                     for msg in ExtAPI.Application.Messages:
