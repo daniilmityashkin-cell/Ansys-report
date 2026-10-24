@@ -1,11 +1,12 @@
 {% extends "base.html" %}{% block body %}
 <h1>{{ g.title }}</h1><p class="sub">Генерация №{{ g.id }} · <span class="tag {{ g.status }}">{{ {'draft':'проверка пройдена','paid':'оплачено','running':'считается','done':'готово','error':'ошибка'}[g.status] }}</span></p>
-{% if g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
-{% elif g.status == 'done' %}<div class="card done"><h2>Готово: отчёт и файлы сформированы</h2><p class="muted">Скачайте архив и распакуйте его: внутри папка <b>ansys_model</b> (модель и скрипты для Ansys) и технический отчёт.</p>
-<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a> <a class="btn light" href="#files">Список файлов</a></p></div>
-<div class="card" id="agent"><h2>Технический отчёт: расчёт в Ansys на вашем компьютере</h2>
+{% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card actionbar"><b>Отчёт</b><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
+{% else %}<div class="card actionbar"><div><b>Собрать технический отчёт одним нажатием</b><p class="muted" style="margin:4px 0 0">Рассчитаем нагрузки, построим модель, посчитаем в Ansys на вашем компьютере и пришлём отчёт сюда.{% if mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% elif mode == 'pay' %} Разовая генерация доступна один раз на аккаунт.{% endif %}</p></div>
+<form method="post" action="/g/{{ g.id }}/pay" onsubmit="try{sessionStorage.setItem('ar_auto{{ g.id }}','1')}catch(e){}"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="btn">Собрать отчёт{% if mode == 'pay' %} — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
+{% elif g.status == 'done' %}<div class="card" id="agent"><h2>Технический отчёт: расчёт в Ansys на вашем компьютере</h2>
 <p class="muted">Нажмите кнопку: откроется помощник, сам скачает модель, запустит Ansys, посчитает и пришлёт готовый отчёт сюда. Ничего искать в папках не нужно. Нужен установленный Ansys и помощник (ставится один раз: <a href="/agent/setup">инструкция</a>).</p>
-<p><a class="btn" id="agentbtn" href="{{ agent_url }}">Собрать отчёт в Ansys</a></p>
+<p><a class="btn" id="agentbtn" href="{{ agent_url }}">Собрать отчёт в Ansys</a> <a class="btn light" href="#files">Файлы</a></p>
 <div id="agentstat" class="muted">{{ agent.message if agent and agent.message else '' }}</div>
 <div id="agentfiles"></div></div>
 <script>(function(){var gid={{ g.id }},st=document.getElementById('agentstat'),fl=document.getElementById('agentfiles');
@@ -15,6 +16,10 @@ var t=(names[a.stage]||a.stage||'');if(a.message)t+=(t?' · ':'')+a.message;st.t
 fl.innerHTML=(a.files||[]).map(function(n){return '<p><a class="btn light" href="/g/'+gid+'/agent-files/'+encodeURIComponent(n)+'">'+n+'</a></p>'}).join('');
 }).catch(function(){});}
 tick();setInterval(tick,5000);})();</script>
+{% endif %}
+{% if g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
+{% elif g.status == 'done' %}<div class="card done"><h2>Готово: отчёт и файлы сформированы</h2><p class="muted">Скачайте архив и распакуйте его: внутри папка <b>ansys_model</b> (модель и скрипты для Ansys) и технический отчёт.</p>
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a> <a class="btn light" href="#files">Список файлов</a></p></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>{% endif %}
 <div class="card"><h2>Результат проверки</h2>
 <div class="kv"><span>Диаметр × высота</span><span>{{ summary.diameter_m }} × {{ summary.height_m }} м</span>
@@ -100,4 +105,5 @@ function tick(){fetch(url,{credentials:"same-origin"}).then(function(r){return r
  if(Date.now()-t0>180000&&!slow){slow=true;var m=w.querySelector("p");if(m)m.textContent="Сервер сейчас занят, это дольше обычного. Страница обновится сама, ничего нажимать не нужно.";}
  setTimeout(tick,Date.now()-t0>60000?3000:1500);}).catch(function(){setTimeout(tick,3000);});}
 setTimeout(tick,800);})();
-</script>{% endblock %}
+</script>{% if g.status == 'done' and agent_url %}<script>try{if(sessionStorage.getItem('ar_auto{{ g.id }}')){sessionStorage.removeItem('ar_auto{{ g.id }}');setTimeout(function(){location.href="{{ agent_url }}"},600)}}catch(e){}</script>{% endif %}
+{% endblock %}
