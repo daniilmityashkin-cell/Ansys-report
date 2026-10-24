@@ -302,7 +302,7 @@ try:
     bsol = bk.Solution
     for mi in (1, 2, 3):
         td = bsol.AddTotalDeformation()
-        td.Name = u"Форма потери устойчивости %d" % mi
+        td.Name = u"Total Deformation" if mi == 1 else u"Total Deformation %d" % mi          # имена, по которым отчёт находит рисунки форм
         try:
             td.Mode = mi
         except Exception as e:

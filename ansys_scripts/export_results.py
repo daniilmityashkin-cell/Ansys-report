@@ -229,7 +229,17 @@ for a in model.Analyses:
     if a.Name.startswith(EIGEN_PREFIX):
         for r in sol.Children:
             if r.GetType().Name == "TotalDeformation":
-                stab.append(u'"%s",%d,%.4f' % (a.Name, r.Mode, r.ReportedFrequency.Value))
+                kval = None
+                for attr in ("ReportedLoadMultiplier", "ReportedFrequency"):       # у Eigenvalue Buckling - множитель нагрузки (запас устойчивости)
+                    try:
+                        v = getattr(r, attr)
+                        kval = v.Value if hasattr(v, "Value") else float(v)
+                        if kval:
+                            break
+                    except Exception as e:
+                        log.append(u"  %s/%s: %s: %s" % (a.Name, r.Name, attr, e))
+                log.append(u"  устойчивость %s, форма %s: k = %s" % (a.Name, r.Mode, kval))
+                stab.append(u'"%s",%d,%.4f' % (a.Name, r.Mode, kval or 0.0))
     # 3. прочность: максимумы по поясам
     elif a.Name.startswith(STATIC_PREFIX):
         created = []
