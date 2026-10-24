@@ -55,6 +55,31 @@ def write(name, lines):
     f.write(u"\n".join(lines))
     f.close()
 
+def prep_results_view():
+    """Вид результатов как в эталонном отчёте: сплошная цветовая заливка без линий сетки (иначе мелкая сетка закрывает цвета)."""
+    for name, fn in ((u"ShowMesh", lambda: setattr(Graphics.ViewOptions, "ShowMesh", False)),
+                     (u"ExtraModelDisplay", lambda: setattr(Graphics.ViewOptions.ResultPreference, "ExtraModelDisplay", ExtraModelDisplay.NoWireframe)),
+                     (u"ShowEdges", lambda: setattr(Graphics.ViewOptions, "ShowEdges", False))):
+        try:
+            fn()
+        except Exception as e:
+            log.append(u"вид результатов: %s: %s" % (name, e))
+
+
+def export_img(path):
+    """Картинка результата в повышенном разрешении (для Word 12,5 см достаточно 2000x1300), запасной путь - обычный экспорт."""
+    try:
+        st = Ansys.Mechanical.Graphics.GraphicsImageExportSettings()
+        st.CurrentGraphicsDisplay = False
+        st.Resolution = GraphicsResolutionType.EnhancedResolution
+        st.Width = 2000
+        st.Height = 1300
+        Graphics.ExportImage(path, GraphicsImageExportFormat.PNG, st)
+    except Exception as e:
+        log.append(u"картинка высокого разрешения не вышла (%s), обычный экспорт" % e)
+        Graphics.ExportImage(path)
+
+
 def fit_view(steep=False):
     # В фоновом режиме камера по умолчанию сильно приближена и стоит "на боку".
     # Вертикаль резервуара - ось X (гравитация по -X): ставим X "вверх", смотрим сбоку сверху, затем "показать всё".
@@ -119,6 +144,7 @@ def _wall_faces_sorted():
     return fl_
 
 model = ExtAPI.DataModel.Project.Model
+prep_results_view()
 belts = {}
 for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
     m = re.match(BELT_RE, b.Name)
@@ -183,7 +209,7 @@ for a in model.Analyses:
                 except Exception:
                     pass
             fit_view(is_eigen)
-            Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", r.Name))))
+            export_img(os.path.join(out, "%s_%s.png" % (aname, re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", r.Name))))
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
     # 1a. полные поля по всей стенке (эквивалентные, мембранные, фибровые), единицы МПа
@@ -199,7 +225,7 @@ for a in model.Analyses:
                 try:
                     r.Activate()
                     fit_view()
-                    Graphics.ExportImage(os.path.join(out, "%s_%s.png" % (aname, re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", r.Name))))
+                    export_img(os.path.join(out, "%s_%s.png" % (aname, re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", r.Name))))
                 except Exception as e:
                     log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
         except Exception as e:
