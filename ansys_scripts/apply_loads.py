@@ -232,10 +232,12 @@ for a in model.Analyses:
         break
 REUSE_FIRST = os.environ.get("ANSYS_REPORT_REUSE_FIRST") == "1"
 extra_apdl = globals().get("EXTRA_APDL", u"")
+statics = {}
 for ci, case in enumerate(L["cases"]):
     try:
         an = base if (REUSE_FIRST and ci == 0 and base is not None) else model.AddStaticStructuralAnalysis()
         an.Name = u"AR: " + case["name"]
+        statics[case["id"]] = an
         if ns_bottom is not None or ns_annular is not None:      # закрепление по днищу (как в ГОСТ Р 58622): днище и окрайка закреплены по всем степеням свободы
             for nsx in (ns_bottom, ns_annular):
                 if nsx is not None:
@@ -264,6 +266,50 @@ for ci, case in enumerate(L["cases"]):
         say(u"Случай '%s': создан, нагрузки заданы" % case["name"])
     except Exception as e:
         say(u"ОШИБКА случая '%s': %s" % (case["name"], e))
+
+# ---------- 4. Устойчивость: Eigenvalue Buckling по предварительно нагруженному случаю «пустой резервуар, вакуум, снег и ветер» ----------
+try:
+    src = statics.get("vacuum")
+    if src is None:
+        raise Exception("нет статического случая 'vacuum' для связи")
+    bk = model.AddEigenvalueBucklingAnalysis()
+    bk.Name = u"Eigenvalue: Устойчивость (пустой резервуар, вакуум, снег и ветер)"
+    linked = False
+    cands = [bk]
+    try:
+        for ch in bk.Children:
+            cands.append(ch)
+    except Exception:
+        pass
+    for obj in cands:
+        for attr in ("PreStressICEnvironment", "PreStressEnvironment"):
+            if hasattr(obj, attr):
+                try:
+                    setattr(obj, attr, src)
+                    linked = True
+                    say(u"Устойчивость: предварительное нагружение связано через %s.%s" % (obj.GetType().Name, attr))
+                    break
+                except Exception as e:
+                    say(u"  связь через %s.%s: %s" % (obj.GetType().Name, attr, e))
+        if linked:
+            break
+    if not linked:
+        say(u"Устойчивость: связь с статикой не установлена автоматически; доступные свойства: %s" % u", ".join([n for c_ in cands for n in dir(c_) if "Pre" in n]))
+    try:
+        bk.AnalysisSettings.MaximumModesToFind = 3
+    except Exception as e:
+        say(u"  число форм: %s" % e)
+    bsol = bk.Solution
+    for mi in (1, 2, 3):
+        td = bsol.AddTotalDeformation()
+        td.Name = u"Форма потери устойчивости %d" % mi
+        try:
+            td.Mode = mi
+        except Exception as e:
+            say(u"  Mode=%d: %s" % (mi, e))
+    say(u"Случай устойчивости: создан")
+except Exception as e:
+    say(u"Устойчивость не добавлена: %s" % e)
 
 f = io.open(os.path.join(out, "log_loads.txt"), "w", encoding="utf-8")
 f.write(u"\n".join(log))
