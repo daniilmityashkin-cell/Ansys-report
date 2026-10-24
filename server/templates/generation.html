@@ -106,5 +106,9 @@ function tick(){fetch(url,{credentials:"same-origin"}).then(function(r){return r
  if(Date.now()-t0>180000&&!slow){slow=true;var m=w.querySelector("p");if(m)m.textContent="Сервер сейчас занят, это дольше обычного. Страница обновится сама, ничего нажимать не нужно.";}
  setTimeout(tick,Date.now()-t0>60000?3000:1500);}).catch(function(){setTimeout(tick,3000);});}
 setTimeout(tick,800);})();
-</script>{% if g.status == 'done' and agent_url %}<script>try{if(sessionStorage.getItem('ar_auto{{ g.id }}')){sessionStorage.removeItem('ar_auto{{ g.id }}');setTimeout(function(){location.href={{ agent_url|tojson }}},600)}}catch(e){}</script>{% endif %}
+</script>{% if g.status == 'done' and agent_url %}<script>try{if(sessionStorage.getItem('ar_auto{{ g.id }}')){sessionStorage.removeItem('ar_auto{{ g.id }}');
+var bar=document.createElement('div');bar.className='card actionbar';bar.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:50;max-width:92%;box-shadow:0 12px 40px rgba(0,0,0,.6)';
+var n=5;bar.innerHTML='<div><b>Расчёт готов к запуску.</b> Запускаю помощника через <span id="arn">5</span> с и начинаю считать в Ansys на этом компьютере.</div><button type="button" class="btn light" id="arcancel">Отмена</button>';document.body.appendChild(bar);
+var t=setInterval(function(){n--;document.getElementById('arn').textContent=n;if(n<=0){clearInterval(t);bar.remove();location.href={{ agent_url|tojson }}}},1000);
+document.getElementById('arcancel').onclick=function(){clearInterval(t);bar.remove()}}}catch(e){}</script>{% endif %}
 {% endblock %}
