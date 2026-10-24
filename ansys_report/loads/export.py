@@ -11,7 +11,7 @@ from pathlib import Path
 from .rvs_loads import PSI, CE
 
 
-def build_cases(res: dict, design: bool = True, fill_levels_m=None) -> list[dict]:
+def build_cases(res: dict, design: bool = True, fill_levels_m=None, all_cases: bool = False) -> list[dict]:
     """Расчётные случаи. design=True - с коэффициентами надёжности и сочетаний из методики (1,2·p; 1,4·снег; 1,2·ψ·вакуум; 0,5·ψ·ветер)."""
     L, I = res["loads"], res["inputs"]
     g = L["gravity_m_s2"]
@@ -31,6 +31,8 @@ def build_cases(res: dict, design: bool = True, fill_levels_m=None) -> list[dict
         {"id": "vacuum", "name": "Вакуум, снег и ветер (пустой резервуар)", "gravity": True, "masses": True, "hydro": None,
          "uniform_mpa": -vac, "roof_extra_mpa": -snow, "wind": wind},
     ]
+    if not all_cases:                         # в отчёт входят «Эксплуатация», «пустой резервуар» и серия уровней; остальные случаи считаются только по запросу
+        cases = [c for c in cases if c["id"] in ("op", "vacuum")]
     for lv in (fill_levels_m or []):          # серия уровней налива для определения допустимой высоты (те же давление и снег, без ветра)
         cases.append({"id": "fill_%g" % lv, "name": "Налив %g м" % lv, "gravity": True, "masses": True,
                       "hydro": hydro({"density_kg_m3": ho["density_kg_m3"], "fill_height_m": lv}), "uniform_mpa": p_over, "roof_extra_mpa": -snow, "wind": []})
@@ -41,7 +43,7 @@ def _json_default(o):
     raise TypeError(type(o))
 
 
-def write_package(res: dict, out_dir: str | Path, design: bool = True, fill_levels_m=None) -> dict:
+def write_package(res: dict, out_dir: str | Path, design: bool = True, fill_levels_m=None, all_cases: bool = False) -> dict:
     """Записывает loads.json (для просмотра), loads_data.py (для скрипта в Mechanical), loads_summary.csv (таблица для отчёта)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -49,7 +51,7 @@ def write_package(res: dict, out_dir: str | Path, design: bool = True, fill_leve
     data = {
         "geometry": {"diameter_mm": I["D"] * 1000, "wall_height_mm": I["H"] * 1000, "n_belts": I["n_belts"], "belt_height_mm": I["belt_height"] * 1000},
         "gravity_mm_s2": L["gravity_m_s2"] * 1000,
-        "cases": build_cases(res, design, fill_levels_m),
+        "cases": build_cases(res, design, fill_levels_m, all_cases),
         "point_masses": [{"name": m["name"], "category": m["category"], "mass_kg": m["mass_kg"], "location": m["location"]} for m in L["point_masses"]
                          if not m["name"].startswith("Пояс стенки")],
         "belt_z_mm": [[b * I["belt_height"] * 1000, (b + 1) * I["belt_height"] * 1000] for b in range(I["n_belts"])],

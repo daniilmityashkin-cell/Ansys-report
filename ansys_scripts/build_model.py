@@ -119,7 +119,7 @@ def apdl_beams():
     R = float(bp["wall_radius_mm"])
     ax = {"X": 0, "Y": 1, "Z": 2}[(os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()]
     ia, ib = [i for i in (0, 1, 2) if i != ax]
-    size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 150)
+    size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 200)
     tol = 0.6 * size
     md = ExtAPI.DataModel.MeshDataByName("Global")
     roof, top = [], []
@@ -199,7 +199,7 @@ def apdl_beams():
 
 # --- сетка
 try:
-    size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 150)
+    size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 200)
     model.Mesh.ElementSize = Quantity(size, "mm")
     model.Mesh.GenerateMesh()
     bsay(u"Сетка построена, размер элемента %g мм" % size)

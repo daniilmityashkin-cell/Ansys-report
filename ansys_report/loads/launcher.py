@@ -167,7 +167,7 @@ set "ANSYS_REPORT_FLIP=1" - добавьте её перед запуском Wo
 """
 
 
-def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path, loads_data: str | Path, axis: str = "Z", mesh_mm: float = 150,
+def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path, loads_data: str | Path, axis: str = "Z", mesh_mm: float = 200,
                        anketa: dict | None = None, parts: dict | None = None) -> Path:
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)

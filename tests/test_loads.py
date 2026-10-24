@@ -82,7 +82,8 @@ def test_loads_for_ansys_and_validation():
 def test_package_for_ansys(tmp_path):
     from ansys_report.loads.export import write_package, build_cases
     res = compute(DATA["input"])
-    pack = write_package(res, tmp_path)
+    assert [c["id"] for c in build_cases(res)] == ["op", "vacuum"]                      # по умолчанию - только случаи, входящие в отчёт
+    pack = write_package(res, tmp_path, all_cases=True)
     ns = {}
     exec((tmp_path / "loads_data.py").read_text(encoding="utf-8"), ns)               # файл данных исполняется как обычный Python (так читает скрипт в Mechanical)
     L = ns["LOADS"]
