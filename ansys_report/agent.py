@@ -87,8 +87,16 @@ def run(link: str) -> int:
         site.download(zpath)
         with zipfile.ZipFile(zpath) as z:
             z.extractall(pkg)
+        ideal = pkg / "ideal"
+        if (ideal / "Open_in_Ansys.bat").exists():           # сначала идеальный РВС (без отклонений): результаты нужны для выводов отчёта
+            say("Строю и считаю идеальный РВС (без отклонений)…")
+            site.status("build", "Идеальный РВС: модель")
+            env_i = dict(env, AR_WORK=str(WORK / "ideal"))
+            if _run_bat(ideal / "Open_in_Ansys.bat", env_i) == 0:
+                site.status("solve", "Идеальный РВС: расчёт")
+                _run_bat(ideal / "Make_ideal.bat", env_i)
         say("Строю модель в Ansys (несколько минут)…")
-        site.status("build")
+        site.status("build", "Фактическая форма")
         rc = _run_bat(pkg / "Open_in_Ansys.bat", env)
         if rc != 0:
             raise RuntimeError(f"Open_in_Ansys.bat завершился с кодом {rc}")

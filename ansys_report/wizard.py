@@ -79,7 +79,14 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
         docx_path, _ = build_universal(data, out_dir / nm["word"], anketa)
         log(f"Отчёт лежит в папке: {out_dir}")
         return [docx_path]
+    ideal = anketa.pop("ideal", None) if isinstance(anketa.get("ideal"), dict) else None
     yaml_path = make_project_folder(data, anketa, settings)
+    if ideal:                                  # расчёт идеального РВС (без отклонений) - в выводы отчёта
+        import yaml
+        raw0 = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        raw0.setdefault("results", {})["ideal"] = ideal
+        yaml_path.write_text(yaml.safe_dump(raw0, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        log(f"Идеальный РВС: {ideal}")
     try:
         import yaml
         raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))

@@ -519,9 +519,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse("Пакета нет", status_code=404)
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for f in sorted(root.iterdir()):
+            for f in sorted(root.rglob("*")):
                 if f.is_file():
-                    z.write(f, f.name)
+                    z.write(f, f.relative_to(root).as_posix())
         return Response(buf.getvalue(), media_type="application/zip")
 
     @app.post("/agent/{gid}/status")

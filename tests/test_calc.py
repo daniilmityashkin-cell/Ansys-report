@@ -338,3 +338,13 @@ def test_points_geometry_check_and_report(tmp_path):
     assert "B_SPLINE_SURFACE_WITH_KNOTS" in step and step.count("ADVANCED_FACE") == 3      # три участка толщины 13 / 12 / 11 мм
     text = "\n".join(p.text for p in docx.Document(next(x for x in files if x.suffix == ".docx")).paragraphs)
     assert "Оценка отклонений по точкам" in text and "5 Выводы" in text
+
+
+def test_report_with_ideal_tank(tmp_path):
+    """Результаты идеального РВС попадают в выводы и в таблицу устойчивости."""
+    import docx
+    p = load_project(YAML)
+    p.raw["results"]["ideal"] = {"equivalent": 111.1, "membrane": 99.9, "fiber": 88.8, "k": 2.5}
+    path, _ = build_report(p, tmp_path / "i.docx")
+    text = "\n".join(x.text for x in docx.Document(path).paragraphs)
+    assert "идеального РВС" in text and "111,1" in text and "k = 2,5" in text

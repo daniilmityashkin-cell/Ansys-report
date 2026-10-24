@@ -24,6 +24,45 @@ Automation -> Scripting -> «+» -> вставьте содержимое apply_
 """
 
 
+def _ansys_pack(gen: Path, project: dict, belts_dir: Path, dest: Path, title: str, loads_data, lp: Path):
+    """Пакет «открыть в Ansys» для заданных замеров: пояса-грани, днище/окрайка/крыша, каркас крыши. Возвращает папку пакета или None."""
+    from ansys_report.geometry import check as gcheck
+    bm = gcheck.export_belt_model(project, belts_dir)
+    step, zones = bm["step"], bm["zones"]                        # пояса стенки - отдельные грани: результаты Ansys по поясам
+    parts = {}
+    try:                                                           # достраиваем окрайку, днище и крышу (нужен Open CASCADE)
+        from ansys_report.geometry.assembly import build_full_step, default_structure
+        sp = gen / "structure.json"
+        structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
+        li = json.loads(lp.read_text(encoding="utf-8"))
+        base = default_structure(float(li["diameter_m"]), float(li["wall_height_m"]), li.get("roof_rise_m"))
+        struct = {"bottom": {**base["bottom"], **(structure.get("bottom") or {})}, "roof": {**base["roof"], **(structure.get("roof") or {})}}
+        full = bm["step"].parent / "model_full.step"
+        info = build_full_step(step, full, struct)
+        if full.stat().st_size > 100_000_000:                       # очень подробная геометрия (много вмятин): полная модель слишком тяжёлая для Ansys
+            raise RuntimeError("полная модель %d МБ: оставлена только стенка" % (full.stat().st_size // 1_000_000))
+        step = full
+        b, r = struct["bottom"], struct["roof"]
+        parts = {"disc_mm": float(b["plate_thickness_mm"]), "annular_mm": float(b["annular_thickness_mm"]),
+                 "roof_mm": float(r.get("deck_thickness_mm") or li.get("roof_deck_thickness_m", 0.004) * 1000), "rise_mm": info["rise_mm"]}
+    except Exception as e:   # noqa: BLE001
+        belts_dir.mkdir(parents=True, exist_ok=True)
+        (belts_dir / "assembly_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+    if not (step.exists() and zones.exists()):
+        return None
+    from ansys_report.loads.launcher import write_open_package
+    md = write_open_package(dest, step, zones, loads_data,
+                            anketa={"tag": title, "tank_name": title, "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
+    try:                                                           # каркас крыши и опорное кольцо (если заданы в файле проекта) - балочные элементы в Ansys
+        from ansys_report.loads.beams import beams_package
+        bp = beams_package(project, float(project["diameter"]) * 500.0)
+        if bp:
+            (md / "beams.json").write_text(json.dumps(bp, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:   # noqa: BLE001
+        (belts_dir / "beams_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+    return md
+
+
 def compute(gen_dir: str, title: str) -> dict:
     """Запускается в рабочем процессе: читает input.json, пишет файлы в result/. Возвращает список файлов."""
     from ansys_report.geometry.pipeline import build_from_points
@@ -41,40 +80,14 @@ def compute(gen_dir: str, title: str) -> dict:
         shutil.copy2(SCRIPTS / "apply_loads.py", pack_dir / "apply_loads.py")
         (pack_dir / "Как_наложить_нагрузки.txt").write_text(README_LOADS, encoding="utf-8")
         files += [pack["json"], pack["data"], pack["summary"], pack_dir / "apply_loads.py", pack_dir / "Как_наложить_нагрузки.txt"]
-        from ansys_report.geometry import check as gcheck
-        bm = gcheck.export_belt_model(json.loads((gen / "input.json").read_text(encoding="utf-8-sig")), gen / "result" / "belts_src")
-        step, zones = bm["step"], bm["zones"]                        # пояса стенки - отдельные грани: результаты Ansys по поясам
-        parts = {}
-        try:                                                           # достраиваем окрайку, днище и крышу (нужен Open CASCADE)
-            from ansys_report.geometry.assembly import build_full_step, default_structure
-            sp = gen / "structure.json"
-            structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
-            li = json.loads(lp.read_text(encoding="utf-8"))
-            base = default_structure(float(li["diameter_m"]), float(li["wall_height_m"]), li.get("roof_rise_m"))
-            struct = {"bottom": {**base["bottom"], **(structure.get("bottom") or {})}, "roof": {**base["roof"], **(structure.get("roof") or {})}}
-            full = bm["step"].parent / "model_full.step"
-            info = build_full_step(step, full, struct)
-            if full.stat().st_size > 100_000_000:                       # очень подробная геометрия (много вмятин): полная модель слишком тяжёлая для Ansys
-                raise RuntimeError("полная модель %d МБ: оставлена только стенка" % (full.stat().st_size // 1_000_000))
-            step = full
-            b, r = struct["bottom"], struct["roof"]
-            parts = {"disc_mm": float(b["plate_thickness_mm"]), "annular_mm": float(b["annular_thickness_mm"]),
-                     "roof_mm": float(r.get("deck_thickness_mm") or li.get("roof_deck_thickness_m", 0.004) * 1000), "rise_mm": info["rise_mm"]}
-        except Exception as e:   # noqa: BLE001
-            (gen / "result" / "belts_src" / "assembly_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
-        if step.exists() and zones.exists():                          # модель «открыть в Ansys» у заказчика
-            from ansys_report.loads.launcher import write_open_package
-            md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"],
-                                    anketa={"tag": title, "tank_name": title,
-                                            "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
-            try:                                                       # каркас крыши и опорное кольцо (если заданы в файле проекта) - балочные элементы в Ansys
-                from ansys_report.loads.beams import beams_package
-                proj = json.loads((gen / "input.json").read_text(encoding="utf-8-sig"))
-                bp = beams_package(proj, float(proj["diameter"]) * 500.0)
-                if bp:
-                    (md / "beams.json").write_text(json.dumps(bp, ensure_ascii=False), encoding="utf-8")
+        proj_main = json.loads((gen / "input.json").read_text(encoding="utf-8-sig"))
+        md = _ansys_pack(gen, proj_main, gen / "result" / "belts_src", gen / "result" / "ansys_model", title, pack["data"], lp)
+        if md is not None:
+            try:                                                       # идеальный РВС (без отклонений и вмятин) - отдельная модель для сравнения по ТЗ
+                from ansys_report.geometry.ideal import ideal_project
+                _ansys_pack(gen, ideal_project(proj_main), gen / "result" / "belts_ideal", md / "ideal", title + " (идеальный)", pack["data"], lp)
             except Exception as e:   # noqa: BLE001
-                (gen / "result" / "belts_src" / "beams_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+                (gen / "result" / "belts_src" / "ideal_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
             files += [p for p in sorted(md.iterdir()) if p.is_file()]
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
 

@@ -67,7 +67,8 @@ if not defined WB (
   pause
   exit /b 1
 )
-set "WORK=C:\\ansys_report_work\\model"
+if not defined AR_WORK set "AR_WORK=C:\\ansys_report_work\\model"
+set "WORK=%AR_WORK%"
 if exist "%WORK%" rmdir /s /q "%WORK%"
 mkdir "%WORK%"
 xcopy "%SRC%*" "%WORK%\\" /E /I /Y >nul
@@ -88,7 +89,8 @@ REPORT_BAT = '''@echo off
 rem Technical report from the Workbench project built by Open_in_Ansys.bat (solves in background, extracts results, writes Word/Excel).
 setlocal
 set "SRC=%~dp0"
-set "WORK=C:\\ansys_report_work\\model"
+if not defined AR_WORK set "AR_WORK=C:\\ansys_report_work\\model"
+set "WORK=%AR_WORK%"
 if not exist "%WORK%\\Tank_model.wbpj" (
   echo Project not found: %WORK%\\Tank_model.wbpj  - run Open_in_Ansys.bat first.
   pause
@@ -101,15 +103,31 @@ if exist "%LocalAppData%\\Programs\\AnsysReport\\AnsysReport.exe" set "EXE=%Loca
 if not defined ANSYS_REPORT_HOME if exist "%USERPROFILE%\\Ansys-report\\ansys_report" set "ANSYS_REPORT_HOME=%USERPROFILE%\\Ansys-report"
 if not defined ANSYS_REPORT_HOME if exist "C:\\Ansys-report\\ansys_report" set "ANSYS_REPORT_HOME=C:\\Ansys-report"
 if defined ANSYS_REPORT_HOME set "PYTHONPATH=%ANSYS_REPORT_HOME%;%PYTHONPATH%"
+set "IDEALARG="
+if exist "C:\\ansys_report_work\\ideal\\ideal.json" set "IDEALARG=--ideal C:\\ansys_report_work\\ideal\\ideal.json"
 echo Building the technical report, please wait (solving + extracting results, 5-20 minutes)...
 if defined EXE (
-  "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" -o "%OUT%"
+  "%EXE%" report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" %IDEALARG% -o "%OUT%"
 ) else (
-  python -m ansys_report report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" -o "%OUT%"
+  python -m ansys_report report-from-ansys "%WORK%\\Tank_model.wbpj" --anketa "%SRC%anketa.json" --loads "%SRC%loads_data.py" %IDEALARG% -o "%OUT%"
 )
 echo.
 echo Report folder: %OUT%
 if not defined AR_NODIAG if defined ANSYS_REPORT_HOME if exist "%ANSYS_REPORT_HOME%\\diag.bat" call "%ANSYS_REPORT_HOME%\\diag.bat"
+if not defined AR_NOPAUSE pause
+'''
+
+
+IDEAL_BAT = '''@echo off
+rem Ideal tank (no deviations): solves the model and writes max stresses and buckling factor to ideal.json.
+setlocal
+set "SRC=%~dp0"
+if not defined AR_WORK set "AR_WORK=C:\\ansys_report_work\\ideal"
+set "WORK=%AR_WORK%"
+if not defined ANSYS_REPORT_HOME if exist "%USERPROFILE%\\Ansys-report\\ansys_report" set "ANSYS_REPORT_HOME=%USERPROFILE%\\Ansys-report"
+if not defined ANSYS_REPORT_HOME if exist "C:\\Ansys-report\\ansys_report" set "ANSYS_REPORT_HOME=C:\\Ansys-report"
+if defined ANSYS_REPORT_HOME set "PYTHONPATH=%ANSYS_REPORT_HOME%;%PYTHONPATH%"
+python -m ansys_report extract-ideal "%WORK%\\Tank_model.wbpj" --loads "%SRC%loads_data.py" -o "%WORK%\\ideal.json"
 if not defined AR_NOPAUSE pause
 '''
 
@@ -162,6 +180,7 @@ def write_open_package(dest: str | Path, step: str | Path, zones_csv: str | Path
     (dest / "Open_in_Ansys.bat").write_text(_bat(axis, mesh_mm), encoding="ascii", newline="\r\n")
     (dest / "Make_report.bat").write_text(REPORT_BAT, encoding="ascii", newline="\r\n")
     (dest / "Run_all.bat").write_text(RUN_ALL_BAT, encoding="ascii", newline="\r\n")
+    (dest / "Make_ideal.bat").write_text(IDEAL_BAT, encoding="ascii", newline="\r\n")
     import json
     (dest / "parts.json").write_text(json.dumps(parts or {}, ensure_ascii=False, indent=1), encoding="utf-8")
     (dest / "anketa.json").write_text(json.dumps(anketa or {}, ensure_ascii=False, indent=1), encoding="utf-8")

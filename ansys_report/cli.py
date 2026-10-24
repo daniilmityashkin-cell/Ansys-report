@@ -10,15 +10,41 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package", "agent"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package", "agent", "extract-ideal"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     ap.add_argument("--loads", help="apply-loads: файл loads_data.py из пакета нагрузок")
     ap.add_argument("--anketa", help="report-from-ansys: файл anketa.json (поля отчёта: номер, позиция, исполнитель и т. д.)")
     ap.add_argument("--install", action="store_true", help="agent: зарегистрировать ссылки ansysreport:// в Windows")
+    ap.add_argument("--ideal", help="report-from-ansys: ideal.json с результатами идеального РВС (без отклонений)")
     ap.add_argument("--no-solve", action="store_true", help="report-from-ansys: не запускать расчёт, взять готовые результаты проекта")
     ap.add_argument("--axis", default="Z", help="apply-loads: вертикальная ось модели (X, Y или Z)")
     a = ap.parse_args(argv)
+    if a.command == "extract-ideal":
+        # идеальный РВС: решить расчёты в проекте Ansys и записать максимумы напряжений и запас устойчивости в ideal.json
+        import json, csv, os, tempfile
+        from .ansys_connect import extract
+        from .settings import ModelSettings
+        if not a.project or not a.loads:
+            ap.error("укажите проект .wbpj и --loads loads_data.py")
+        os.environ["ANSYS_REPORT_LOADS"] = str(Path(a.loads).resolve())
+        data = Path(tempfile.mkdtemp(prefix="ar_ideal_"))
+        extract(a.project, data, log=print, solve=True, settings=ModelSettings(vertical_axis="Z", static_prefix="AR:", full_analysis="AR: Эксплуатация"))
+        best = {"equivalent": 0.0, "membrane": 0.0, "fiber": 0.0}
+        for f in data.glob("*_belts.csv"):
+            for row in csv.DictReader(f.open(encoding="utf-8-sig", newline="")):
+                for k, col in (("equivalent", "equivalent"), ("membrane", "membrane"), ("fiber", "fiber")):
+                    best[k] = max(best[k], float(row[col]))
+        ks = []
+        st = data / "stability.csv"
+        if st.exists():
+            ks = [float(r[-1]) for r in list(csv.reader(st.open(encoding="utf-8")))[1:] if r and float(r[-1]) > 0]
+        res = {k: round(v, 1) for k, v in best.items()}
+        res["k"] = round(min(ks), 2) if ks else None
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
+        print("Идеальный РВС:", res)
+        return 0
     if a.command == "agent":
         from . import agent
         if a.install or not a.project:
@@ -101,6 +127,8 @@ def main(argv=None) -> int:
                 anketa.setdefault("product_density", round(h["gradient_mpa_mm"] * 1e9 / (Ld["gravity_mm_s2"] / 1000.0)))
             except Exception:       # noqa: BLE001
                 pass
+        if a.ideal and Path(a.ideal).exists():
+            anketa["ideal"] = json.loads(Path(a.ideal).read_text(encoding="utf-8"))
         axis = str(anketa.pop("vertical_axis", "Z")).upper()          # модель с сайта: вертикаль - ось Z
         try:
             files = build_from_ansys(a.project, a.out, anketa, log=print, solve=not a.no_solve, settings=ModelSettings(vertical_axis=axis, static_prefix="AR:", full_analysis="AR: Эксплуатация",
