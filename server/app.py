@@ -383,7 +383,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
             return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view, structure=structure,
                           has_preview=preview_ready(g.id),
-                          files=_files(g.id) if g.status == "done" else [])
+                          files=_files(g.id) if g.status == "done" else [],
+                          agent_url=(f"ansysreport://run?server={(st.public_url or str(request.base_url)).rstrip('/')}&g={g.id}&t={agent_token(g.id)}"
+                                     if g.status == "done" else ""),
+                          agent=agent_state(g.id) if g.status == "done" else None)
 
     @app.post("/g/{gid}/pay")
     def pay_generation(request: Request, gid: int, csrf: str = Form("")):
@@ -480,6 +483,94 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     z.write(gen_dir(g.id) / "result" / n, n)
             return Response(buf.getvalue(), media_type="application/zip",
                             headers={"Content-Disposition": f'attachment; filename="geometry_{g.id}.zip"'})
+
+    # --- помощник на компьютере заказчика: кнопка на сайте -> Ansys считает у него -> отчёт возвращается на сайт ---
+    import hmac
+    import hashlib
+
+    def agent_token(gid: int) -> str:
+        return hmac.new(st.secret_key.encode(), f"agent:{gid}".encode(), hashlib.sha256).hexdigest()[:40]
+
+    def agent_ok(gid: int, t: str) -> Generation | None:
+        if not t or not hmac.compare_digest(t, agent_token(gid)):
+            return None
+        with Session() as db:
+            g = db.get(Generation, gid)
+            return g if g and g.status == "done" else None
+
+    def agent_dir(gid: int) -> Path:
+        d = gen_dir(gid) / "agent"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def agent_state(gid: int) -> dict:
+        f = gen_dir(gid) / "agent" / "status.json"
+        state = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"stage": "idle", "message": ""}
+        fd = gen_dir(gid) / "agent" / "files"
+        state["files"] = sorted(x.name for x in fd.iterdir()) if fd.exists() else []
+        return state
+
+    @app.get("/agent/{gid}/package.zip")
+    def agent_package(gid: int, t: str = ""):
+        if not agent_ok(gid, t):
+            return HTMLResponse("Недоступно", status_code=404)
+        root = gen_dir(gid) / "result" / "ansys_model"
+        if not root.exists():
+            return HTMLResponse("Пакета нет", status_code=404)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in sorted(root.iterdir()):
+                if f.is_file():
+                    z.write(f, f.name)
+        return Response(buf.getvalue(), media_type="application/zip")
+
+    @app.post("/agent/{gid}/status")
+    async def agent_status_set(request: Request, gid: int, t: str = ""):
+        if not agent_ok(gid, t):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        body = await request.json()
+        rec = {"stage": str(body.get("stage", ""))[:30], "message": str(body.get("message", ""))[:500], "updated": time.time()}
+        (agent_dir(gid) / "status.json").write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
+        return JSONResponse({"ok": True})
+
+    @app.post("/agent/{gid}/upload")
+    async def agent_upload(gid: int, t: str = "", file: UploadFile = File(...)):
+        if not agent_ok(gid, t):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        name = Path(file.filename or "file").name
+        if Path(name).suffix.lower() not in {".docx", ".xlsx", ".txt", ".csv", ".json", ".png"}:
+            return JSONResponse({"error": "тип файла не разрешён"}, status_code=400)
+        data = await file.read(100 * 1024 * 1024 + 1)
+        if len(data) > 100 * 1024 * 1024:
+            return JSONResponse({"error": "файл слишком большой"}, status_code=400)
+        fd = agent_dir(gid) / "files"
+        fd.mkdir(exist_ok=True)
+        (fd / name).write_bytes(data)
+        return JSONResponse({"ok": True})
+
+    @app.get("/g/{gid}/agent.json")
+    def agent_state_json(request: Request, gid: int):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(agent_state(gid))
+
+    @app.get("/g/{gid}/agent-files/{name}")
+    def agent_file(request: Request, gid: int, name: str):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return HTMLResponse("Не найдено", status_code=404)
+        f = gen_dir(gid) / "agent" / "files" / Path(name).name
+        if not f.exists():
+            return HTMLResponse("Не найдено", status_code=404)
+        return FileResponse(f, filename=f.name)
+
+    @app.get("/agent/setup", response_class=HTMLResponse)
+    def agent_setup(request: Request):
+        with Session() as db:
+            return render(request, "agent_setup.html", current_user(request, db))
 
     # --- оплата ---
     @app.get("/pay/fake/{pid}", response_class=HTMLResponse)

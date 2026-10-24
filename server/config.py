@@ -34,6 +34,7 @@ class Settings:
     inline_jobs: bool = field(default_factory=lambda: _bool("ASR_INLINE_JOBS", False))   # тесты: считать в этом же процессе
     max_reg_per_ip: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_REG_PER_IP", "3")))     # регистраций с одного IP за сутки
     max_drafts_per_day: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_DRAFTS_PER_DAY", "30")))
+    public_url: str = field(default_factory=lambda: os.environ.get("ASR_PUBLIC_URL", ""))      # адрес сайта для помощника на компьютере заказчика (если за прокси)
     trust_proxy: bool = field(default_factory=lambda: _bool("ASR_TRUST_PROXY", False))          # IP клиента из X-Forwarded-For (за прокси)
     first_generation_free: bool = field(default_factory=lambda: _bool("ASR_FIRST_FREE", False))  # первая генерация на аккаунте бесплатна
     unlimited_emails: frozenset = field(default_factory=lambda: frozenset(

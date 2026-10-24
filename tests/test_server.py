@@ -430,3 +430,36 @@ def test_unlimited_account(tmp_path):
     register(other, email="x@example.com")
     g = new_generation(other).headers["location"]
     assert "безлимитный" not in other.get(g).text
+
+
+def test_agent_flow(site):
+    """Кнопка «Собрать отчёт в Ansys»: ссылка на помощника, скачивание пакета по токену, статус и загрузка отчёта обратно."""
+    import re as _re
+    c = TestClient(site)
+    register(c)
+    gen = new_generation(c).headers["location"]
+    pay = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False).headers["location"]
+    c.post(pay, data={"csrf": csrf_of(c, pay)}, follow_redirects=False)
+    page = c.get(gen).text
+    m = _re.search(r'href="(ansysreport://run\?server=([^&]+)&amp;g=(\d+)&amp;t=([0-9a-f]+))"', page)
+    assert m, "на странице нет ссылки помощника"
+    gid, tok = int(m.group(3)), m.group(4)
+    assert c.get(f"/agent/{gid}/package.zip?t=bad").status_code == 404                    # без верного токена пакет не отдаётся
+    assert c.post(f"/agent/{gid}/status?t=bad", json={"stage": "x"}).status_code == 403
+    assert c.post(f"/agent/{gid}/status?t={tok}", json={"stage": "solve", "message": "считаю"}).json() == {"ok": True}
+    up = c.post(f"/agent/{gid}/upload?t={tok}", files={"file": ("Report.docx", b"docx-bytes")})
+    assert up.status_code == 200
+    assert c.post(f"/agent/{gid}/upload?t={tok}", files={"file": ("evil.exe", b"x")}).status_code == 400
+    st = c.get(f"/g/{gid}/agent.json").json()
+    assert st["stage"] == "solve" and st["files"] == ["Report.docx"]
+    assert c.get(f"/g/{gid}/agent-files/Report.docx").content == b"docx-bytes"
+    assert TestClient(site).get(f"/g/{gid}/agent-files/Report.docx").status_code in (303, 404)   # чужой не скачает
+    assert "Помощник для Ansys" in c.get("/agent/setup").text
+
+
+def test_agent_link_parse():
+    from ansys_report.agent import parse_link
+    p = parse_link("ansysreport://run?server=https://x.example/&g=5&t=abc")
+    assert p == {"server": "https://x.example", "gid": 5, "token": "abc"}
+    with pytest.raises(ValueError):
+        parse_link("http://evil/?server=1&g=1&t=1")

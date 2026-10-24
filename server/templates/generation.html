@@ -3,6 +3,18 @@
 {% if g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
 {% elif g.status == 'done' %}<div class="card done"><h2>Готово: отчёт и файлы сформированы</h2><p class="muted">Скачайте архив и распакуйте его: внутри папка <b>ansys_model</b> (модель и скрипты для Ansys) и технический отчёт.</p>
 <p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a> <a class="btn light" href="#files">Список файлов</a></p></div>
+<div class="card" id="agent"><h2>Технический отчёт: расчёт в Ansys на вашем компьютере</h2>
+<p class="muted">Нажмите кнопку: откроется помощник, сам скачает модель, запустит Ansys, посчитает и пришлёт готовый отчёт сюда. Ничего искать в папках не нужно. Нужен установленный Ansys и помощник (ставится один раз: <a href="/agent/setup">инструкция</a>).</p>
+<p><a class="btn" id="agentbtn" href="{{ agent_url }}">Собрать отчёт в Ansys</a></p>
+<div id="agentstat" class="muted">{{ agent.message if agent and agent.message else '' }}</div>
+<div id="agentfiles"></div></div>
+<script>(function(){var gid={{ g.id }},st=document.getElementById('agentstat'),fl=document.getElementById('agentfiles');
+var names={idle:'',download:'Скачиваю модель…',build:'Строю модель и сетку в Ansys…',solve:'Считаю и собираю отчёт (до 40 минут)…',upload:'Отправляю отчёт…',done:'Готово',error:'Ошибка'};
+function tick(){fetch('/g/'+gid+'/agent.json').then(function(r){return r.json()}).then(function(a){
+var t=(names[a.stage]||a.stage||'');if(a.message)t+=(t?' · ':'')+a.message;st.textContent=t;
+fl.innerHTML=(a.files||[]).map(function(n){return '<p><a class="btn light" href="/g/'+gid+'/agent-files/'+encodeURIComponent(n)+'">'+n+'</a></p>'}).join('');
+}).catch(function(){});}
+tick();setInterval(tick,5000);})();</script>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>{% endif %}
 <div class="card"><h2>Результат проверки</h2>
 <div class="kv"><span>Диаметр × высота</span><span>{{ summary.diameter_m }} × {{ summary.height_m }} м</span>

@@ -109,7 +109,7 @@ if defined EXE (
 )
 echo.
 echo Report folder: %OUT%
-if defined ANSYS_REPORT_HOME if exist "%ANSYS_REPORT_HOME%\\diag.bat" call "%ANSYS_REPORT_HOME%\\diag.bat"
+if not defined AR_NODIAG if defined ANSYS_REPORT_HOME if exist "%ANSYS_REPORT_HOME%\\diag.bat" call "%ANSYS_REPORT_HOME%\\diag.bat"
 if not defined AR_NOPAUSE pause
 '''
 

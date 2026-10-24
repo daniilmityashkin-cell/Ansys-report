@@ -10,14 +10,20 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package", "agent"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     ap.add_argument("--loads", help="apply-loads: файл loads_data.py из пакета нагрузок")
     ap.add_argument("--anketa", help="report-from-ansys: файл anketa.json (поля отчёта: номер, позиция, исполнитель и т. д.)")
+    ap.add_argument("--install", action="store_true", help="agent: зарегистрировать ссылки ansysreport:// в Windows")
     ap.add_argument("--no-solve", action="store_true", help="report-from-ansys: не запускать расчёт, взять готовые результаты проекта")
     ap.add_argument("--axis", default="Z", help="apply-loads: вертикальная ось модели (X, Y или Z)")
     a = ap.parse_args(argv)
+    if a.command == "agent":
+        from . import agent
+        if a.install or not a.project:
+            return agent.install()
+        return agent.run(a.project)
     if a.command == "package":
         # файл проекта программы геометрии (.json) -> готовый пакет для Ansys (ansys_model) без сайта
         if not a.project:
