@@ -27,7 +27,8 @@ for /r "%W%\Tank_model_files" %%F in (solve.out file0.err file.err *.err) do (
 )
 ) > diag\diag.txt 2>&1
 git checkout -B diag-logs >nul 2>&1
-for %%F in ("%W%\report\Report_Rezervuar\*.docx") do copy /y "%%F" diag\report.docx >nul
+if exist diag\report.docx del diag\report.docx
+for /r "%W%\report" %%F in (Report_*.docx) do copy /y "%%F" diag\report.docx >nul
 if exist diag\report.docx git add -f diag\report.docx
 git add -f diag\diag.txt
 git status --short
