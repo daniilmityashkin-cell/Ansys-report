@@ -98,6 +98,30 @@ def compute(gen_dir: str, title: str) -> dict:
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
 
 
+def compute_step(out_dir: str, project: dict, structure: dict | None) -> list[str]:
+    """Файлы геометрии для скачивания из студии: стенка с фактическими отклонениями и целая модель (стенка + окрайка + днище + крыша). Возвращает имена файлов."""
+    import shutil
+    from ansys_report.geometry import check as gcheck
+    from ansys_report.geometry.assembly import build_full_step, default_structure
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    names = []
+    tmp = out / "_w"
+    gcheck.export_geometry(project, tmp, tolerance_mm=0.5, fmt="STEP", log=lambda s: None)
+    shutil.copy2(next(tmp.glob("*.step")), out / "Стенка.step")
+    names.append("Стенка.step")
+    bm = gcheck.export_belt_model(project, tmp / "belts")
+    D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
+    st = structure or {}
+    rise = (st.get("roof") or {}).get("rise_m")
+    base = default_structure(D, H, rise)
+    struct = {"bottom": {**base["bottom"], **(st.get("bottom") or {})}, "roof": {**base["roof"], **(st.get("roof") or {})}, "D": D, "H": H}
+    build_full_step(bm["step"], out / "Модель целиком.step", struct)
+    names.append("Модель целиком.step")
+    shutil.rmtree(tmp, ignore_errors=True)
+    return names
+
+
 def compute_preview(gen_dir: str) -> None:
     """Просмотр результата (точки, поверхность, развёртка) - бесплатная часть, строится сразу после проверки замеров.
     Ошибка записывается в preview/error.txt, чтобы страница не ждала бесконечно."""
@@ -142,6 +166,17 @@ class JobRunner:
             except Exception as e:   # noqa: BLE001
                 self.on_done(gen_id, None, f"{type(e).__name__}: {e}")
         fut.add_done_callback(done)
+
+    def submit_fn(self, fn, *args):
+        """Произвольная тяжёлая функция в пуле процессов (в тестах - сразу). Возвращает Future."""
+        if self.inline:
+            f = cf.Future()
+            try:
+                f.set_result(fn(*args))
+            except Exception as e:   # noqa: BLE001
+                f.set_exception(e)
+            return f
+        return self.pool.submit(fn, *args)
 
     def submit_preview(self, gen_dir: Path):
         if self.inline:

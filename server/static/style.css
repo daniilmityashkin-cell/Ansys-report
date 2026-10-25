@@ -199,3 +199,7 @@ details.blk{border:1px solid var(--line);border-radius:12px;padding:8px 14px;mar
 .st-stages{color:var(--muted);font-size:13px}.st-stages .on{color:var(--accent);font-weight:600}
 @media(max-width:700px){.st-stages{display:none}.nzrow{grid-template-columns:1fr 1fr}}
 .st-sum{margin:14px 0}
+.dent-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}.dtab{border:1px solid var(--line);background:var(--bg2);color:var(--ink);border-radius:999px;padding:7px 16px;cursor:pointer;font:inherit;font-size:13.5px}
+.dtab.on{border-color:var(--accent);color:var(--accent)}.dtab.add{border-style:dashed;color:var(--muted)}
+.dent-split{grid-template-columns:1.6fr 1fr}.dent-surf{text-align:center}.dent-surf canvas{width:100%;max-width:380px;border-radius:12px;border:1px solid var(--line)}
+.st-grid th span{font-weight:400;font-size:11px}.stfile{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--line)}

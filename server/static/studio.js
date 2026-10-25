@@ -173,29 +173,69 @@ function drawProfiles() {
   });
 }
 
-/* ---------- шаг 3: вмятины ---------- */
-function drawDents() {
-  const box = $("dent-list"); box.innerHTML = "";
-  if (!S.defects.length) { box.innerHTML = "<p class=\"muted\">Вмятин нет.</p>"; return; }
-  S.defects.forEach((d, k) => {
-    const row = document.createElement("div"); row.className = "dent";
-    const c = document.createElement("canvas"); c.width = 110; c.height = 110; row.appendChild(c);
-    let mn = 0; (d.values || []).forEach((r) => r.forEach((v) => { mn = Math.min(mn, v); }));
-    let mxv = 1e-9; (d.values || []).forEach((r) => r.forEach((v) => { mxv = Math.max(mxv, Math.abs(v)); }));
-    const g = c.getContext("2d"), ny = (d.values || []).length, nx = ny ? d.values[0].length : 0;
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { g.fillStyle = rgb(jet(Math.abs(d.values[j][i]) / mxv)); g.fillRect(i * 110 / nx, 110 - (j + 1) * 110 / ny, 110 / nx + 1, 110 / ny + 1); }
-    const t = document.createElement("div"); t.innerHTML = "<b>" + (d.name || "Вмятина " + (k + 1)) + "</b><br><span class=\"muted\">центр " + d.anchor + "°, z = " + d.height + " м; " + d.width + " × " + d.span_height + " м; макс. отклонение " + mn.toFixed(1) + " мм</span>";
-    row.appendChild(t);
-    const b = document.createElement("button"); b.type = "button"; b.className = "btn light"; b.textContent = "Удалить"; b.onclick = () => { S.defects.splice(k, 1); drawDents(); }; row.appendChild(b);
-    box.appendChild(row);
-  });
+/* ---------- шаг 3: вмятины (измерения 9 x 11 относительно центра) ---------- */
+let selDent = 0;
+function lin(a, b, n) { return Array.from({ length: n }, (_, i) => +(n > 1 ? a + (b - a) * i / (n - 1) : 0).toFixed(5)); }
+function newDent() {
+  const n = S.defects.length + 1, w = 2.8, h = 3.1, nx = 9, ny = 11;
+  return { name: "Вмятина " + n, mode: "Угол, град", anchor: 0, height: +(S.H / 2).toFixed(2), width: w, span_height: h, nx, ny, x: lin(-w / 2, w / 2, nx), y: lin(-h / 2, h / 2, ny), values: Array.from({ length: ny }, () => Array(nx).fill(0)) };
 }
-$("b-dent").onclick = () => {
-  const ang = num($("d-ang").value), z = num($("d-z").value), w = num($("d-w").value, 1.8), h = num($("d-h").value, 2), depth = num($("d-depth").value, -30);
-  const nx = 13, ny = 11, x = Array.from({ length: nx }, (_, i) => -w / 2 + w * i / (nx - 1)), y = Array.from({ length: ny }, (_, j) => -h / 2 + h * j / (ny - 1));
-  const values = y.map((yy) => x.map((xx) => +(depth * Math.exp(-((xx / (w / 2.6)) ** 2 + (yy / (h / 2.6)) ** 2)) ).toFixed(2)));
-  S.defects.push({ name: "Вмятина " + (S.defects.length + 1), mode: "Угол, град", anchor: ang, height: z, width: w, span_height: h, nx, ny, x, y, values });
+function dentExtent(d) { let mn = 0, mx = 1e-9; (d.values || []).forEach((r) => r.forEach((v) => { mn = Math.min(mn, v); mx = Math.max(mx, Math.abs(v)); })); return [mn, mx]; }
+function drawDentMap(d) {
+  const c = $("d-map"), g = c.getContext("2d"), ny = d.values.length, nx = d.values[0].length, [mn, mx] = dentExtent(d);
+  g.clearRect(0, 0, c.width, c.height);
+  const W = c.width, Hh = c.height, f = (x, y) => {                       // билинейно по сетке измерений
+    const fx = x * (nx - 1), fy = y * (ny - 1), i = Math.min(nx - 2, Math.floor(fx)), j = Math.min(ny - 2, Math.floor(fy)), tx = fx - i, ty = fy - j;
+    if (nx < 2 || ny < 2) return 0;
+    return (d.values[j][i] * (1 - tx) + d.values[j][i + 1] * tx) * (1 - ty) + (d.values[j + 1][i] * (1 - tx) + d.values[j + 1][i + 1] * tx) * ty;
+  };
+  const img = g.createImageData(W, Hh);
+  for (let py = 0; py < Hh; py++) for (let px = 0; px < W; px++) { const v = Math.abs(f(px / (W - 1), 1 - py / (Hh - 1))) / mx, col = jet(v), k = 4 * (py * W + px); img.data[k] = col[0] * 255; img.data[k + 1] = col[1] * 255; img.data[k + 2] = col[2] * 255; img.data[k + 3] = 255; }
+  g.putImageData(img, 0, 0);
+  g.fillStyle = "rgba(255,255,255,.9)";                                   // точки измерений
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { g.beginPath(); g.arc(i / (nx - 1) * (W - 1), (1 - j / (ny - 1)) * (Hh - 1), 2.2, 0, 6.3); g.fill(); }
+  $("d-max").textContent = mx.toFixed(1) + " мм";
+}
+function drawDentGrid(d) {
+  const ny = d.y.length, nx = d.x.length;
+  let h = "<tr><th>Z, м \\ x, м</th>" + d.x.map((x, i) => "<th>" + (i + 1) + "<br><span>" + x + "</span></th>").join("") + "</tr>";
+  for (let j = 0; j < ny; j++) { h += "<tr><th>" + d.y[j] + "</th>"; for (let i = 0; i < nx; i++) h += "<td><input data-j=\"" + j + "\" data-i=\"" + i + "\" value=\"" + d.values[j][i] + "\"></td>"; h += "</tr>"; }
+  $("d-grid").innerHTML = h;
+}
+function drawDents() {
+  const tabs = $("dent-tabs"); tabs.innerHTML = "";
+  S.defects.forEach((d, k) => { const b = document.createElement("button"); b.type = "button"; b.className = "dtab" + (k === selDent ? " on" : ""); b.textContent = d.name || "Вмятина " + (k + 1); b.onclick = () => { selDent = k; drawDents(); }; tabs.appendChild(b); });
+  const add = document.createElement("button"); add.type = "button"; add.className = "dtab add"; add.textContent = "+ Вмятина"; add.onclick = () => { S.defects.push(newDent()); selDent = S.defects.length - 1; drawDents(); }; tabs.appendChild(add);
+  const has = S.defects.length > 0; $("dent-empty").hidden = has; $("dent-edit").hidden = !has;
+  if (!has) return;
+  selDent = Math.min(selDent, S.defects.length - 1); const d = S.defects[selDent];
+  $("d-name").value = d.name || ""; $("d-ang").value = d.anchor; $("d-z").value = d.height; $("d-w").value = d.width; $("d-h").value = d.span_height; $("d-nx").value = d.x.length; $("d-ny").value = d.y.length;
+  drawDentGrid(d); drawDentMap(d);
+  const [mn] = dentExtent(d); $("d-info").textContent = d.x.length + " × " + d.y.length + " измерительных линий · точка P: φ = " + d.anchor + "°, Z = " + d.height + " м · макс. отклонение " + mn.toFixed(1) + " мм";
+}
+function dentParams() {
+  const d = S.defects[selDent]; if (!d) return;
+  d.name = $("d-name").value; d.anchor = num($("d-ang").value); d.height = num($("d-z").value);
+  const w = Math.max(.1, num($("d-w").value, d.width)), h = Math.max(.1, num($("d-h").value, d.span_height)), nx = Math.max(2, Math.min(40, Math.round(num($("d-nx").value, d.x.length)))), ny = Math.max(2, Math.min(40, Math.round(num($("d-ny").value, d.y.length))));
+  const old = d.values; d.width = w; d.span_height = h; d.nx = nx; d.ny = ny; d.x = lin(-w / 2, w / 2, nx); d.y = lin(-h / 2, h / 2, ny);
+  d.values = Array.from({ length: ny }, (_, j) => Array.from({ length: nx }, (_, i) => (old[j] && old[j][i] !== undefined ? old[j][i] : 0)));
   drawDents();
+}
+["d-name", "d-ang", "d-z", "d-w", "d-h", "d-nx", "d-ny"].forEach((id) => { $(id).onchange = dentParams; });
+$("d-grid").addEventListener("change", (e) => { const t = e.target, d = S.defects[selDent]; if (t.dataset.j === undefined) return; d.values[+t.dataset.j][+t.dataset.i] = num(t.value); drawDentMap(d); const [mn] = dentExtent(d); $("d-info").textContent = d.x.length + " × " + d.y.length + " измерительных линий · точка P: φ = " + d.anchor + "°, Z = " + d.height + " м · макс. отклонение " + mn.toFixed(1) + " мм"; });
+$("d-del").onclick = () => { S.defects.splice(selDent, 1); selDent = 0; drawDents(); };
+$("d-bell").onclick = () => { const d = S.defects[selDent]; if (!d) return; const depth = num($("d-depth").value, -30), w = d.width, h = d.span_height;
+  d.values = d.y.map((yy) => d.x.map((xx) => +(depth * Math.exp(-((xx / (w / 2.6)) ** 2 + (yy / (h / 2.6)) ** 2))).toFixed(2))); drawDents(); };
+$("d-paste").onclick = async () => {
+  const d = S.defects[selDent]; if (!d) return; let txt = "";
+  try { txt = await navigator.clipboard.readText(); } catch (e) { txt = window.prompt("Вставьте блок измерений из Excel (Ctrl+V):") || ""; }
+  if (!txt.trim()) return;
+  try {
+    const rows = parseBlock(txt).filter((r) => r.some((x) => isFinite(x))); if (!rows.length) throw new Error("В буфере нет чисел.");
+    const w = Math.max(...rows.map((r) => r.length)); if (rows.some((r) => r.length !== w)) throw new Error("Строки разной длины: скопируйте прямоугольный блок.");
+    $("d-nx").value = w; $("d-ny").value = rows.length; dentParams();
+    S.defects[selDent].values = rows.map((r) => r.map((v) => (isFinite(v) ? v : 0))); drawDents(); showErr("");
+  } catch (er) { showErr(er.message); }
 };
 
 /* ---------- 3D ---------- */
@@ -347,10 +387,35 @@ function showRings() {
 }
 $("r-h").oninput = showRings;
 
-/* ---------- шаг 7: нагрузки и сборка ---------- */
+/* ---------- шаг 7: STEP ---------- */
+function showStepSummary() {
+  const nz = S.heights.length - 1, f = structFields();
+  $("step-sum").innerHTML = "<table><tr><td>Стенка</td><td>Ø" + S.D + " × " + S.H + " м, " + nz + " поясов, " + S.angles.length + " образующих</td></tr><tr><td>Вмятины</td><td>" + S.defects.length + "</td></tr>" +
+    "<tr><td>Днище и окрайка</td><td>" + (f.s_bot_on ? "да" : "нет") + "</td></tr><tr><td>Крыша</td><td>" + (f.s_roof_on ? "да" : "нет") + "</td></tr><tr><td>Патрубки</td><td>" + nozzles().length + "</td></tr><tr><td>Ветровые кольца</td><td>" + ringHeights().length + "</td></tr></table>";
+}
+$("b-step").onclick = async () => {
+  const b = $("b-step"); b.disabled = true; $("step-files").innerHTML = ""; $("step-msg").textContent = "Строю геометрию… обычно 20–60 секунд"; showErr("");
+  try {
+    const r = await fetch("/studio/step", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csrf, project: buildProject(), structure: structFields() }) });
+    const d = await r.json(); if (!r.ok) throw new Error(d.error || "ошибка");
+    for (let k = 0; k < 400; k++) {
+      await new Promise((ok) => setTimeout(ok, 2000));
+      const q = await (await fetch("/studio/step/" + d.token, { credentials: "same-origin" })).json();
+      if (q.state === "error") throw new Error(q.error);
+      if (q.state === "done") {
+        $("step-msg").textContent = "Готово.";
+        $("step-files").innerHTML = q.files.map((f) => "<div class=\"stfile\"><span><b>" + f.name + "</b> <small class=\"muted\">" + f.mb + " МБ</small></span><a class=\"btn light\" href=\"/studio/step/" + d.token + "/file/" + encodeURIComponent(f.name) + "\">Скачать</a></div>").join("");
+        b.disabled = false; return;
+      }
+    }
+    throw new Error("Слишком долго. Попробуйте ещё раз.");
+  } catch (e) { b.disabled = false; $("step-msg").textContent = ""; showErr(e.message); }
+};
+
+/* ---------- шаг 8: нагрузки и сборка ---------- */
 function loadFields() {
   const l = { l_on: "1" };
-  document.querySelectorAll(".st-step[data-step='7'] [id^='l_']").forEach((e) => { l[e.id] = e.value; });
+  document.querySelectorAll(".st-step[data-step='8'] [id^='l_']").forEach((e) => { l[e.id] = e.value; });
   return l;
 }
 function buildProject() {
@@ -379,7 +444,7 @@ $("b-create").onclick = async () => {
   const b = $("b-create"); b.disabled = true; $("create-msg").textContent = "Строю модель…"; showErr("");
   try {
     const r = await fetch("/studio/create", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ csrf, title: S.title, project: buildProject(), structure: structFields(), loads: loadFields() }) });
+      body: JSON.stringify({ csrf, title: S.title, project: buildProject(), structure: structFields(), loads: {} }) });
     const d = await r.json(); if (!r.ok) throw new Error(d.error || "ошибка");
     location.href = d.url;
   } catch (e) { b.disabled = false; $("create-msg").textContent = ""; showErr(e.message); }
@@ -400,7 +465,7 @@ function go(n) {
   $("dots").innerHTML = Array.from({ length: STEPS }, (_, i) => "<i class=\"" + (i + 1 === step ? "on" : i + 1 < step ? "done" : "") + "\"></i>").join("");
   const stage = step === 1 ? 1 : step <= 4 ? 2 : step <= 6 ? 3 : 4;
   document.querySelectorAll(".st-stages span").forEach((s) => s.classList.toggle("on", +s.dataset.st === stage));
-  if (step === 2) drawProfiles(); if (step === 3) drawDents(); if (step === 4) showWall(); if (step === 5) showStruct(); if (step === 6) showRings(); if (step === 7) showSummary();
+  if (step === 2) drawProfiles(); if (step === 3) drawDents(); if (step === 4) showWall(); if (step === 5) showStruct(); if (step === 6) showRings(); if (step === 7) showStepSummary();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 $("b-next").onclick = () => go(step + 1); $("b-prev").onclick = () => go(step - 1);

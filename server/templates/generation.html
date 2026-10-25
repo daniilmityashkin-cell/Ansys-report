@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1>{{ g.title }}</h1><p class="sub">Генерация №{{ g.id }} · <span class="tag {{ g.status }}">{{ {'draft':'проверка пройдена','paid':'оплачено','running':'считается','done':'готово','error':'ошибка'}[g.status] }}</span></p>
-{% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card actionbar"><b>Отчёт</b><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
+{% if g.status == 'draft' and not has_loads %}<div class="card actionbar"><div><b>Шаг 2: задайте нагрузки</b><p class="muted" style="margin:4px 0 0">Модель создана. Ниже введите продукт, налив, снег, ветер — после этого можно собрать отчёт.</p></div><a class="btn" href="#loads">Задать нагрузки ↓</a></div>
+{% elif g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card actionbar"><b>Отчёт</b><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
 {% else %}<div class="card actionbar"><div><b>Собрать технический отчёт одним нажатием</b><p class="muted" style="margin:4px 0 0">Рассчитаем нагрузки, построим модель, посчитаем в Ansys на вашем компьютере и пришлём отчёт сюда.{% if mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% elif mode == 'pay' %} Разовая генерация доступна один раз на аккаунт.{% endif %}</p></div>
 <form method="post" action="/g/{{ g.id }}/pay" onsubmit="try{sessionStorage.setItem('ar_auto{{ g.id }}','1')}catch(e){}"><input type="hidden" name="csrf" value="{{ csrf }}">
 <button class="btn">Собрать отчёт{% if mode == 'pay' %} — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
@@ -24,6 +25,26 @@ tick();setInterval(tick,5000);})();</script>
 <p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a> <a class="btn light" href="#files">Список файлов</a></p></div>
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>{% endif %}
 {% if not has_preview %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
+{% if g.status == 'draft' %}<div class="card" id="loads"><h2>Нагрузки{% if has_loads %} <span class="tag done">заданы</span>{% endif %}</h2>
+<p class="sub">Гидростатика, давление, вакуум, снег, ветер и оборудование задаются после того, как модель создана.{% if has_loads %} Можно изменить и сохранить заново.{% endif %}</p>
+{% if loads_error %}<div class="err">{{ loads_error }}</div>{% endif %}
+<form method="post" action="/g/{{ g.id }}/loads"><input type="hidden" name="csrf" value="{{ csrf }}"><div class="grid">
+<div><label>Плотность продукта, т/м³</label><input type="text" name="l_density" value="{{ lf.l_density }}"></div>
+<div><label>Уровень налива продукта, м</label><input type="text" name="l_fill" value="{{ lf.l_fill }}"></div>
+<div><label>Уровень воды при гидроиспытаниях, м</label><input type="text" name="l_hydro" value="{{ lf.l_hydro }}"></div>
+<div><label>Избыточное давление, Па</label><input type="text" name="l_overp" value="{{ lf.l_overp }}"></div>
+<div><label>Вакуум, Па</label><input type="text" name="l_vac" value="{{ lf.l_vac }}"></div>
+<div><label>Предел текучести стали R<sub>yn</sub>, МПа</label><input type="text" name="l_ryn" value="{{ lf.l_ryn }}"></div>
+<div><label>Снеговой район</label><select name="l_snow">{% for v in snow %}<option {{ 'selected' if v == lf.l_snow }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Ветровой район</label><select name="l_wind">{% for v in wind %}<option {{ 'selected' if v == lf.l_wind }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Тип местности (A, B, C)</label><select name="l_terrain">{% for v in terrains %}<option {{ 'selected' if v == lf.l_terrain }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Высота подъёма крыши, м</label><input type="text" name="l_roof_rise" value="{{ lf.l_roof_rise }}"></div>
+<div><label>Толщина настила крыши, мм</label><input type="text" name="l_deck" value="{{ lf.l_deck }}"></div>
+<div><label>Теплоизоляция: толщина, мм (0 — нет)</label><input type="text" name="l_ins_t" value="{{ lf.l_ins_t }}"></div>
+<div><label>Теплоизоляция: плотность, кг/м³</label><input type="text" name="l_ins_rho" value="{{ lf.l_ins_rho }}"></div></div>
+<label>Оборудование: по строке на позицию «Название; количество; масса одной штуки, кг; пояса (1,2) или крыша»</label>
+<textarea name="l_equipment" style="min-height:90px" placeholder="Люк-лаз 600; 2; 170; 1&#10;Площадка на крыше; 1; 4297; крыша">{{ lf.l_equipment }}</textarea>
+<p><button class="btn">Сохранить нагрузки</button></p></form></div>{% endif %}
 <div class="card"><h2>Результат проверки</h2>
 <div class="kv"><span>Диаметр × высота</span><span>{{ summary.diameter_m }} × {{ summary.height_m }} м</span>
 <span>Замеров</span><span>{{ summary.n_points }} ({{ summary.n_gens }} образующих × {{ summary.n_belts }} поясов)</span>

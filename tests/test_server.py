@@ -477,10 +477,16 @@ def test_studio_create_from_wizard(site):
     project = {"version": "1.0", "diameter": "20", "height": "9", "angles": [30.0 * i for i in range(ng)], "heights": [0, 3, 6, 9],
                "values": [["0"] * ng] + [[str((i * 3 + j) % 7 - 3) for i in range(ng)] for j in range(nz)],
                "bands": [["3", "10"]] * nz, "defects": [], "contour_threshold": "0.1", "wall_includes_defects": True}
-    body = {"csrf": tok, "title": "Тест", "project": project, "loads": {**DEFAULTS_L, "l_fill": "5", "l_hydro": "5", "l_roof_rise": "1.5"},
+    body = {"csrf": tok, "title": "Тест", "project": project, "loads": {},
             "structure": {"s_bot_on": "1", "s_bot_outside": "200", "s_bot_width": "1500", "s_bot_overlap": "100", "s_bot_slope": "100", "s_bot_plate_t": "8", "s_bot_ann_t": "12"}}
     assert c.post("/studio/create", json={**body, "csrf": "bad"}).status_code == 400
     r = c.post("/studio/create", json=body)
     assert r.status_code == 200, r.text
     assert r.json()["url"].startswith("/g/")
-    assert "Тест" in c.get(r.json()["url"]).text
+    page = c.get(r.json()["url"]).text
+    assert "Тест" in page and "Задать нагрузки" in page                         # нагрузки - после создания модели
+    gtok = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+    form = {**DEFAULTS_L, "l_fill": "5", "l_hydro": "5", "l_roof_rise": "1.5", "csrf": gtok}
+    assert c.post(r.json()["url"] + "/loads", data={**form, "l_fill": "50"}, follow_redirects=False).headers["location"].find("loads_error") > 0   # налив выше стенки
+    assert c.post(r.json()["url"] + "/loads", data=form, follow_redirects=False).status_code == 303
+    assert "Задать нагрузки" not in c.get(r.json()["url"]).text

@@ -409,6 +409,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return JSONResponse({"error": str(e)}, status_code=400)
             return JSONResponse({"url": f"/g/{gid}"})
 
+    step_jobs: dict = {}                                           # token -> {"uid", "future", "dir"}
+
+    def _step_struct(body: dict, project: dict):
+        from .structinput import build_structure
+        D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
+        return build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H)
+
+    @app.post("/studio/step")
+    async def studio_step(request: Request):
+        try:
+            body = await request.json()
+        except Exception:   # noqa: BLE001
+            return JSONResponse({"error": "Некорректный запрос."}, status_code=400)
+        if not csrf_ok(request.session, body.get("csrf")):
+            return JSONResponse({"error": "Сессия устарела. Обновите страницу."}, status_code=400)
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return JSONResponse({"error": "login"}, status_code=401)
+            uid = u.id
+        if any(j["uid"] == uid and not j["future"].done() for j in step_jobs.values()):
+            return JSONResponse({"error": "Предыдущая модель ещё строится. Подождите минуту."}, status_code=429)
+        try:
+            project = body["project"]
+            _preview(project)
+            structure = _step_struct(body, project)
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": str(e)}, status_code=400)
+        import secrets, shutil
+        root = st.data_dir / "studio"
+        for old in (root.glob("*/*") if root.exists() else []):                 # чистим то, что старше суток
+            if old.is_dir() and time.time() - old.stat().st_mtime > 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        tok = secrets.token_urlsafe(12)
+        d = root / str(uid) / tok
+        d.mkdir(parents=True, exist_ok=True)
+        from .jobs import compute_step
+        step_jobs[tok] = {"uid": uid, "dir": d, "future": app.state.runner.submit_fn(compute_step, str(d), project, structure)}
+        return JSONResponse({"token": tok})
+
+    @app.get("/studio/step/{tok}")
+    def studio_step_status(request: Request, tok: str):
+        with Session() as db:
+            u = current_user(request, db)
+        j = step_jobs.get(tok)
+        if not u or not j or j["uid"] != u.id:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        f = j["future"]
+        if not f.done():
+            return JSONResponse({"state": "running"})
+        if f.exception():
+            return JSONResponse({"state": "error", "error": f"{type(f.exception()).__name__}: {f.exception()}"[:300]})
+        return JSONResponse({"state": "done", "files": [{"name": n, "mb": round((j["dir"] / n).stat().st_size / 1e6, 1)} for n in f.result()]})
+
+    @app.get("/studio/step/{tok}/file/{name}")
+    def studio_step_file(request: Request, tok: str, name: str):
+        with Session() as db:
+            u = current_user(request, db)
+        j = step_jobs.get(tok)
+        if not u or not j or j["uid"] != u.id or name not in ("Стенка.step", "Модель целиком.step") or not (j["dir"] / name).exists():
+            return HTMLResponse("Не найдено", status_code=404)
+        return FileResponse(j["dir"] / name, filename=name, media_type="application/step")
+
     def _owned(db, request: Request, gid: int):
         u = current_user(request, db)
         if not u:
@@ -448,11 +511,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None
             mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
             return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view, structure=structure,
+                          has_loads=lp.exists(), lf=DEFAULTS, snow=SNOW, wind=WIND, terrains=TERRAINS, loads_error=request.query_params.get("loads_error", "")[:300],
                           has_preview=preview_ready(g.id),
                           files=_files(g.id) if g.status == "done" else [],
                           agent_url=(f"ansysreport://run?server={(st.public_url or str(request.base_url)).rstrip('/')}&g={g.id}&t={agent_token(g.id)}"
                                      if g.status == "done" else ""),
                           agent=agent_state(g.id) if g.status == "done" else None)
+
+    @app.post("/g/{gid}/loads")
+    async def set_loads(request: Request, gid: int):
+        raw_form = await request.form()
+        bad = deny_csrf(request, str(raw_form.get("csrf", "")))
+        if bad:
+            return bad
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return HTMLResponse("Не найдено", status_code=404)
+            if g.status != "draft":
+                return RedirectResponse(f"/g/{gid}", status_code=303)
+            try:
+                from .loadsinput import build_loads_input
+                lform = {k: str(v) for k, v in raw_form.items() if k.startswith("l_")}
+                lform["l_on"] = "1"
+                project = json.loads((gen_dir(g.id) / "input.json").read_text(encoding="utf-8-sig"))
+                loads_in = build_loads_input(lform, project)
+                (gen_dir(g.id) / "loads_input.json").write_text(json.dumps(loads_in, ensure_ascii=False), encoding="utf-8")
+            except Exception as e:  # noqa: BLE001
+                from urllib.parse import quote
+                return RedirectResponse(f"/g/{gid}?loads_error={quote(str(e)[:250])}#loads", status_code=303)
+            return RedirectResponse(f"/g/{gid}#loads", status_code=303)
 
     @app.post("/g/{gid}/pay")
     def pay_generation(request: Request, gid: int, csrf: str = Form("")):
