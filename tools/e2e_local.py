@@ -33,6 +33,10 @@ def main() -> int:
     ap.add_argument("--no-agent", action="store_true", help="не запускать помощника и Ansys")
     ap.add_argument("--keep-server", action="store_true", help="не останавливать сайт в конце")
     a = ap.parse_args()
+    import socket
+    with socket.socket() as sk:                       # занят порт - берём свободный
+        if sk.connect_ex(("127.0.0.1", a.port)) == 0:
+            sk2 = socket.socket(); sk2.bind(("127.0.0.1", 0)); a.port = sk2.getsockname()[1]; sk2.close()
 
     project = json.loads(Path(a.project).read_text(encoding="utf-8-sig"))
     H = float(str(project["height"]).replace(",", "."))
