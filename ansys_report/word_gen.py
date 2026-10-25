@@ -467,6 +467,22 @@ class Report:
             rows.append(["Идеальный РВС (без отклонений): вакуум, снег и ветер", fmt(idl["k"]),
                          "Выполнен" if idl["k"] >= self.p.raw["results"]["required_k"] else "Не выполнен"])
         self.table(["Расчетный случай", "Коэффициент запаса k", "Оценка"], rows, caption="Коэффициенты запаса устойчивости")
+        an = self.p.raw["results"].get("analytic")
+        if an and an.get("stability"):
+            self.h1("6.2 Проверка устойчивости стенки по аналитической методике ГОСТ 31385-2016")
+            self.body("Для сопоставления с численным расчетом выполнена аналитическая проверка устойчивости пустого резервуара под действием собственного веса, снега, "
+                      "вакуума и ветра: условие σ1/σ1кр + σ2/σ2кр ≤ 1, где σ1 - меридиональные, σ2 - кольцевые (от ветрового давления 0,5·ψ·w и вакуума) напряжения. "
+                      f"Критические напряжения: σ1кр = {fmt(an['sigma1_cr_mpa'])} МПа, σ2кр = {fmt(an['sigma2_cr_mpa'])} МПа (без колец жесткости).")
+            arows = [[str(b["belt"]), fmt(b["meridional_mpa"]), "-" if b.get("hoop_mpa") is None else fmt(b["hoop_mpa"]),
+                      "-" if b.get("utilization") is None else fmt(b["utilization"]), "-" if b.get("ok") is None else ("Выполнено" if b["ok"] else "Не выполнено")]
+                     for b in an["stability"]]
+            self.table(["Пояс", "σ1, МПа", "σ2, МПа", "σ1/σ1кр + σ2/σ2кр", "Устойчивость"], arows, caption="Аналитическая проверка устойчивости поясов стенки", widths=[1.8, 3.0, 3.0, 4.2, 3.6])
+            fixable = [b["ring_hr_max_m"] for b in an["stability"] if b.get("ring_hr_max_m")]
+            if any(b.get("ok") is False for b in an["stability"]):
+                self.body("Условие устойчивости по аналитической методике не выполнено для части поясов" + (
+                    f"; его обеспечивает кольцо жесткости с редуцированной высотой не более {fmt(min(fixable))} м." if fixable else "; одним кольцом жесткости оно не обеспечивается."))
+            if an.get("ring_modulus_cm3"):
+                self.body(f"Требуемый момент сопротивления кольца жесткости составляет {fmt(an['ring_modulus_cm3'])} см³.")
 
     def _fill_conclusion(self, res, c) -> str:
         from .fillcalc import allowable_fill

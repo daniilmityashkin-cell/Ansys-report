@@ -95,6 +95,10 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
             from .ansys_connect import _fname
             ns2: dict = {}
             exec(Path(lf2).read_text(encoding="utf-8"), ns2)
+            if ns2["LOADS"].get("analytic"):                       # аналитическая проверка устойчивости (ГОСТ 31385-2016) - для сравнения с расчётом в Ansys
+                rawa = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+                rawa.setdefault("results", {})["analytic"] = ns2["LOADS"]["analytic"]
+                yaml_path.write_text(yaml.safe_dump(rawa, allow_unicode=True, sort_keys=False), encoding="utf-8")
             series = read_series(data, ns2["LOADS"]["cases"], "AR: ", _fname)
             if len(series) >= 3:
                 raw1 = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))

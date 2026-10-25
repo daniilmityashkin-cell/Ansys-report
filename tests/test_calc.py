@@ -385,3 +385,22 @@ def test_stability_ring_limit_matches_excel():
     assert abs(b[0]["utilization"] - 1.2417) < 1e-3
     assert abs(b[5]["ring_hr_max_m"] - 0.5115) < 1e-3 and abs(b[7]["ring_hr_max_m"] - 2.369) < 1e-3
     assert abs(r["ring_modulus_cm3"] - 120.1) < 0.1
+
+
+def test_report_with_analytic_stability(tmp_path):
+    """Аналитическая проверка устойчивости (Excel ГОСТ 31385) попадает в раздел 6.2 отчёта."""
+    import json
+    import docx
+    from pathlib import Path
+    from ansys_report.loads.rvs_loads import compute
+    from ansys_report.loads.export import write_package
+    res = compute(json.loads((Path(__file__).parent.parent / "examples" / "loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    pk = write_package(res, tmp_path / "pk")
+    ns: dict = {}
+    exec(pk["data"].read_text(encoding="utf-8"), ns)
+    p = load_project(YAML)
+    p.raw["results"]["analytic"] = ns["LOADS"]["analytic"]
+    path, _ = build_report(p, tmp_path / "a.docx")
+    d = docx.Document(path)
+    text = "\n".join(x.text for x in d.paragraphs)
+    assert "6.2 Проверка устойчивости стенки по аналитической методике" in text and "кольцо жесткости" in text
