@@ -464,3 +464,23 @@ def test_agent_link_parse():
     assert parse_link("ansysreport://run/?server=http://127.0.0.1:8000&amp;g=8&amp;t=ab")["gid"] == 8        # экранированные амперсанды
     with pytest.raises(ValueError):
         parse_link("http://evil/?server=1&g=1&t=1")
+
+
+def test_studio_create_from_wizard(site):
+    from server.loadsinput import DEFAULTS as DEFAULTS_L
+    c = TestClient(site)
+    assert c.get("/studio", follow_redirects=False).status_code == 303          # без входа
+    register(c)
+    html = c.get("/studio").text
+    tok = re.search(r'data-csrf="([^"]+)"', html).group(1)
+    ng, nz = 12, 3
+    project = {"version": "1.0", "diameter": "20", "height": "9", "angles": [30.0 * i for i in range(ng)], "heights": [0, 3, 6, 9],
+               "values": [["0"] * ng] + [[str((i * 3 + j) % 7 - 3) for i in range(ng)] for j in range(nz)],
+               "bands": [["3", "10"]] * nz, "defects": [], "contour_threshold": "0.1", "wall_includes_defects": True}
+    body = {"csrf": tok, "title": "Тест", "project": project, "loads": {**DEFAULTS_L, "l_fill": "5", "l_hydro": "5", "l_roof_rise": "1.5"},
+            "structure": {"s_bot_on": "1", "s_bot_outside": "200", "s_bot_width": "1500", "s_bot_overlap": "100", "s_bot_slope": "100", "s_bot_plate_t": "8", "s_bot_ann_t": "12"}}
+    assert c.post("/studio/create", json={**body, "csrf": "bad"}).status_code == 400
+    r = c.post("/studio/create", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["url"].startswith("/g/")
+    assert "Тест" in c.get(r.json()["url"]).text

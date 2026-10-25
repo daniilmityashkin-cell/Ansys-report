@@ -169,3 +169,33 @@ h2.fstep{font-size:16px;margin:22px 0 10px}
 .card.done{border-color:#2f9d5a;background:linear-gradient(180deg,rgba(47,157,90,.12),transparent)}.card.done h2{margin-top:0}
 
 .actionbar{display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-color:rgba(255,183,27,.45)}.actionbar form{margin:0}.actionbar .btn{font-size:16px;padding:14px 28px}
+
+/* студия геометрии */
+.studio{max-width:1180px;margin:0 auto}.st-head{display:flex;justify-content:space-between;align-items:baseline;padding:6px 2px 4px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.st-title{font-weight:700;font-size:18px;letter-spacing:-.2px}.st-title small{color:var(--accent);font-weight:600}.st-tank{color:var(--muted);font-size:13px}
+.st-step h1{font-size:28px}.st-step h1 .no{color:var(--accent);margin-right:10px;font-weight:800}
+.st-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px}.st-row label{margin:0;flex:1;min-width:130px}.st-row .btn{padding:11px 20px}
+.st-row.src{margin-top:4px}.filebtn{position:relative;flex:none!important;min-width:0!important;display:inline-block;padding:10px 18px;border:1px solid var(--line);border-radius:999px;background:var(--card2);color:var(--ink)!important;cursor:pointer;font-size:14px!important}
+.filebtn:hover{border-color:var(--accent)}.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%!important}
+.st-hint{font-size:12.5px;margin:6px 0}.tablewrap{overflow:auto;max-height:430px;border:1px solid var(--line);border-radius:12px}
+.st-grid{width:auto;min-width:100%;font-size:12.5px}.st-grid th,.st-grid td{padding:0;border:1px solid var(--line);text-align:center;white-space:nowrap}
+.st-grid th{background:var(--card2);color:var(--muted);font-weight:500;position:sticky;top:0}.st-grid th:first-child{left:0;z-index:1}
+.st-grid input{width:62px;border:0;background:transparent;color:var(--ink);padding:6px 4px;text-align:center;font:inherit;border-radius:0}
+.st-grid input:focus{outline:2px solid var(--accent);box-shadow:none;background:rgba(255,183,27,.12)}.st-grid th input{width:62px;color:var(--muted)}
+.st-foot{display:flex;justify-content:space-between;margin-top:10px;font-size:13px}
+.prof-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}.prof{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:6px;text-align:center;font-size:12px;color:var(--muted)}
+.prof canvas{width:100%;height:auto;display:block}
+.dent{display:flex;gap:16px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.dent canvas{width:84px;height:84px;border-radius:8px;border:1px solid var(--line)}.dent div{flex:1;font-size:14px}
+.st-split{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}@media(max-width:900px){.st-split{grid-template-columns:1fr}}
+.st-view{padding:0;overflow:hidden;min-height:520px}.st-view canvas{display:block;width:100%;height:560px}.st-side{margin:16px 0;max-height:640px;overflow:auto}
+.legend{display:flex;align-items:center;gap:8px;margin:8px 0 14px;font-size:12.5px;color:var(--muted)}.legend i{flex:1;height:9px;border-radius:5px;background:linear-gradient(90deg,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)}
+.vis{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:10px}.chk2{display:inline-flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:13.5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}.grid2 label{margin:6px 0 2px}
+details.blk{border:1px solid var(--line);border-radius:12px;padding:8px 14px;margin:10px 0;background:var(--bg2)}details.blk summary{cursor:pointer;font-weight:600;padding:4px 0}
+.nzrow{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 1fr .8fr .8fr .8fr .8fr 28px;gap:4px;margin:6px 0}.nzrow input,.nzrow select{padding:7px 6px;font-size:12px}
+.nzrow .x{border:0;background:none;color:var(--bad);font-size:20px;cursor:pointer}
+.st-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:26px 0 0;padding-top:16px;border-top:1px solid var(--line)}
+.st-dots{display:flex;gap:7px}.st-dots i{width:22px;height:4px;border-radius:2px;background:var(--line)}.st-dots i.done{background:rgba(255,183,27,.45)}.st-dots i.on{background:var(--accent)}
+.st-stages{color:var(--muted);font-size:13px}.st-stages .on{color:var(--accent);font-weight:600}
+@media(max-width:700px){.st-stages{display:none}.nzrow{grid-template-columns:1fr 1fr}}
+.st-sum{margin:14px 0}

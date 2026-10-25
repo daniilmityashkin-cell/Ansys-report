@@ -343,6 +343,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return render(request, "new_table.html", u, error=str(e), f=form, snow=SNOW, wind=WIND, terrains=TERRAINS, nz_rows=nz_rows, **SCTX, status_code=400)
             return RedirectResponse(f"/g/{gid}", status_code=303)
 
+    # --- студия: пошаговый ввод геометрии (измерения -> геометрия -> конструкция -> нагрузки) ---
+    @app.get("/studio", response_class=HTMLResponse)
+    def studio_page(request: Request):
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return RedirectResponse("/login", status_code=303)
+            return render(request, "studio.html", u, f={**DEFAULTS, **SDEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS, **SCTX)
+
+    @app.post("/studio/xlsx")
+    async def studio_xlsx(request: Request, xlsx: UploadFile = File(...), sheet: str = Form(""), csrf: str = Form("")):
+        bad = deny_csrf(request, csrf)
+        if bad:
+            return bad
+        with Session() as db:
+            if not current_user(request, db):
+                return JSONResponse({"error": "login"}, status_code=401)
+        raw = await xlsx.read(st.max_upload_bytes + 1)
+        if len(raw) > st.max_upload_bytes:
+            return JSONResponse({"error": "Файл слишком большой."}, status_code=400)
+        from .tableinput import build_project, table_from_xlsx, survey_from_xlsx
+        try:
+            try:
+                meta = survey_from_xlsx(raw, sheet)
+                table, dia, hei = meta["table"], f"{meta['diameter_m']:g}", f"{meta['height_m']:g}"
+            except ValueError as e:
+                if str(e) != "survey:none":
+                    raise
+                table, dia, hei = table_from_xlsx(raw), "", ""
+            from .tableinput import _cells
+            rows = _cells(table)
+            n_belts = len(rows[0]) if rows else 0
+            proj = build_project(dia or "30", hei or "18", table, " ".join(["10"] * n_belts), "gens") if n_belts else None
+            return JSONResponse({"project": proj, "diameter": dia, "height": hei, "need_dims": not dia})
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    @app.post("/studio/create")
+    async def studio_create(request: Request):
+        try:
+            body = await request.json()
+        except Exception:   # noqa: BLE001
+            return JSONResponse({"error": "Некорректный запрос."}, status_code=400)
+        if not csrf_ok(request.session, body.get("csrf")):
+            return JSONResponse({"error": "Сессия устарела. Обновите страницу."}, status_code=400)
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return JSONResponse({"error": "login"}, status_code=401)
+            try:
+                project = body["project"]
+                summary = _preview(project)
+                from .structinput import build_structure, structure_from_project
+                D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
+                if body.get("struct_source") == "project":
+                    structure = structure_from_project(project)
+                else:
+                    structure = build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H)
+                lform = {k: str(v) for k, v in (body.get("loads") or {}).items() if k.startswith("l_")}
+                from .loadsinput import build_loads_input
+                loads_in = build_loads_input(lform, project) if lform.get("l_on") else None
+                gid = _create_generation(db, u, str(body.get("title") or ""), project, summary, loads_in, structure).id
+            except Exception as e:  # noqa: BLE001
+                return JSONResponse({"error": str(e)}, status_code=400)
+            return JSONResponse({"url": f"/g/{gid}"})
+
     def _owned(db, request: Request, gid: int):
         u = current_user(request, db)
         if not u:
