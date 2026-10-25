@@ -208,13 +208,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             gens = db.scalars(select(Generation).where(Generation.user_id == u.id).order_by(Generation.id.desc())).all()
             return render(request, "cabinet.html", u, gens=gens, unlimited=is_unlimited(u))
 
-    @app.get("/new", response_class=HTMLResponse)
-    def new_form(request: Request):
-        with Session() as db:
-            u = current_user(request, db)
-            if not u:
-                return RedirectResponse("/login", status_code=303)
-            return render(request, "new.html", u)
+    @app.get("/new")
+    def new_form():
+        return RedirectResponse("/studio", status_code=303)             # единый вход: пошаговая студия геометрии
 
     @app.post("/new")
     async def new_submit(request: Request, title: str = Form(""), text: str = Form(""), csrf: str = Form(""),
@@ -269,13 +265,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runner.submit_preview(d)
         return g
 
-    @app.get("/new/table", response_class=HTMLResponse)
-    def new_table_form(request: Request):
-        with Session() as db:
-            u = current_user(request, db)
-            if not u:
-                return RedirectResponse("/login", status_code=303)
-            return render(request, "new_table.html", u, f={"rows_are": "gens", **DEFAULTS, **SDEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS, **SCTX)
+    @app.get("/new/table")
+    def new_table_form():
+        return RedirectResponse("/studio", status_code=303)
 
     @app.post("/new/table")
     async def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
@@ -369,7 +361,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 meta = survey_from_xlsx(raw, sheet)
                 table, dia, hei = meta["table"], f"{meta['diameter_m']:g}", f"{meta['height_m']:g}"
             except ValueError as e:
-                if str(e) != "survey:none":
+                msg = str(e)
+                if msg.startswith("В файле несколько листов со съёмкой:"):          # выбор листа делает страница: по умолчанию «пустой»
+                    names = [x.strip() for x in msg.split(":", 1)[1].split(". Впишите")[0].split(",")]
+                    return JSONResponse({"sheets": names})
+                if msg != "survey:none":
                     raise
                 table, dia, hei = table_from_xlsx(raw), "", ""
             from .tableinput import _cells

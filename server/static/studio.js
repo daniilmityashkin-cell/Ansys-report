@@ -61,6 +61,7 @@ $("grid").addEventListener("change", (e) => {
   drawGrid();
 });
 $("b-grid").onclick = () => {
+  loaded = false;
   const ng = Math.max(3, Math.min(120, Math.round(num($("p-ng").value, 18)))), nz = Math.max(1, Math.min(60, Math.round(num($("p-nz").value, 9))));
   readParams(); makeGrid(ng, nz); S.raw = null; S.defects = []; drawGrid();
 };
@@ -69,6 +70,7 @@ function parseBlock(text) {
 }
 function applyBlock(rows) {
   rows = rows.filter((r) => r.some((x) => isFinite(x)));
+  if ($("paste-rows").value === "gens" && rows.length) rows = rows[0].map((_, i) => rows.map((r) => r[i]));      // строки таблицы - образующие: транспонируем
   if (!rows.length) throw new Error("В буфере нет чисел.");
   const w = Math.max(...rows.map((r) => r.length));
   if (rows.some((r) => r.length !== w)) throw new Error("Строки разной длины: скопируйте прямоугольный блок.");
@@ -88,14 +90,14 @@ $("b-paste").onclick = async () => {
   let txt = "";
   try { txt = await navigator.clipboard.readText(); } catch (e) { txt = window.prompt("Вставьте блок чисел из Excel (Ctrl+V):") || ""; }
   if (!txt.trim()) return;
-  try { applyBlock(parseBlock(txt)); S.raw = null; drawGrid(); $("src-msg").textContent = "Таблица вставлена."; showErr(""); } catch (e) { showErr(e.message); }
+  try { applyBlock(parseBlock(txt)); S.raw = null; loaded = true; drawGrid(); say("Таблица вставлена: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов."); showErr(""); } catch (e) { showErr(e.message); }
 };
 document.addEventListener("paste", (e) => {                   // Ctrl+V в сетку
   if (step !== 1 || !e.target.closest || !e.target.closest("#grid")) return;
   const txt = (e.clipboardData || window.clipboardData).getData("text");
   if (!/[\t\n]/.test(txt)) return;
   e.preventDefault();
-  try { applyBlock(parseBlock(txt)); S.raw = null; drawGrid(); showErr(""); } catch (er) { showErr(er.message); }
+  try { applyBlock(parseBlock(txt)); S.raw = null; loaded = true; drawGrid(); showErr(""); } catch (er) { showErr(er.message); }
 });
 
 /* ---------- загрузка файлов ---------- */
@@ -132,28 +134,48 @@ function loadProject(p) {
   (p.nozzles || []).forEach((z) => addNozzle({ name: z.name, shape: z.shape, width: z.width_mm, height: z.height_mm, z: z.height_m, angle: z.anchor, t: z.thickness_mm, in: z.inside_mm, out: z.outside_mm }));
   if (p.wind_rings) { $("r-h").value = p.wind_rings.map((x) => x.h).join(" "); }
 }
-$("f-json").onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  try { const p = JSON.parse((await f.text()).replace(/^﻿/, "")); if (!p.angles || !p.values) throw new Error("В файле нет замеров (angles/values)."); loadProject(p); drawGrid();
-    $("src-msg").textContent = "Файл проекта: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов, вмятин: " + S.defects.length + "."; readParams(); showErr("");
-  } catch (er) { showErr("Не удалось прочитать файл проекта: " + er.message); }
-};
-$("f-xlsx").onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  const fd = new FormData(); fd.append("xlsx", f); fd.append("csrf", csrf);
-  $("src-msg").textContent = "Читаю файл…";
+let loaded = false;
+function say(msg, bad) { const e = $("src-msg"); e.textContent = msg; e.className = "srcmsg" + (bad ? " bad" : ""); }
+function afterLoad(msg, stay) {
+  loaded = true; readParams(); drawGrid(); showErr(""); say(msg);
+  if (!stay) setTimeout(() => { if (step === 1) go(2); }, 900);             // всё остальное строится само: сразу показываем отклонения образующих
+}
+let lastFile = null;
+async function handleFile(f, sheet) {
+  if (!f) return;
+  lastFile = f;
+  const name = f.name.toLowerCase();
   try {
-    const r = await fetch("/studio/xlsx", { method: "POST", body: fd, credentials: "same-origin" }); const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "ошибка");
-    if (!d.project) throw new Error("В файле не найдена таблица замеров.");
-    const keepD = d.need_dims ? $("p-D").value : d.diameter, keepH = d.need_dims ? $("p-H").value : d.height;
-    loadProject(d.project); S.raw = null; S.D = num(keepD); S.H = num(keepH); $("p-D").value = keepD; $("p-H").value = keepH;
-    S.heights = S.heights.map((_, k) => +(S.H * k / (S.heights.length - 1)).toFixed(4));
-    drawGrid(); readParams();
-    $("src-msg").textContent = d.need_dims ? "Таблица загружена. Проверьте диаметр, высоту и толщины поясов." : "Геодезия загружена: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов.";
-    showErr("");
-  } catch (er) { $("src-msg").textContent = ""; showErr(er.message); }
-};
+    if (name.endsWith(".json")) {
+      const p = JSON.parse((await f.text()).replace(/^\uFEFF/, "")); if (!p.angles || !p.values) throw new Error("В файле нет замеров (angles / values).");
+      loadProject(p); if (/^РВС-10000$|^$/.test($("p-title").value)) $("p-title").value = f.name.replace(/\.json$/i, "").replace(/^[0-9a-f]{8}-/, "");
+      afterLoad("Проект загружен: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов, вмятин " + S.defects.length + ", патрубков " + $("nz-rows").children.length + ".");
+    } else if (name.endsWith(".xlsx")) {
+      say("Читаю файл…");
+      const fd = new FormData(); fd.append("xlsx", f); fd.append("csrf", csrf); if (sheet) fd.append("sheet", sheet);
+      const r = await fetch("/studio/xlsx", { method: "POST", body: fd, credentials: "same-origin" }); const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "ошибка");
+      if (d.sheets) {                                                   // в файле несколько листов: берём «пустой» (для модели), остальные - в списке
+        const pick = d.sheets.find((x) => /пуст/i.test(x)) || d.sheets[0];
+        const sel = $("sheet-pick"); sel.innerHTML = d.sheets.map((x) => "<option" + (x === pick ? " selected" : "") + ">" + x + "</option>").join(""); sel.parentNode.hidden = false;
+        return handleFile(f, pick);
+      }
+      if (!d.project) throw new Error("В файле не найдена таблица замеров.");
+      const keepD = d.need_dims ? $("p-D").value : d.diameter, keepH = d.need_dims ? $("p-H").value : d.height;
+      loadProject(d.project); S.raw = null; S.D = num(keepD); S.H = num(keepH); $("p-D").value = keepD; $("p-H").value = keepH;
+      S.heights = S.heights.map((_, k) => +(S.H * k / (S.heights.length - 1)).toFixed(4));
+      $("p-title").value = f.name.replace(/\.xlsx$/i, "").replace(/^[0-9a-f]{8}-/, "");
+      afterLoad("Геодезия загружена: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов." + (d.need_dims ? " Проверьте диаметр, высоту и толщины поясов." : "") + (sheet ? " Лист «" + sheet + "» (можно выбрать другой ниже)." : ""), !!sheet || d.need_dims);
+    } else throw new Error("Нужен файл .json (проект) или .xlsx (геодезия).");
+  } catch (er) { say(er.message, true); showErr(er.message); }
+}
+$("f-any").onchange = (e) => { handleFile(e.target.files[0]); e.target.value = ""; };
+const dz = $("drop");
+["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
+dz.addEventListener("drop", (e) => { handleFile(e.dataTransfer.files[0]); });
+$("sheet-pick").onchange = (e) => { loaded = false; handleFile(lastFile, e.target.value); };
+$("b-ideal").onclick = () => { loaded = true; say("Идеальный резервуар: все отклонения равны нулю."); };
 
 /* ---------- шаг 2: профили образующих ---------- */
 function drawProfiles() {
@@ -455,7 +477,7 @@ function validate1() {
   readParams();
   if (S.angles.length < 3) throw new Error("Нужно минимум 3 образующие. Нажмите «Создать сетку» или загрузите данные.");
   if (!(S.D > 0 && S.H > 0)) throw new Error("Укажите диаметр и высоту.");
-  if (countFilled() === 0 && !confirm("Все отклонения равны нулю (идеальный резервуар). Продолжить?")) throw new Error("Заполните таблицу отклонений.");
+  if (countFilled() === 0 && !loaded) throw new Error("Замеры не заданы. Перетащите файл (проект .json или геодезию .xlsx), вставьте таблицу из Excel или нажмите «Идеальный резервуар».");
 }
 function go(n) {
   if (n > step && step === 1) { try { validate1(); } catch (e) { showErr(e.message); return; } }

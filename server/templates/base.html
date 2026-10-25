@@ -4,7 +4,7 @@
 <title>{% block title %}ANSYS REPORT{% endblock %}</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v={{ asset_v }}"><script>document.documentElement.classList.add("js")</script></head><body>
 <canvas id="bg" aria-hidden="true" style="position:fixed;inset:0;z-index:0;pointer-events:none;width:100%;height:100%"></canvas>
 <nav class="top"><b><a href="/"><img class="logo" src="/static/logo.svg" alt="" width="30" height="30">ANSYS REPORT</a></b>
-{% if user %}<a href="/cabinet">Кабинет</a><a href="/studio">Геометрия</a><a href="/new">Новая генерация</a><a href="/packs">Пакеты</a>
+{% if user %}<a href="/cabinet">Кабинет</a><a href="/studio">Геометрия</a><a href="/packs">Пакеты</a>
 <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Выйти ({{ user.email }})</button></form>
 {% else %}<a href="/login">Войти</a><a href="/register">Регистрация</a>{% endif %}</nav>
 <main>{% block body %}{% endblock %}</main>
