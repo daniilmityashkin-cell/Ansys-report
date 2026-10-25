@@ -341,9 +341,10 @@ $("v-reset").onclick = () => { const v = views["cv-wall"]; if (v && v.home) { v.
 function addNozzle(r) {
   r = r || { name: "", shape: "Круглый", width: 426, height: 426, z: 1.1, angle: 0, t: 11, in: 200, out: 500 };
   const d = document.createElement("div"); d.className = "nzrow";
-  d.innerHTML = "<input data-k=\"name\" placeholder=\"Название\" value=\"" + (r.name || "") + "\"><select data-k=\"shape\"><option" + (r.shape === "Овальный" ? "" : " selected") + ">Круглый</option><option" + (r.shape === "Овальный" ? " selected" : "") + ">Овальный</option></select>" +
-    "<input data-k=\"width\" placeholder=\"Ø/ширина, мм\" value=\"" + r.width + "\"><input data-k=\"height\" placeholder=\"Высота овала, мм\" value=\"" + r.height + "\"><input data-k=\"z\" placeholder=\"Высота центра, м\" value=\"" + r.z + "\">" +
-    "<input data-k=\"angle\" placeholder=\"Угол, °\" value=\"" + r.angle + "\"><input data-k=\"t\" placeholder=\"Толщина, мм\" value=\"" + r.t + "\"><input data-k=\"in\" placeholder=\"Внутри, мм\" value=\"" + r.in + "\"><input data-k=\"out\" placeholder=\"Снаружи, мм\" value=\"" + r.out + "\"><button type=\"button\" class=\"x\">×</button>";
+  const f = (k, label, val) => "<label>" + label + "<input data-k=\"" + k + "\" value=\"" + (val === undefined || val === null ? "" : val) + "\"></label>";
+  d.innerHTML = "<div class=\"nzhead\"><input data-k=\"name\" placeholder=\"Название патрубка\" value=\"" + (r.name || "") + "\"><button type=\"button\" class=\"x\" title=\"Удалить патрубок\">×</button></div><div class=\"nzgrid\">" +
+    "<label>Сечение<select data-k=\"shape\"><option" + (r.shape === "Овальный" ? "" : " selected") + ">Круглый</option><option" + (r.shape === "Овальный" ? " selected" : "") + ">Овальный</option></select></label>" +
+    f("width", "Ø / ширина, мм", r.width) + f("height", "Высота овала, мм", r.height) + f("z", "Высота центра, м", r.z) + f("angle", "Угол, °", r.angle) + f("t", "Толщина, мм", r.t) + f("in", "Внутрь, мм", r.in) + f("out", "Наружу, мм", r.out) + "</div>";
   $("nz-rows").appendChild(d);
 }
 $("nz-add").onclick = () => { addNozzle(); showStruct(); };
