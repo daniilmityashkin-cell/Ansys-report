@@ -449,7 +449,7 @@ function buildProject() {
     bands: Array.from({ length: nz }, (_, k) => [String(+(S.heights[k + 1] - S.heights[k]).toFixed(6)), String(S.thick[k])]),
     defects: S.defects, contour_threshold: S.raw ? S.raw.contour_threshold : "0.1", wall_includes_defects: S.raw ? S.raw.wall_includes_defects : !S.defects.length
   });
-  const rg = ringHeights(); if (rg.length) p.wind_rings = rg.map((h) => ({ h })); else delete p.wind_rings;
+  const rg = ringHeights(); if (rg.length) p.wind_rings = rg.map((h) => ({ h, flange: $("r-fl").value })); else delete p.wind_rings;
   if (p.roof) {                                                // правки на шаге 5 переносим в файл проекта (каркас)
     const f = structFields(); p.roof = Object.assign({}, p.roof, { radial_count: Math.round(num(f.s_roof_radial, p.roof.radial_count)), ring_count: Math.round(num(f.s_roof_rings, p.roof.ring_count)),
       central_radius_m: String(f.s_roof_central_r), first_angle_deg: num(f.s_roof_first), enabled: !!f.s_roof_on });

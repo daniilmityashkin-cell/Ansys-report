@@ -105,3 +105,12 @@ def test_package_for_ansys(tmp_path):
 def test_apply_loads_script_is_valid_python():
     import ast
     ast.parse((Path(__file__).parents[1] / "ansys_scripts" / "apply_loads.py").read_text(encoding="utf-8"))
+
+
+def test_wind_rings_snap_to_belt_boundaries():
+    from ansys_report.loads.beams import wind_rings, beams_package
+    p = {"heights": [0, 1.5, 3.0, 4.5, 6.0], "wind_rings": [{"h": 3.2, "flange": "100 × 10"}, {"h": 4.4}]}
+    r = wind_rings(p)
+    assert [x["z_m"] for x in r] == [3.0, 4.5]
+    assert r[0]["A"] == 1000.0 and abs(r[0]["Iyy"] - 10 * 100 ** 3 / 12) < 1
+    assert beams_package(p, 14000.0)["wind_rings"] == r          # без крыши - только кольца

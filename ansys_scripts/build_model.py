@@ -158,7 +158,23 @@ def apdl_beams():
     if bp.get("top_ring") and top:
         sid = add_sec(bp["top_ring"])
         total += chain([(i, a, R * math.cos(a), R * math.sin(a)) for (i, a) in top], True, sid, 3 * size)
-    rc = float(bp["central_radius_mm"])
+    wr = bp.get("wind_rings") or []
+    if wr:                                                 # кольца жёсткости на стенке: балки по узлам границы поясов
+        md2 = ExtAPI.DataModel.MeshDataByName("Global")
+        for ring in wr:
+            zr = float(ring["z_m"]) * 1000.0
+            sel = []
+            for nd in md2.Nodes:
+                c = (nd.X, nd.Y, nd.Z)
+                if abs(c[ax] - zr) < 1.0:
+                    x, y = c[ia], c[ib]
+                    if math.sqrt(x * x + y * y) > 0.5 * R:
+                        sel.append((nd.Id, math.atan2(y, x), x, y))
+            sid = add_sec(ring)
+            n_ring = chain(sel, True, sid, 3 * size)
+            total += n_ring
+            bsay(u"Кольцо жёсткости z=%.2f м: узлов %d, элементов %d" % (zr / 1000.0, len(sel), n_ring))
+    rc = float(bp.get("central_radius_mm") or 0.0)
     rings = []
     if bp.get("central"):
         rings.append((rc, bp["central"]))
