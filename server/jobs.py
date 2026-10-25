@@ -45,6 +45,8 @@ def _ansys_pack(gen: Path, project: dict, belts_dir: Path, dest: Path, title: st
         b, r = struct["bottom"], struct["roof"]
         parts = {"disc_mm": float(b["plate_thickness_mm"]), "annular_mm": float(b["annular_thickness_mm"]),
                  "roof_mm": float(r.get("deck_thickness_mm") or li.get("roof_deck_thickness_m", 0.004) * 1000), "rise_mm": info["rise_mm"]}
+        if r.get("plate_width_mm") and r.get("plate_thickness_mm"):   # опорная полоса крыши у стенки: в Ansys - утолщённая оболочка края крыши
+            parts.update(band_width_mm=float(r["plate_width_mm"]), band_mm=float(r["plate_thickness_mm"]))
     except Exception as e:   # noqa: BLE001
         belts_dir.mkdir(parents=True, exist_ok=True)
         (belts_dir / "assembly_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")

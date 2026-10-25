@@ -44,7 +44,7 @@ try:                                                     # parts.json: толщ�
     ppath = os.path.join(pkg, "parts.json")
     if os.path.exists(ppath):
         pj = _rd(ppath)
-        for key in (u"disc_mm", u"annular_mm", u"roof_mm"):
+        for key in (u"disc_mm", u"annular_mm", u"roof_mm", u"band_width_mm", u"band_mm"):
             m_ = __import__("re").search(u'"%s":\\s*([0-9.]+)' % key, pj)
             if m_:
                 parts[key] = float(m_.group(1))
@@ -123,17 +123,21 @@ def apdl_beams():
     size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 200)
     tol = 0.6 * size
     md = ExtAPI.DataModel.MeshDataByName("Global")
-    roof, top = [], []
+    rs = max(2.0 * size, 0.5 * parts.get(u"band_width_mm", 0.0))   # радиус передачи силы с конца радиальной балки на оболочку (RBE3)
+    roof, top, near = [], [], []
     for nd in md.Nodes:
         c = (nd.X, nd.Y, nd.Z)
         h = c[ax]
+        x, y = c[ia], c[ib]
+        rr = math.sqrt(x * x + y * y)
         if h >= H - 1.0:
-            x, y = c[ia], c[ib]
-            rr = math.sqrt(x * x + y * y)
             roof.append((nd.Id, x, y, rr, math.atan2(y, x)))
-            if h <= H + 1.0 and abs(rr - R) < 5.0:
+            if h <= H + 1.0 and rr > 0.9 * R:                # верхняя кромка стенки по факту (стенка не круглая: радиус по замерам)
                 top.append((nd.Id, math.atan2(y, x)))
-    bsay(u"Балки: узлов крыши %d, узлов верхнего пояса %d" % (len(roof), len(top)))
+        if h >= H - 1.0 and rr > R - rs - 300.0:            # узлы связи: кромка стенки и крыша (узлы стенки ниже кромки дают пик на границе пятна)
+            near.append((nd.Id, c))
+    bsay(u"Балки: узлов крыши %d, узлов верхней кромки стенки %d" % (len(roof), len(top)))
+    top_sel = [(i, a, R * math.cos(a), R * math.sin(a)) for (i, a) in top]
     secs, elems = [], []                                   # секции: (id, данные); элементы: (id секции, n1, n2)
 
     def add_sec(d):
@@ -157,7 +161,7 @@ def apdl_beams():
     total = 0
     if bp.get("top_ring") and top:
         sid = add_sec(bp["top_ring"])
-        total += chain([(i, a, R * math.cos(a), R * math.sin(a)) for (i, a) in top], True, sid, 3 * size)
+        total += chain(list(top_sel), True, sid, 3 * size)
     wr = bp.get("wind_rings") or []
     if wr:                                                 # кольца жёсткости на стенке: балки по узлам границы поясов
         md2 = ExtAPI.DataModel.MeshDataByName("Global")
@@ -185,30 +189,111 @@ def apdl_beams():
         rings.append((R, bp["edge"]))
     for (r, sdat) in rings:
         sid = add_sec(sdat)
-        sel = [(i, a, x, y) for (i, x, y, rr, a) in roof if abs(rr - r) < tol]
+        if r >= R - 1.0:                                   # периферийное кольцо - по кромке стенки (без «зигзага» кромка <-> крыша)
+            sel = list(top_sel)
+        else:
+            sel = [(i, a, x, y) for (i, x, y, rr, a) in roof if abs(rr - r) < tol]
         total += chain(sel, True, sid, 3 * size)
+    ends = []                                              # концы радиальных балок у стенки: (номер элемента в elems, узел оболочки)
     if bp.get("radial") and bp.get("radial_count"):
         sid = add_sec(bp["radial"])
         n = int(bp["radial_count"])
         for k in range(n):
             th = math.radians(float(bp["first_angle_deg"]) + 360.0 * k / n)
             ct, st = math.cos(th), math.sin(th)
-            sel = [(i, rr, x, y) for (i, x, y, rr, a) in roof if rc - tol <= rr <= R and abs(-x * st + y * ct) < tol and (x * ct + y * st) > 0]
+            sel = [(i, rr, x, y) for (i, x, y, rr, a) in roof if rc - tol <= rr <= R + 2 * size and abs(-x * st + y * ct) < tol and (x * ct + y * st) > 0]
+            n0 = len(elems)
             total += chain(sel, False, sid, 3 * size)
+            if len(elems) > n0:
+                last = max(sel, key=lambda p: p[1])[0]
+                for j in range(len(elems) - 1, n0 - 1, -1):
+                    if last in elems[j][1:]:
+                        ends.append((j, last))
+                        break
     bsay(u"Балки: секций %d, элементов %d" % (len(secs), total))
     if not elems:
         return u""
-    t = [u"/PREP7", u"*GET,etm,ETYP,0,NUM,MAX", u"et_b=etm+1", u"ET,et_b,188", u"*GET,e1,ELEM,0,NUM,MIN", u"*GET,matid,ELEM,e1,ATTR,MAT"]
+    # конец радиальной балки - отдельный узел, связанный с оболочкой RBE3 (сила распределяется на узлы стенки и крыши в радиусе rs)
+    slaves = []
+    for j, nid in ends:
+        q = md.NodeById(nid)
+        p0 = (q.X, q.Y, q.Z)
+        sl = [i for (i, c) in near if (c[0] - p0[0]) ** 2 + (c[1] - p0[1]) ** 2 + (c[2] - p0[2]) ** 2 <= rs * rs]
+        slaves.append((j, nid, p0, sl))
+    t = [u"/PREP7", u"*GET,etm,ETYP,0,NUM,MAX", u"et_b=etm+1", u"ET,et_b,188", u"*GET,e1,ELEM,0,NUM,MIN", u"*GET,matid,ELEM,e1,ATTR,MAT",
+         u"*GET,nb0,NODE,0,NUM,MAXD"]
+    for k, (j, nid, p0, sl) in enumerate(slaves, 1):
+        t.append(u"N,nb0+%d,%r,%r,%r" % (k, p0[0], p0[1], p0[2]))
     for k, d in enumerate(secs):
         t += [u"SECTYPE,%d,BEAM,ASEC" % (951 + k), u"SECDATA,%r,%r,0,%r,0,%r,0,0,0,0,%r,%r" % (d["A"], d["Iyy"], d["Izz"], d["J"], d["D"], d["B"])]
     t += [u"TYPE,et_b", u"MAT,matid"]
+    endmap = dict([(j, (nid, k)) for k, (j, nid, p0, sl) in enumerate(slaves, 1)])
     cur = None
-    for sid, a, b in elems:
+    for j, (sid, a, b) in enumerate(elems):
         if sid != cur:
             t.append(u"SECNUM,%d" % sid)
             cur = sid
-        t.append(u"E,%d,%d" % (a, b))
+        if j in endmap:
+            nid, k = endmap[j]
+            a, b = [(u"nb0+%d" % k) if x == nid else (u"%d" % x) for x in (a, b)]
+            t.append(u"E,%s,%s" % (a, b))
+        else:
+            t.append(u"E,%d,%d" % (a, b))
+    for k, (j, nid, p0, sl) in enumerate(slaves, 1):
+        t += [u"NSEL,NONE"] + node_ranges(sl) + [u"RBE3,nb0+%d,ALL,ALL" % k]
     t += [u"ALLSEL,ALL", u"/SOLU"]
+    if slaves:
+        bsay(u"Концы радиальных балок: %d, связь RBE3 с оболочкой в радиусе %.0f мм, узлов на конец %d..%d"
+             % (len(slaves), rs, min([len(s[3]) for s in slaves]), max([len(s[3]) for s in slaves])))
+    return u"\n".join(t)
+
+
+def node_ranges(ids):
+    """NSEL,A по номерам узлов, подряд идущие номера - одним диапазоном."""
+    ids = sorted(set(ids))
+    out, i = [], 0
+    while i < len(ids):
+        j = i
+        while j + 1 < len(ids) and ids[j + 1] == ids[j] + 1:
+            j += 1
+        out.append(u"NSEL,A,NODE,,%d,%d" % (ids[i], ids[j]) if j > i else u"NSEL,A,NODE,,%d" % ids[i])
+        i = j + 1
+    return out
+
+
+def apdl_band():
+    """Опорная полоса крыши (ширина band_width_mm от кромки стенки, толщина band_mm из parts.json): секция оболочки 984 у края крыши."""
+    import math
+    w, tb = parts.get(u"band_width_mm", 0.0), parts.get(u"band_mm", 0.0)
+    if w <= 0 or tb <= parts.get(u"roof_mm", 0.0) or WALL_H <= 0:
+        return u""
+    H = WALL_H
+    ax = {"X": 0, "Y": 1, "Z": 2}[(os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()]
+    ia, ib = [i for i in (0, 1, 2) if i != ax]
+    md = ExtAPI.DataModel.MeshDataByName("Global")
+    nb = 360
+    edge = [0.0] * nb                                      # радиус кромки стенки по углу (шаг 1°): стенка по замерам не круглая
+    roof = []
+    for nd in md.Nodes:
+        c = (nd.X, nd.Y, nd.Z)
+        if c[ax] >= H - 1.0:
+            x, y = c[ia], c[ib]
+            rr = math.sqrt(x * x + y * y)
+            k = int((math.degrees(math.atan2(y, x)) + 180.0) * nb / 360.0) % nb
+            roof.append((nd.Id, rr, k))
+            if c[ax] <= H + 1.0:
+                edge[k] = max(edge[k], rr)
+    if max(edge) <= 0:
+        return u""
+    for k in range(nb):                                    # пустые ячейки - по ближайшей заполненной
+        d = 1
+        while edge[k] <= 0 and d < nb:
+            edge[k] = max(edge[(k - d) % nb], edge[(k + d) % nb])
+            d += 1
+    sel = [i for (i, rr, k) in roof if edge[k] - rr <= w + 1.0]
+    bsay(u"Опорная полоса крыши: %g x %g мм, узлов %d" % (w, tb, len(sel)))
+    t = [u"/PREP7", u"*GET,e1,ELEM,0,NUM,MIN", u"*GET,matid,ELEM,e1,ATTR,MAT", u"SECTYPE,984,SHELL", u"SECDATA,%r,matid,0,3" % tb,
+         u"ALLSEL,ALL", u"CMSEL,S,AR_ROOF,NODE", u"ESLN,S,1", u"NSEL,NONE"] + node_ranges(sel) + [u"ESLN,R,1", u"EMODIF,ALL,SECNUM,984", u"ALLSEL,ALL", u"/SOLU"]
     return u"\n".join(t)
 
 
@@ -222,6 +307,12 @@ try:
     bsay(u"Сетка построена, размер элемента %g мм" % size)
 except Exception as e:
     bsay(u"ОШИБКА сетки: %s" % e)
+try:
+    _bd = apdl_band()
+    if _bd:
+        EXTRA_APDL = (EXTRA_APDL + u"\n" if EXTRA_APDL else u"") + _bd
+except Exception as e:
+    bsay(u"Опорная полоса крыши не задана: %s" % e)
 try:
     _bm = apdl_beams()
     if _bm:
