@@ -25,7 +25,7 @@ def default_structure(D_m: float, H_m: float, roof_rise_m: float | None = None) 
             "roof": {"shape": "Сферическая", "rise_m": rise, "deck_thickness_mm": 4.0, "central_radius_m": 1.3}}
 
 
-def build_full_step(wall_step: str | Path, out_step: str | Path, structure: dict, log=lambda s: None) -> dict:
+def build_full_step(wall_step: str | Path, out_step: str | Path, structure: dict, log=lambda s: None, parts_dir: str | Path | None = None) -> dict:
     """Читает STEP стенки, достраивает окрайку, днище, крышу, пишет единый STEP (мм). Возвращает сводку."""
     from OCP.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
     from OCP.IFSelect import IFSelect_RetDone
@@ -88,6 +88,11 @@ def build_full_step(wall_step: str | Path, out_step: str | Path, structure: dict
     ring_face = BRepBuilderAPI_MakeFace(ring_face, cast('Wire', w_in.Reversed())).Face()                # отверстие по контуру стенки
     sew.Add(disc)
     sew.Add(ring_face)
+    if parts_dir is not None:                                    # отдельный файл днища с окрайкой
+        pw = STEPControl_Writer()
+        pw.Transfer(disc, STEPControl_AsIs)
+        pw.Transfer(ring_face, STEPControl_AsIs)
+        pw.Write(str(Path(parts_dir) / "Днище и окрайка.step"))
 
     # --- крыша: купол, ограниченный тем же ребром, что и верх стенки (общая кромка, сшивка без зазоров);
     #     форма задаётся вершиной и точками на сфере/конусе
@@ -112,6 +117,10 @@ def build_full_step(wall_step: str | Path, out_step: str | Path, structure: dict
     if not fill.IsDone():
         raise RuntimeError("не удалось построить поверхность крыши")
     sew.Add(fill.Shape())
+    if parts_dir is not None:                                    # отдельный файл крыши
+        pw = STEPControl_Writer()
+        pw.Transfer(fill.Shape(), STEPControl_AsIs)
+        pw.Write(str(Path(parts_dir) / "Крыша.step"))
 
     sew.Perform()
     shell = sew.SewedShape()

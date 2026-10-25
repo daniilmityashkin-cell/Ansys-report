@@ -90,6 +90,15 @@ def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 50.0, 
     return {"step": step, "zones": zones, "belts": len(groups)}
 
 
+def export_wall_belts(project: dict, out_step: Path, tolerance_mm: float = 0.5, log=lambda s: None) -> int:
+    """Стенка для заказчика: фактическая поверхность, каждый пояс - отдельная грань (с толщиной), мелкая CAD-сетка."""
+    model = rc.TankModel(project)
+    poles, tu, tv, _ = rc.make_cad(model, tolerance_mm, log)
+    groups = [dict(index=b["number"], first_belt=b["number"], last_belt=b["number"], bottom_m=b["bottom_m"], top_m=b["top_m"], thickness_mm=b["thickness_mm"]) for b in model.bands]
+    rc.step_write(Path(out_step), poles, tu, tv, groups)
+    return len(groups)
+
+
 def export_geometry(project: dict, out_dir: Path, tolerance_mm: float = 0.1, fmt: str = "STEP + IGES", log=print) -> dict:
     """Строит CAD-оболочку (STEP/IGES, мм, 1:1) и записывает вспомогательные файлы. Возвращает сведения о проверке."""
     out_dir = Path(out_dir)

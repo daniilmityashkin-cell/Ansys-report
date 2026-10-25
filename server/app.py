@@ -464,7 +464,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with Session() as db:
             u = current_user(request, db)
         j = step_jobs.get(tok)
-        if not u or not j or j["uid"] != u.id or name not in ("Стенка.step", "Модель целиком.step") or not (j["dir"] / name).exists():
+        if not u or not j or j["uid"] != u.id or not j["future"].done() or j["future"].exception() or name not in j["future"].result() or not (j["dir"] / name).exists():
             return HTMLResponse("Не найдено", status_code=404)
         return FileResponse(j["dir"] / name, filename=name, media_type="application/step")
 

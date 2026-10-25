@@ -107,8 +107,8 @@ def compute_step(out_dir: str, project: dict, structure: dict | None) -> list[st
     out.mkdir(parents=True, exist_ok=True)
     names = []
     tmp = out / "_w"
-    gcheck.export_geometry(project, tmp, tolerance_mm=0.5, fmt="STEP", log=lambda s: None)
-    shutil.copy2(next(tmp.glob("*.step")), out / "Стенка.step")
+    tmp.mkdir(parents=True, exist_ok=True)
+    gcheck.export_wall_belts(project, out / "Стенка.step", tolerance_mm=0.5, log=lambda s: None)
     names.append("Стенка.step")
     bm = gcheck.export_belt_model(project, tmp / "belts")
     D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
@@ -116,8 +116,8 @@ def compute_step(out_dir: str, project: dict, structure: dict | None) -> list[st
     rise = (st.get("roof") or {}).get("rise_m")
     base = default_structure(D, H, rise)
     struct = {"bottom": {**base["bottom"], **(st.get("bottom") or {})}, "roof": {**base["roof"], **(st.get("roof") or {})}, "D": D, "H": H}
-    build_full_step(bm["step"], out / "Модель целиком.step", struct)
-    names.append("Модель целиком.step")
+    build_full_step(bm["step"], out / "Модель целиком.step", struct, parts_dir=out)
+    names += ["Днище и окрайка.step", "Крыша.step", "Модель целиком.step"]
     shutil.rmtree(tmp, ignore_errors=True)
     return names
 
