@@ -66,8 +66,16 @@ def _view_wireframe_b():
     Graphics.ViewOptions.ResultPreference.ExtraModelDisplay = EMD.NoWireframe
 
 def _view_wireframe_c():
-    from Ansys.Mechanical.DataModel.Enums import ExtraModelDisplay as EMD
-    Ansys.Mechanical.Graphics.ViewOptions.ResultPreference.ExtraModelDisplay = EMD.NoWireframe
+    rp = Graphics.ViewOptions.ResultPreference
+    cur = rp.ExtraModelDisplay
+    log.append(u"вид результатов: ExtraModelDisplay сейчас %s (тип %s), варианты: %s" % (cur, type(cur).__name__, u", ".join([n for n in dir(type(cur)) if n[:1].isupper()])))
+    val = getattr(type(cur), "NoWireframe")
+    rp.GetType().GetProperty("ExtraModelDisplay").SetValue(rp, val, None)
+
+def _view_wireframe_d():
+    md = Graphics.ViewOptions.ModelDisplay
+    log.append(u"вид результатов: ModelDisplay сейчас %s, варианты: %s" % (md, u", ".join([n for n in dir(type(md)) if n[:1].isupper()])))
+
 
 def prep_results_view():
     """Вид результатов как в эталонном отчёте: сплошная цветовая заливка без линий сетки (иначе мелкая сетка закрывает цвета)."""
@@ -77,7 +85,7 @@ def prep_results_view():
         except Exception as e:
             log.append(u"вид результатов: %s: %s" % (name, e))
     done = False
-    for name, fn in ((u"ExtraModelDisplay(a)", _view_wireframe_a), (u"ExtraModelDisplay(b)", _view_wireframe_b), (u"ExtraModelDisplay(c)", _view_wireframe_c)):
+    for name, fn in ((u"ExtraModelDisplay(a)", _view_wireframe_a), (u"ExtraModelDisplay(b)", _view_wireframe_b), (u"ExtraModelDisplay(c)", _view_wireframe_c), (u"ModelDisplay", _view_wireframe_d)):
         try:
             fn()
             done = True
