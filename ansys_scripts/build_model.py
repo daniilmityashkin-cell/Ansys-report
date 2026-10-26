@@ -23,6 +23,19 @@ def bsay(t):
     blog.append(t)
     print(t)
 
+
+def tmark(label):
+    """Метка времени этапа (ansys_report/timing.py): длительность этапа - до следующей метки."""
+    try:
+        import time
+        f_ = io.open(os.environ.get("AR_TIMING") or r"C:\ansys_report_work\timing.log", "a", encoding="utf-8")
+        f_.write(u"%.3f\t%s\t%s\n" % (time.time(), os.environ.get("AR_TIMING_TAG", ""), label))
+        f_.close()
+    except Exception:
+        pass
+
+tmark(u"Сборка: материал, толщины, тела")
+
 try:
     ExtAPI.Application.ActiveUnitSystem = MechanicalUnitSystem.StandardNMM
 except Exception as e:
@@ -86,14 +99,13 @@ def apdl_thickness():
     if len(zones) < 2:
         t.append(u"ALLSEL,ALL")
         return u"\n".join(t + [u"/SOLU"])
-    t += [u"*DIM,zlo,ARRAY,%d" % len(zones), u"*DIM,zhi,ARRAY,%d" % len(zones)]
-    for k, (lo, hi, th) in enumerate(zones, 1):
-        t += [u"zlo(%d)=%r" % (k, lo - 0.01), u"zhi(%d)=%r" % (k, hi + 0.01 if k == len(zones) else hi)]
+    # выборка по центру элемента (ESEL,R,CENT) вместо поэлементного цикла *DO: тот же результат, /PREP7 ~14 с -> ~1 с на каждое решение
     ax = ("X", "Y", "Z")[{"X": 0, "Y": 1, "Z": 2}[(os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()]]
-    t += [u"ALLSEL,ALL", u"CMSEL,S,AR_WALL,NODE", u"ESLN,S,1", u"*GET,emax,ELEM,0,NUM,MAX", u"*DO,ee,1,emax", u"*IF,ESEL(ee),EQ,1,THEN",
-          u"  *GET,zc,ELEM,ee,CENT,%s" % ax, u"  *DO,kk,1,%d" % len(zones),
-          u"    *IF,zc,GE,zlo(kk),AND,zc,LT,zhi(kk),THEN", u"      EMODIF,ee,SECNUM,900+kk", u"    *ENDIF", u"  *ENDDO", u"*ENDIF", u"*ENDDO",
-          u"ALLSEL,ALL", u"/SOLU"]
+    for k, (lo, hi, th) in enumerate(zones, 1):
+        top = hi + 0.01 if k == len(zones) else hi - 0.001
+        t += [u"ALLSEL,ALL", u"CMSEL,S,AR_WALL,NODE", u"ESLN,S,1", u"ESEL,R,CENT,%s,%r,%r" % (ax, lo - 0.01, top),
+              u"*GET,ne_,ELEM,0,COUNT", u"*IF,ne_,GT,0,THEN", u"  EMODIF,ALL,SECNUM,%d" % (900 + k), u"*ENDIF"]
+    t += [u"ALLSEL,ALL", u"/SOLU"]
     return u"\n".join(t)
 
 EXTRA_APDL = apdl_thickness()                       # apply_loads.py добавляет этот блок в каждый расчётный случай
@@ -362,18 +374,26 @@ def mesh_annular_ring():
 try:
     size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 200)
     model.Mesh.ElementSize = Quantity(size, "mm")
-    try:
-        mesh_annular_ring()
-    except Exception as e:
-        bsay(u"Сетка окрайки не задана: %s" % e)
+    tmark(u"Сборка: построение сетки")
     try:
         mesh_dents()
     except Exception as e:
         bsay(u"Сгущение у вмятин не задано: %s" % e)
+    ExtAPI.Application.Messages.Clear()
     model.Mesh.GenerateMesh()
+    _merr = [m.DisplayString for m in ExtAPI.Application.Messages if str(m.Severity) == "Error" and "mesh" in m.DisplayString.lower()]
+    if _merr:          # mapped-сетка окрайки - только при сбое: на РВС-10000 она не нужна и стоит +4 мин, на РВС-30000 без неё сетка не строится
+        bsay(u"Сетка с ошибкой (%s) - mapped-сетка на кольце окрайки и повтор" % _merr[0][:80])
+        tmark(u"Сборка: повтор сетки (mapped окрайка)")
+        try:
+            mesh_annular_ring()
+        except Exception as e:
+            bsay(u"Сетка окрайки не задана: %s" % e)
+        model.Mesh.GenerateMesh()
     bsay(u"Сетка построена, размер элемента %g мм" % size)
 except Exception as e:
     bsay(u"ОШИБКА сетки: %s" % e)
+tmark(u"Сборка: APDL полосы и балок (поиск узлов)")
 try:
     _bd = apdl_band()
     if _bd:
@@ -389,6 +409,7 @@ except Exception as e:
     bsay(u"Балки не добавлены: %s" % e)
 
 # --- нагрузки
+tmark(u"Сборка: нагрузки и расчётные случаи (apply_loads)")
 os.environ["ANSYS_REPORT_LOADS"] = os.path.join(pkg, "loads_data.py")
 os.environ["ANSYS_REPORT_REUSE_FIRST"] = "1"
 try:
@@ -397,6 +418,7 @@ except Exception as e:
     bsay(u"ОШИБКА наложения нагрузок: %s" % e)
 
 # --- вид: ось Z вверх, изометрия сверху, показать всё
+tmark(u"Сборка: вид и журнал")
 try:
     from Ansys.ACT.Math import Vector3D
     cam = Graphics.Camera

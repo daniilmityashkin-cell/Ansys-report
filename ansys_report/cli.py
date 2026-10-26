@@ -28,6 +28,7 @@ def main(argv=None) -> int:
         if not a.project or not a.loads:
             ap.error("укажите проект .wbpj и --loads loads_data.py")
         os.environ["ANSYS_REPORT_LOADS"] = str(Path(a.loads).resolve())
+        os.environ.setdefault("ANSYS_REPORT_IMAGES", "none")          # из идеального РВС нужны только максимумы и k - картинки не снимаем
         data = Path(tempfile.mkdtemp(prefix="ar_ideal_"))
         extract(a.project, data, log=print, solve=True, settings=ModelSettings(vertical_axis="Z", static_prefix="AR:", full_analysis="AR: Эксплуатация"))
         best = {"equivalent": 0.0, "membrane": 0.0, "fiber": 0.0}
@@ -114,6 +115,8 @@ def main(argv=None) -> int:
         if a.anketa:
             anketa.update({k: v for k, v in json.loads(Path(a.anketa).read_text(encoding="utf-8-sig")).items() if str(v).strip()})
         from .settings import ModelSettings
+        import os
+        os.environ.setdefault("ANSYS_REPORT_IMAGES", "report")            # картинки только тех случаев, что идут в отчёт
         if a.loads:
             anketa["loads_file"] = str(Path(a.loads).resolve())
             import os

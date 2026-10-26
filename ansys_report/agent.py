@@ -3,6 +3,7 @@
 from __future__ import annotations
 import json
 import os
+import shutil
 import subprocess
 import sys
 import urllib.parse
@@ -74,6 +75,21 @@ class Site:
         urllib.request.urlopen(req, timeout=600).read()
 
 
+def _ideal_cache(ideal_pkg: Path) -> Path:
+    """Файл кэша результата идеального РВС: хэш всех файлов пакета ideal и скриптов Mechanical (меняются вход или код - считаем заново)."""
+    import hashlib
+    h = hashlib.sha256()
+    scripts = Path(__file__).resolve().parent.parent / "ansys_scripts"
+    for f in sorted([p for p in ideal_pkg.rglob("*") if p.is_file()]) + sorted(scripts.glob("*.py")):
+        h.update(f.name.encode("utf-8"))
+        data = f.read_bytes()
+        if f.suffix.lower() in (".step", ".stp"):              # в заголовке STEP - время создания файла: хэшируем только геометрию
+            i = data.find(b"DATA;")
+            data = data[i:] if i >= 0 else data
+        h.update(data)
+    return WORK / "ideal_cache" / (h.hexdigest()[:32] + ".json")
+
+
 def _run_bat(bat: Path, env_extra: dict) -> int:
     env = dict(os.environ, **env_extra)
     return subprocess.call(["cmd", "/c", str(bat)], cwd=str(bat.parent), env=env, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
@@ -83,11 +99,79 @@ def run(link: str) -> int:
     say(f"Запуск помощника: {link[:80]}…")
     info = parse_link(link)
     site = Site(info["server"], info["gid"], info["token"])
+    lock = _take_lock()
+    if lock is None:                     # второй расчёт в ту же рабочую папку испортил бы первый (общие model, ideal, timing.log)
+        busy = "На этом компьютере уже идёт расчёт в Ansys - дождитесь его окончания и нажмите «Собрать отчёт» ещё раз."
+        site.status("error", busy)
+        say(busy)
+        return 1
+    try:
+        return _run(info, site)
+    finally:
+        try:
+            lock.unlink()
+        except OSError:
+            pass
+
+
+def _pid_alive(pid: int) -> bool:
+    """Жив ли процесс (Windows: OpenProcess + GetExitCodeProcess; os.kill(pid, 0) на Windows завершает процесс - нельзя)."""
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+    import ctypes
+    k = ctypes.windll.kernel32
+    h = k.OpenProcess(0x1000, False, pid)                  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return False
+    code = ctypes.c_ulong()
+    ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+    k.CloseHandle(h)
+    return bool(ok) and code.value == 259                  # STILL_ACTIVE
+
+
+def _take_lock() -> Path | None:
+    """Файл-блокировка рабочей папки с PID помощника; занят живым процессом - None. Брошенный (процесс умер) - забираем."""
+    WORK.mkdir(parents=True, exist_ok=True)
+    lock = WORK / "agent.lock"
+    for _ in range(2):
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return lock
+        except FileExistsError:
+            try:
+                pid = int(lock.read_text().strip() or 0)
+            except (OSError, ValueError):
+                pid = 0
+            if pid and _pid_alive(pid):
+                return None
+            try:
+                lock.unlink()
+            except OSError:
+                return None
+    return None
+
+
+def _run(info: dict, site: "Site") -> int:
     home = str(Path(__file__).resolve().parent.parent)                      # папка, где лежит пакет ansys_report
-    env = dict(SKIP_DIAG, ANSYS_REPORT_HOME=home, PYTHONPATH=home + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    from . import timing
+    tpath = WORK / "timing.log"                                            # замер времени по этапам (tools/timing_report.py)
+    try:
+        tpath.unlink()
+    except OSError:
+        pass
+    env = dict(SKIP_DIAG, ANSYS_REPORT_HOME=home, PYTHONPATH=home + os.pathsep + os.environ.get("PYTHONPATH", ""), AR_TIMING=str(tpath))
+    os.environ["AR_TIMING"] = str(tpath)
     try:
         pkg = WORK / f"pkg_{info['gid']}"
+        shutil.rmtree(pkg, ignore_errors=True)                # без файлов прошлого пакета (dents.json, beams.json другого резервуара)
         pkg.mkdir(parents=True, exist_ok=True)
+        timing.mark("Агент: скачивание пакета")
         say("Скачиваю модель…")
         site.status("download")
         zpath = WORK / f"pkg_{info['gid']}.zip"
@@ -95,21 +179,38 @@ def run(link: str) -> int:
         with zipfile.ZipFile(zpath) as z:
             z.extractall(pkg)
         ideal = pkg / "ideal"
-        if (ideal / "Open_in_Ansys.bat").exists():           # сначала идеальный РВС (без отклонений): результаты нужны для выводов отчёта
+        cached = _ideal_cache(ideal) if (ideal / "Open_in_Ansys.bat").exists() else None
+        if cached is not None and cached.exists():          # тот же идеальный РВС уже считали (те же входные данные и скрипты)
+            say("Идеальный РВС: беру готовый результат (входные данные не менялись)…")
+            timing.mark("Агент: идеальный РВС из кэша")
+            shutil.rmtree(WORK / "ideal", ignore_errors=True)
+            (WORK / "ideal").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cached, WORK / "ideal" / "ideal.json")
+        elif cached is not None:                             # сначала идеальный РВС (без отклонений): результаты нужны для выводов отчёта
             say("Строю и считаю идеальный РВС (без отклонений)…")
             site.status("build", "Идеальный РВС: модель")
-            env_i = dict(env, AR_WORK=str(WORK / "ideal"))
+            env_i = dict(env, AR_WORK=str(WORK / "ideal"), AR_TIMING_TAG="идеальный")
+            timing.mark("Агент: запуск Open_in_Ansys (идеальный)")
             if _run_bat(ideal / "Open_in_Ansys.bat", env_i) == 0:
                 site.status("solve", "Идеальный РВС: расчёт")
+                timing.mark("Агент: запуск Make_ideal")
                 _run_bat(ideal / "Make_ideal.bat", env_i)
+                res = WORK / "ideal" / "ideal.json"
+                if res.exists():
+                    cached.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(res, cached)
         say("Строю модель в Ansys (несколько минут)…")
         site.status("build", "Фактическая форма")
+        env = dict(env, AR_TIMING_TAG="модель")
+        timing.mark("Агент: запуск Open_in_Ansys (модель)")
         rc = _run_bat(pkg / "Open_in_Ansys.bat", env)
         if rc != 0:
             raise RuntimeError(f"Open_in_Ansys.bat завершился с кодом {rc}")
         say("Считаю и собираю отчёт (до 40 минут)…")
         site.status("solve")
+        timing.mark("Агент: запуск Make_report")
         rc = _run_bat(pkg / "Make_report.bat", env)
+        timing.mark("Агент: загрузка отчёта на сайт")
         out = WORK / "model" / "report"
         files = [f for pattern in ("*.docx", "*.xlsx") for f in out.rglob(pattern)]
         if not files:
@@ -119,9 +220,11 @@ def run(link: str) -> int:
             site.upload(f)
         site.status("done", "Отчёт сформирован")
         say("Готово: отчёт отправлен на сайт.")
+        timing.mark("Агент: diag-logs")
         diag = Path(home) / "diag.bat"
         if diag.exists() and (Path(home) / ".git").exists():       # рабочая копия разработчика: логи и отчёт уходят в ветку diag-logs
             _run_bat(diag, {"AR_NOPAUSE": "1"})
+        timing.mark("конец")
         return 0
     except Exception as e:      # noqa: BLE001
         site.status("error", str(e)[:400])

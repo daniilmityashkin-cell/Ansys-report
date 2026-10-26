@@ -73,8 +73,20 @@ def export_png(path, hires=False):
     Graphics.ExportImage(path)
 
 
+def tmark(label):
+    """Метка времени этапа (ansys_report/timing.py)."""
+    try:
+        import time
+        f_ = io.open(os.environ.get("AR_TIMING") or r"C:\ansys_report_work\timing.log", "a", encoding="utf-8")
+        f_.write(u"%.3f\t%s\t%s\n" % (time.time(), os.environ.get("AR_TIMING_TAG", ""), label))
+        f_.close()
+    except Exception:
+        pass
+
+
 def snap(obj, name, hires=False, steep=0):
     """obj - один объект дерева или список объектов (показываются вместе)."""
+    tmark(u"Картинка модели: %s" % name)
     try:
         if isinstance(obj, list):
             Tree.Activate(obj)
@@ -86,11 +98,16 @@ def snap(obj, name, hires=False, steep=0):
     except Exception as e:
         log.append(u"ОШИБКА %s: %s" % (name, e))
 
-snap(model.Geometry, "fig01_general")
-snap(model.Mesh, "fig02_mesh_wall_bottom", True)
-snap(model.Mesh, "fig03_mesh_wall_roof", True)
+if (os.environ.get("ANSYS_REPORT_IMAGES") or "all").lower() == "none":      # идеальный РВС: рисунки модели не нужны
+    model_analyses = []
+    log.append(u"рисунки модели не нужны (ANSYS_REPORT_IMAGES=none)")
+else:
+    model_analyses = model.Analyses
+    snap(model.Geometry, "fig01_general")
+    snap(model.Mesh, "fig02_mesh_wall_bottom", True)
+    snap(model.Mesh, "fig03_mesh_wall_roof", True)
 SKIP_TYPES = ("InitialCondition", "ANSYSAnalysisSettings", "Solution", "SolutionInformation")
-for a in model.Analyses:
+for a in model_analyses:
     if a.Name.startswith(STATIC_PREFIX):
         loads, hydro = [], None
         for c in a.Children:

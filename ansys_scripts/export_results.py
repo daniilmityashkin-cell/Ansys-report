@@ -24,6 +24,17 @@ System.IO.Directory.CreateDirectory(out)
 log = []
 
 
+def tmark(label):
+    """Метка времени этапа (ansys_report/timing.py): длительность этапа - до следующей метки."""
+    try:
+        import time
+        f_ = io.open(os.environ.get("AR_TIMING") or r"C:\ansys_report_work\timing.log", "a", encoding="utf-8")
+        f_.write(u"%.3f\t%s\t%s\n" % (time.time(), os.environ.get("AR_TIMING_TAG", ""), label))
+        f_.close()
+    except Exception:
+        pass
+
+
 def set_units():
     """Рисунки и таблицы в МПа и мм (единицы только в сеансе, проект не меняется)."""
     try:
@@ -197,12 +208,47 @@ if not belts:                          # пояса - грани одного т
         log.append(u"пояса-грани: %s" % e)
 log.append(u"Найдено поясов: %d" % len(belts))
 
+IMAGES = (os.environ.get("ANSYS_REPORT_IMAGES") or "all").lower()     # all - все картинки; report - только те, что идут в отчёт; none - без картинок
+
+
+def report_roles(names):
+    """Как settings.pick_roles: расчёт «полного» и «пустого» резервуара (их картинки идут в отчёт)."""
+    static = [n for n in names if n.startswith(STATIC_PREFIX)]
+    if not static:
+        return None, None
+    full_ = os.environ.get("ANSYS_REPORT_FULL") or u""
+    full_ = full_ if full_ in static else next((n for n in static if "full" in n.lower() or u"полн" in n.lower()), static[-1])
+    rest_ = [n for n in static if n != full_]
+    empty_ = os.environ.get("ANSYS_REPORT_EMPTY") or u""
+    empty_ = empty_ if (empty_ in static and empty_ != full_) else next((n for n in rest_ if "empty" in n.lower() or u"пуст" in n.lower()),
+                                                                       rest_[-1] if rest_ else None)
+    return full_, empty_
+
+
+ROLES = report_roles([a_.Name for a_ in model.Analyses])
+
+
+def want_images(an):
+    if IMAGES == "none":
+        return False
+    return IMAGES != "report" or an.Name in ROLES or an.Name.startswith(EIGEN_PREFIX)
+
+
+def want_image(an, r):
+    """В режиме report: без дубля «Equivalent Stress» (в отчёт идёт AR Equivalent) и без 3-й формы (в отчёте формы 1-2)."""
+    if IMAGES != "report":
+        return True
+    return not (r.Name == u"Equivalent Stress" or r.Name == u"Total Deformation 3")
+
+
+log.append(u"картинки: %s; в отчёт: %s" % (IMAGES, u", ".join([x for x in ROLES if x])))
 stab = [u"analysis,mode,k"]
 modes = [u"analysis,type,mode,value,unit"]
 summary = [u"analysis,result,max,min,unit"]
 for a in model.Analyses:
     sol = a.Solution
     aname = re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", a.Name)                    # без символов, недопустимых в именах файлов Windows
+    tmark(u"Решение: %s" % a.Name)
     try:                                   # расчёт не решён в проекте - при включённой опции решаем сейчас (проект не сохраняется)
         if os.environ.get("ANSYS_REPORT_SOLVE") == "1" and str(sol.Status) == "SolveRequired":
             log.append(u"%s: расчёт не решён, запускаю решение (может занять несколько минут)" % a.Name)
@@ -242,6 +288,7 @@ for a in model.Analyses:
             System.IO.File.Copy(fp, os.path.join(out, u"solve_%s.out" % aname), True)
     except Exception as e:
         log.append(u"%s: solve.out не скопирован: %s" % (a.Name, e))
+    tmark(u"Результаты: вычисление (%s)" % a.Name)
     try:                                   # в фоне результаты не вычислены, пока их не потребуют - вычисляем сразу
         sol.EvaluateAllResults()
     except Exception as e:
@@ -252,10 +299,11 @@ for a in model.Analyses:
         pass
     # 1. картинки существующих результатов (формы потери устойчивости смотрим сверху)
     is_eigen = a.Name.startswith(EIGEN_PREFIX)
-    for r in sol.Children:
-        if r.Name.startswith("Solution Information") or r.Name.startswith("Equivalent Stress ("):
+    for r in (sol.Children if want_images(a) else []):
+        if r.Name.startswith("Solution Information") or r.Name.startswith("Equivalent Stress (") or not want_image(a, r):
             continue                                      # картинки результатов по отдельным поясам (12 штук на случай) в отчёт не нужны
         try:
+            tmark(u"Картинка: %s / %s" % (a.Name, r.Name))
             r.Activate()
             if is_eigen:
                 try:
@@ -267,16 +315,18 @@ for a in model.Analyses:
         except Exception as e:
             log.append(u"картинка %s/%s: %s" % (a.Name, r.Name, e))
     # 1a. полные поля по всей стенке (эквивалентные, мембранные, фибровые), единицы МПа
-    if a.Name.startswith(STATIC_PREFIX):
+    if a.Name.startswith(STATIC_PREFIX) and want_images(a):
         tmp = []
         try:
             eqf = sol.AddEquivalentStress(); eqf.Name = "AR Equivalent"
             mm = sol.AddMaximumPrincipalStress(); mm.Name = "AR Membrane"; mm.Position = type(mm.Position).Middle
             fbf = sol.AddMaximumPrincipalStress(); fbf.Name = "AR Fiber"
             tmp = [eqf, mm, fbf]
+            tmark(u"Результаты: полные поля (%s)" % a.Name)
             sol.EvaluateAllResults()
             for r in tmp:
                 try:
+                    tmark(u"Картинка: %s / %s" % (a.Name, r.Name))
                     r.Activate()
                     fit_view()
                     export_img(os.path.join(out, "%s_%s.png" % (aname, re.sub(u'[<>:"/\\\\|?*,;()\\s]', u"_", r.Name))))
@@ -322,6 +372,7 @@ for a in model.Analyses:
                 stab.append(u'"%s",%d,%.4f' % (a.Name, r.Mode, kval or 0.0))
     # 3. прочность: максимумы по поясам
     elif a.Name.startswith(STATIC_PREFIX):
+        tmark(u"Пояса: выгрузка максимумов (%s)" % a.Name)
         created = []
         rows = {}
         try:
