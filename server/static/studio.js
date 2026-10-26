@@ -97,7 +97,7 @@ async function thAuto(file, text, src) {                           // распо
   if (file) fd.append("doc", file);
   thMsg("Читаю документ…");
   const r = await fetch("/studio/thickness", { method: "POST", body: fd, credentials: "same-origin" }), d = await r.json();
-  if (!r.ok) { thMsg(d.error || "Не удалось распознать", true); return false; }
+  if (!r.ok) { $("th-pick").hidden = true; thMsg(d.error || "Не удалось распознать", true); return false; }
   thCols = d.columns;
   if (thCols.length > 1) {
     $("th-col").innerHTML = thCols.map((c, k) => "<option value=\"" + k + "\">" + c.name + ": " + c.values.join(" ") + "</option>").join(""); $("th-pick").hidden = false;
@@ -110,9 +110,13 @@ $("th-use").onclick = () => thUse(+$("th-col").value, "документа");
 $("th-file").onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await thAuto(f, "", "«" + f.name + "»"); } catch (er) { thMsg(er.message, true); } } };
 $("th-apply").onclick = async () => {
   const txt = $("th-all").value;
-  try { S.thick = parseThick(txt, S.heights.length - 1); showErr(""); thMsg(""); drawGrid(); $("th-all").value = ""; return; }
+  thMsg(""); $("th-pick").hidden = true;
+  try { S.thick = parseThick(txt, S.heights.length - 1); showErr(""); drawGrid(); $("th-all").value = ""; return; }
   catch (e) {
-    if (txt.trim().length < 25) { showErr(e.message); return; }    // длинный текст - это вставленный документ, пробуем распознать на сервере
+    if (txt.trim().length < 25 || /^[\d\s.,;:=\-–]+$/.test(txt)) {                          // только числа и разделители - это список толщин, а не документ
+      showErr(e.message + (/Указано толщин/.test(e.message) ? " Число поясов задаётся полем «Отметок по высоте» (сейчас " + (S.heights.length - 1) + "): измените его и нажмите «Создать сетку»." : ""));
+      return;
+    }                                                                              // иначе это вставленный документ: пробуем распознать на сервере
   }
   try { if (await thAuto(null, txt, "вставленного текста")) $("th-all").value = ""; } catch (er) { thMsg(er.message, true); }
 };

@@ -256,3 +256,6 @@ main:has(.studio){max-width:min(1900px,97vw);padding-left:clamp(12px,1.6vw,28px)
 .thick-auto,.thick-man{display:flex;flex-direction:column;gap:8px;flex:1;min-width:300px}.thick-man{flex:1.4}
 .thick-t{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
 .thick-auto .filebtn{align-self:flex-start;white-space:normal}.thick-box .muted{font-size:12.5px}
+
+[hidden]{display:none!important}
+.thick-auto .filebtn:focus-within{outline:none}
