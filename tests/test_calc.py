@@ -442,3 +442,20 @@ def test_cad_fine_defect_large_tank_falls_back(tmp_path):
     pr["defects"][0].update(nx="21", ny="21", x=xs, y=xs, values=[["-3" if 0 < i < 20 and 0 < j < 20 else "0" for i in range(21)] for j in range(21)])
     out = check.export_geometry(pr, tmp_path, 0.1, "STEP", lambda s: None)
     assert any(str(f).endswith(".step") for f in out["files"])
+
+
+def test_agent_launch_is_windowless_and_survives_bad_link(tmp_path, monkeypatch):
+    """Помощник под pythonw: нет консоли (stdout=None), дочерние процессы запускаются без окна, плохая ссылка не роняет запуск."""
+    import subprocess
+    import sys
+    from ansys_report import agent
+    monkeypatch.setattr(agent, "WORK", tmp_path)
+    monkeypatch.setattr(sys, "stdout", None)
+    assert agent.launch("ansysreport://run?x=1") == 1
+    assert "Неверная ссылка" in (tmp_path / "agent.log").read_text(encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: calls.append(k) or 0)
+    bat = tmp_path / "x.bat"
+    bat.write_text("@echo off")
+    agent._run_bat(bat, {})
+    assert calls[0]["creationflags"] == agent.NO_WINDOW and calls[0]["stdin"] == subprocess.DEVNULL

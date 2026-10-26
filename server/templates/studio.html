@@ -6,7 +6,7 @@
 <h1><span class="no">01</span> Измерения: от нулей к фактическим данным</h1>
 <div class="card">
 <div class="dropzone" id="drop"><b>Перетащите сюда файл замеров</b><span>проект РВС Геометрия (.json) или геодезию (.xlsx) — всё остальное заполнится само</span>
-<div class="st-row src" style="justify-content:center;margin:12px 0 0"><label class="filebtn">Выбрать файл<input type="file" id="f-any" accept=".json,.xlsx,application/json"></label>
+<div class="st-row src" style="justify-content:center;margin:12px 0 0"><label class="filebtn primary">Выбрать файл<input type="file" id="f-any" accept=".json,.xlsx,application/json"></label>
 <button type="button" class="btn light" id="b-paste">Вставить таблицу из Excel</button>
 <label style="flex:none;min-width:0">строки таблицы — <select id="paste-rows" style="width:auto;display:inline-block;padding:6px 10px"><option value="gens">образующие</option><option value="belts">пояса</option></select></label></div>
 <span id="src-msg" class="srcmsg"></span><label hidden style="margin-top:8px">Лист файла: <select id="sheet-pick" style="width:auto;display:inline-block;padding:6px 10px"></select></label></div>
@@ -45,7 +45,7 @@
 <div class="st-row" style="margin-top:10px"><button type="button" class="btn light" id="d-paste">Вставить из Excel</button><label style="max-width:150px">Глубина, мм<input type="text" id="d-depth" value="-40"></label>
 <button type="button" class="btn light" id="d-bell">Заполнить колоколом</button><button type="button" class="btn light" id="d-del">Удалить вмятину</button></div>
 <p class="muted st-hint" id="d-info"></p></div>
-<div class="dent-surf"><canvas id="d-map" width="360" height="360"></canvas><div class="legend"><i></i><span>0</span><span id="d-max">—</span></div><small class="muted">Поверхность по локальным измерениям (модуль отклонения, мм)</small></div></div>
+<div class="dent-surf"><canvas id="d-map" width="640" height="640"></canvas><div class="legend"><i></i><span>0</span><span id="d-max">—</span></div><small class="muted">Поверхность по локальным измерениям (модуль отклонения, мм)</small></div></div>
 <p class="muted st-hint">«Колоколом» строит гладкую вмятину с заданной глубиной в центре — оценка вместо измерений; для фактических данных вводите или вставляйте измерения.</p>
 </div></div>
 </section>

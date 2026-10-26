@@ -218,3 +218,26 @@ details.blk{border:1px solid var(--line);border-radius:12px;padding:8px 14px;mar
 
 .st-grid input.need{background:rgba(229,85,85,.22);outline:1px solid #e55}
 .prof-info{display:block;margin-top:4px;font-size:11.5px;color:var(--muted);line-height:1.35}.prof-info.bad{color:#ff8a80}
+
+/* --- широкая рабочая область студии и страницы расчёта: почти до краёв экрана --- */
+main:has(.studio){max-width:min(1900px,97vw);padding-left:clamp(12px,1.6vw,28px);padding-right:clamp(12px,1.6vw,28px)}
+.studio{max-width:none}
+.st-view canvas{min-height:max(560px,calc(100vh - 250px))}
+.st-split{grid-template-columns:minmax(0,2.2fr) minmax(320px,1fr)}
+.st-step[data-step="5"] .st-split{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+.st-step[data-step="5"] .st-view canvas{min-height:max(640px,calc(100vh - 220px))}
+.st-side{max-height:calc(100vh - 160px)}
+.tablewrap{max-height:calc(100vh - 330px);min-height:260px}
+/* колонка «t, мм» всегда на виду: прижата к правому краю таблицы */
+.st-grid th:last-child,.st-grid td:last-child{position:sticky;right:0;background:var(--card2);z-index:2;box-shadow:-8px 0 12px -8px rgba(0,0,0,.6);min-width:76px}
+.st-grid th:last-child{z-index:3;color:var(--accent)}
+.st-grid td:last-child input{width:70px;font-weight:600}
+/* главная кнопка выбора файла */
+.filebtn.primary{background:var(--accent);border-color:var(--accent);color:#14110a!important;font-weight:700;font-size:16px;padding:13px 30px;box-shadow:0 6px 22px -8px rgba(255,183,27,.7)}
+.filebtn.primary:hover{background:#ffc43d;border-color:#ffc43d;transform:translateY(-1px)}
+/* картинки вмятин и профилей одного размера на всех вкладках */
+.dent-split{grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr)}
+.dent-surf canvas{width:100%;max-width:none;aspect-ratio:1/1;height:auto}
+.prof-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.prof canvas{width:100%;height:auto;aspect-ratio:150/240}
+@media(max-width:1000px){.st-split,.st-step[data-step="5"] .st-split,.dent-split{grid-template-columns:1fr}}
