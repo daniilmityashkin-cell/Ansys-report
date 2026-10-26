@@ -298,7 +298,7 @@ def apdl_band():
 
 
 def mesh_dents():
-    """Сгущение сетки у вмятин (dents.json из пакета: центр и радиус сферы, мм): Sizing «сфера влияния» на тело.
+    """Сгущение сетки у вмятин (dents.json из пакета: центр и радиус сферы, мм): Sizing «сфера влияния» на грани стенки.
     ANSYS_REPORT_DENT_MESH_MM - размер элемента в зоне (100 по умолчанию, 0 - без сгущения). Сетка 200 мм занижает пик во вмятине на 7-19 %."""
     import json
     dsize = float(os.environ.get("ANSYS_REPORT_DENT_MESH_MM") or 100)
@@ -306,10 +306,17 @@ def mesh_dents():
     if dsize <= 0 or not os.path.exists(dp):
         return 0
     dents = json.loads(_rd(dp))
-    body = model.Geometry.GetChildren(DataModelObjectCategory.Body, True)[0]
+    ax = {"X": 0, "Y": 1, "Z": 2}[(os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()]
+    fz = []
+    for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
+        for f in b.GetGeoBody().Faces:
+            fz.append((f.Centroid[ax], f.Id))
+    k_ = 1000.0 if WALL_H and max([abs(z) for z, i in fz]) < 0.05 * WALL_H else 1.0
     sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
-    sel.Ids = [body.GetGeoBody().Id]
+    sel.Ids = [i for z, i in fz if 0.002 * WALL_H < z * k_ < 0.998 * WALL_H]    # только грани стенки: сфера на всё тело портит картинки (днище многоугольником, «точки»)
     for k, d in enumerate(dents, 1):
+        # узлы «стенка-крыша» и «стенка-днище» остаются на опорной сетке: пик там от сетки не сходится (50/100/200 мм), а мембранные - да
+        d["radius_mm"] = max(500.0, min(d["radius_mm"], min(WALL_H - d["z_mm"], d["z_mm"]) - 300.0))
         cs = model.CoordinateSystems.AddCoordinateSystem()
         cs.Name = u"AR вмятина %d" % k
         cs.OriginDefineBy = CoordinateSystemAlignmentType.Fixed
@@ -323,7 +330,7 @@ def mesh_dents():
         sz.SphereCenter = cs
         sz.SphereRadius = Quantity(d["radius_mm"], "mm")
         sz.ElementSize = Quantity(dsize, "mm")
-    bsay(u"Сгущение сетки у вмятин: %d зон, элемент %g мм" % (len(dents), dsize))
+    bsay(u"Сгущение сетки у вмятин: %d зон на %d гранях стенки, элемент %g мм, радиусы %s мм" % (len(dents), len(sel.Ids), dsize, u", ".join([u"%.0f" % d["radius_mm"] for d in dents])))
     return len(dents)
 
 
