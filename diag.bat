@@ -34,6 +34,10 @@ for /r "%W%\Tank_model_files" %%F in (solve.out file0.err file.err *.err) do (
     powershell -NoProfile -Command "Get-Content -LiteralPath '%%F' -Tail 80"
   )
 )
+for /r "%W%\report" %%F in (solve_*.out) do (
+  echo ===== %%F =====
+  powershell -NoProfile -Command "Select-String -LiteralPath '%%F' -Pattern 'cores','processes','Distributed','DISTRIBUTED','HPC','Elapsed','CPU time','checked out','LICENSE','license' | Select-Object -First 25 | ForEach-Object { $_.Line.Trim() }"
+)
 ) > "%WT%\diag\diag.txt" 2>&1
 if exist "%WT%\diag\report.docx" del "%WT%\diag\report.docx"
 for /r "%W%\report" %%F in (Report_*.docx) do copy /y "%%F" "%WT%\diag\report.docx" >nul

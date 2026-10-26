@@ -236,6 +236,12 @@ for a in model.Analyses:
                     log.append(u"  файлы решателя: %s" % e)
     except Exception as e:
         log.append(u"%s: ОШИБКА решения: %s" % (a.Name, e))
+    try:                                   # solve.out - в данные отчёта: проект закрывается без сохранения, и Workbench удаляет файлы решателя
+        fp = os.path.join(sol.WorkingDir, u"solve.out")
+        if os.path.exists(fp):
+            System.IO.File.Copy(fp, os.path.join(out, u"solve_%s.out" % aname), True)
+    except Exception as e:
+        log.append(u"%s: solve.out не скопирован: %s" % (a.Name, e))
     try:                                   # в фоне результаты не вычислены, пока их не потребуют - вычисляем сразу
         sol.EvaluateAllResults()
     except Exception as e:
