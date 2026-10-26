@@ -241,3 +241,12 @@ main:has(.studio){max-width:min(1900px,97vw);padding-left:clamp(12px,1.6vw,28px)
 .prof-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
 .prof canvas{width:100%;height:auto;aspect-ratio:150/240}
 @media(max-width:1000px){.st-split,.st-step[data-step="5"] .st-split,.dent-split{grid-template-columns:1fr}}
+
+/* нагрузки на модели: форма слева, 3D справа и остаётся на экране при прокрутке формы */
+.loads-split{display:grid;grid-template-columns:minmax(360px,5fr) minmax(0,7fr);gap:18px;align-items:start}
+.l3col{position:sticky;top:12px}
+.l3view{height:clamp(420px,60vh,700px);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0b0d10}.l3view canvas{width:100%;height:100%;display:block}
+.l3grad{background:linear-gradient(90deg,#3380ff,#4d5259,#ff4d33)!important;max-width:none}
+.l3table{width:100%;margin:10px 0 4px;font-size:13.5px}.l3table td{padding:5px 8px;border-bottom:1px solid var(--line)}.l3table td:last-child{text-align:right;font-weight:600}
+#l3-info.bad{color:var(--bad)}
+@media(max-width:1100px){.loads-split{grid-template-columns:1fr}.l3col{position:static}}

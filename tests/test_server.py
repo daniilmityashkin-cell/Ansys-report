@@ -534,3 +534,21 @@ def test_studio_thicknesses_required_profiles_and_edit(site):
     register(other, "b@example.com")
     assert other.get(f"/studio/edit/{gid}").status_code == 404
     assert TestClient(site).get(f"/studio/edit/{gid}").status_code in (303, 404)
+
+
+def test_loads3d_endpoints(site):
+    """Показ нагрузок на модели: сохранённые и введённые прямо сейчас (без записи), чужому недоступно."""
+    c = TestClient(site)
+    register(c)
+    gen = new_generation(c).headers["location"]
+    gid = gen.rsplit("/", 1)[1]
+    d = c.get(f"/g/{gid}/loads3d.json").json()
+    assert d["cases"][0]["name"] == "Эксплуатация" and len(d["cases"][0]["wall"]["p_kpa"]) == 96 and d["belts_m"][0] == 0.0
+    tok = csrf_of(c, gen)
+    live = c.post(f"/g/{gid}/loads3d.json", data={"csrf": tok, "l_fill": "3", "l_vac": "500"}).json()
+    assert live["cases"][0]["free_surface_m"] == 3.0 and any(x["id"] == "vacuum" and x["uniform_kpa"] < 0 for x in live["cases"])
+    assert c.post(f"/g/{gid}/loads3d.json", data={"csrf": "bad", "l_fill": "3"}).status_code == 400
+    assert c.post(f"/g/{gid}/loads3d.json", data={"csrf": tok, "l_fill": "999"}).status_code == 400          # налив выше стенки - понятная ошибка
+    other = TestClient(site)
+    register(other, "b@example.com")
+    assert other.get(f"/g/{gid}/loads3d.json").status_code == 404

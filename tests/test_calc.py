@@ -459,3 +459,24 @@ def test_agent_launch_is_windowless_and_survives_bad_link(tmp_path, monkeypatch)
     bat.write_text("@echo off")
     agent._run_bat(bat, {})
     assert calls[0]["creationflags"] == agent.NO_WINDOW and calls[0]["stdin"] == subprocess.DEVNULL
+
+
+def test_pressure_view_matches_apply_loads_formula():
+    """Показ нагрузок на сайте считает давление той же формулой, что скрипт наложения в Ansys: равномерное + гидростатика + ветер по поясам."""
+    from ansys_report.loads.export import build_cases, pressure_view, report_fill_levels
+    from ansys_report.loads.rvs_loads import compute
+    res = compute(json.loads((Path(__file__).parent.parent / "examples/loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    cases = build_cases(res, True, report_fill_levels(res))
+    H = res["inputs"]["H"] * 1000
+    for c in cases:
+        v = pressure_view(c, H)
+        hy = c.get("hydro")
+        for z, p in zip(v["wall"]["z_m"], v["wall"]["p_kpa"]):
+            zz = z * 1000
+            want = c["uniform_mpa"] + (hy["gradient_mpa_mm"] * (hy["free_surface_mm"] - zz) if hy and zz < hy["free_surface_mm"] else 0) \
+                + sum(w["p_mpa"] for w in c["wind"] if w["z_lo_mm"] <= zz < w["z_hi_mm"])
+            assert abs(p - want * 1000) < 1e-3
+        assert abs(v["roof_kpa"] - (c["uniform_mpa"] + c["roof_extra_mpa"]) * 1000) < 1e-3
+        assert (v["bottom_kpa"] is None) == (hy is None)
+    names = [pressure_view(c, H)["name"] for c in cases]
+    assert names[0] == "Эксплуатация" and any(n.startswith("Налив") for n in names)

@@ -574,6 +574,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse(f"/g/{gid}?loads_error={quote(str(e)[:250])}#loads", status_code=303)
             return RedirectResponse(f"/g/{gid}#loads", status_code=303)
 
+    def _loads3d(g, lform: dict | None) -> dict:
+        """Нагрузки расчётных случаев отчёта в виде для 3D-показа: сохранённые (или введённые в форме прямо сейчас - без записи на диск)."""
+        from ansys_report.loads.export import build_cases, pressure_view, report_fill_levels
+        from ansys_report.loads.rvs_loads import compute as compute_loads
+        d = gen_dir(g.id)
+        project = json.loads((d / "input.json").read_text(encoding="utf-8-sig"))
+        if lform is not None:
+            from .loadsinput import build_loads_input
+            inp = build_loads_input({**lform, "l_on": "1"}, project)
+        elif (d / "loads_input.json").exists():
+            inp = json.loads((d / "loads_input.json").read_text(encoding="utf-8"))
+        else:
+            from .loadsinput import build_loads_input
+            inp = build_loads_input({"l_on": "1"}, project)
+        res = compute_loads(inp)
+        cases = build_cases(res, True, report_fill_levels(res))
+        H = float(res["inputs"]["H"])
+        sp = d / "structure.json"
+        roof = (json.loads(sp.read_text(encoding="utf-8")).get("roof") or {}) if sp.exists() else {}
+        bands = [float(str(b[0]).replace(",", ".")) for b in project["bands"]]
+        z, edges = 0.0, [0.0]
+        for h in bands:
+            z += h
+            edges.append(round(z, 4))
+        return {"D": res["inputs"]["D"], "H": H, "rise_m": float(roof.get("rise_m") or inp.get("roof_rise_m") or 0.0), "belts_m": edges,
+                "saved": lform is None and (d / "loads_input.json").exists(),
+                "cases": [pressure_view(c, H * 1000.0) for c in cases], "notes": ["Ветер задан давлением по поясам и распределён равномерно по окружности (распределение по окружности уточняется)."]}
+
+    @app.get("/g/{gid}/loads3d.json")
+    def loads3d_get(request: Request, gid: int):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "Не найдено"}, status_code=404)
+            try:
+                return JSONResponse(_loads3d(g, None))
+            except Exception as e:  # noqa: BLE001
+                return JSONResponse({"error": str(e)[:300]}, status_code=400)
+
+    @app.post("/g/{gid}/loads3d.json")
+    async def loads3d_post(request: Request, gid: int):
+        """Нагрузки «как в форме сейчас»: показ обновляется по мере ввода, ничего не сохраняется."""
+        form = await request.form()
+        bad = deny_csrf(request, str(form.get("csrf", "")))
+        if bad:
+            return bad
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "Не найдено"}, status_code=404)
+            try:
+                return JSONResponse(_loads3d(g, {k: str(v) for k, v in form.items() if k.startswith("l_")}))
+            except Exception as e:  # noqa: BLE001
+                return JSONResponse({"error": str(e)[:300]}, status_code=400)
+
     @app.post("/g/{gid}/pay")
     def pay_generation(request: Request, gid: int, csrf: str = Form("")):
         bad = deny_csrf(request, csrf)

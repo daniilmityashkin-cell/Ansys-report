@@ -39,6 +39,39 @@ def build_cases(res: dict, design: bool = True, fill_levels_m=None, all_cases: b
     return cases
 
 
+def report_fill_levels(res: dict) -> list[float]:
+    """Серия уровней налива для допустимой высоты (3 уровня от высоты стенки, кроме близкого к уровню эксплуатации) - единый расчёт для отчёта и для показа на сайте."""
+    fill0 = float(res["loads"]["hydrostatic_operation"]["fill_height_m"])
+    Hw = float(res["inputs"]["H"])
+    return [lv for lv in (round(Hw * f, 1) for f in (0.4, 0.7, 0.95)) if abs(lv - fill0) > 0.5]
+
+
+def pressure_view(case: dict, H_mm: float, n: int = 96) -> dict:
+    """Нагрузки расчётного случая в виде для показа на сайте: давление, кПа, по высоте стенки (ровно та же формула, что в apply_loads.py:
+    равномерное + гидростатика ниже свободной поверхности + ветер по поясам), на крышу и на днище. «+» - изнутри наружу, «−» - снаружи внутрь."""
+    pu = case["uniform_mpa"]
+    hy = case.get("hydro")
+    grad = hy["gradient_mpa_mm"] if hy else 0.0
+    zfs = hy["free_surface_mm"] if hy else 0.0
+    zs, ps = [], []
+    for i in range(n):
+        z = (i + 0.5) * H_mm / n
+        pv = pu
+        if grad > 0 and z < zfs:
+            pv += grad * (zfs - z)
+        for w in case.get("wind") or []:
+            if w["z_lo_mm"] <= z < w["z_hi_mm"]:
+                pv += w["p_mpa"]
+        zs.append(round(z / 1000.0, 4))
+        ps.append(round(pv * 1000.0, 4))
+    return {"id": case["id"], "name": case["name"], "gravity": bool(case["gravity"]), "masses": bool(case["masses"]),
+            "wall": {"z_m": zs, "p_kpa": ps}, "roof_kpa": round((pu + case["roof_extra_mpa"]) * 1000.0, 4),
+            "bottom_kpa": round((pu + grad * zfs) * 1000.0, 4) if hy else None,
+            "free_surface_m": round(zfs / 1000.0, 3) if hy else None, "uniform_kpa": round(pu * 1000.0, 4),
+            "snow_kpa": round(-case["roof_extra_mpa"] * 1000.0, 4), "wind": bool(case.get("wind")),
+            "wind_kpa": [round(w["p_mpa"] * 1000.0, 4) for w in (case.get("wind") or [])]}
+
+
 def _json_default(o):
     raise TypeError(type(o))
 
