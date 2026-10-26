@@ -485,9 +485,11 @@ def test_agent_launch_is_windowless_and_survives_bad_link(tmp_path, monkeypatch)
     import sys
     from ansys_report import agent
     monkeypatch.setattr(agent, "WORK", tmp_path)
+    shown = []
+    monkeypatch.setattr(agent, "popup", lambda title, text: shown.append(text))          # в тесте окно сообщения не показываем
     monkeypatch.setattr(sys, "stdout", None)
     assert agent.launch("ansysreport://run?x=1") == 1
-    assert "Неверная ссылка" in (tmp_path / "agent.log").read_text(encoding="utf-8")
+    assert "Неверная ссылка" in (tmp_path / "agent.log").read_text(encoding="utf-8") and "Неверная ссылка" in shown[0]
     calls = []
     monkeypatch.setattr(subprocess, "call", lambda *a, **k: calls.append(k) or 0)
     bat = tmp_path / "x.bat"
