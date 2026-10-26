@@ -56,15 +56,7 @@ def write(name, lines):
     f.close()
 
 def _view_set_mesh_off():
-    Graphics.ViewOptions.ShowMesh = False
-
-
-def _view_bounding_edges_off():
-    vo = Graphics.ViewOptions
-    if not hasattr(vo, "ShowBoundingMeshEdges"):
-        raise Exception(u"нет свойства в этой версии")
-    vo.ShowBoundingMeshEdges = False
-    log.append(u"вид результатов: ShowBoundingMeshEdges = %s" % vo.ShowBoundingMeshEdges)
+    Graphics.ViewOptions.ShowMesh = False      # ShowBoundingMeshEdges не нужен: в 2026 R1 задаётся только при ShowMesh=True
 
 def _view_wireframe_a():
     Graphics.ViewOptions.ResultPreference.ExtraModelDisplay = Ansys.Mechanical.DataModel.Enums.ExtraModelDisplay.NoWireframe
@@ -87,7 +79,7 @@ def _view_wireframe_d():
 
 def prep_results_view():
     """Вид результатов как в эталонном отчёте: сплошная цветовая заливка без линий сетки (иначе мелкая сетка закрывает цвета)."""
-    for name, fn in ((u"ShowMesh", _view_set_mesh_off), (u"ShowBoundingMeshEdges", _view_bounding_edges_off)):
+    for name, fn in ((u"ShowMesh", _view_set_mesh_off),):
         try:
             fn()
         except Exception as e:
