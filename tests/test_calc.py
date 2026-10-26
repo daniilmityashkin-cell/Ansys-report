@@ -340,6 +340,37 @@ def test_points_geometry_check_and_report(tmp_path):
     assert "Оценка отклонений по точкам" in text and "5 Выводы" in text
 
 
+def test_ideal_cache_key_follows_inputs(tmp_path):
+    """Кэш идеального РВС: те же файлы пакета - тот же ключ, любое изменение - другой (считаем заново)."""
+    from ansys_report.agent import _ideal_cache
+    (tmp_path / "model.step").write_text("STEP-1", encoding="utf-8")
+    (tmp_path / "loads_data.py").write_text("LOADS = {}", encoding="utf-8")
+    k1 = _ideal_cache(tmp_path)
+    assert _ideal_cache(tmp_path) == k1 and k1.suffix == ".json"
+    (tmp_path / "loads_data.py").write_text("LOADS = {'snow': 1}", encoding="utf-8")
+    assert _ideal_cache(tmp_path) != k1
+
+
+def test_agent_lock_blocks_second_run(tmp_path, monkeypatch):
+    """Второй помощник не трогает рабочую папку, пока жив первый; брошенная блокировка (процесс умер) снимается."""
+    import os
+    from ansys_report import agent
+    monkeypatch.setattr(agent, "WORK", tmp_path)
+    lock = agent._take_lock()
+    assert lock is not None and lock.read_text() == str(os.getpid())
+    assert agent._take_lock() is None                       # занята живым процессом (этим)
+    lock.write_text("999999")                               # такого процесса нет
+    assert agent._take_lock() is not None
+
+
+def test_timing_table(tmp_path):
+    from ansys_report.timing import read, table_md
+    f = tmp_path / "timing.log"
+    f.write_text("100.0\t\tАгент: старт\n110.0\tмодель\tСборка: сетка\n140.0\tмодель\tСборка: нагрузки\n150.0\t\tконец\n", encoding="utf-8")
+    t = table_md(read(f))
+    assert "Всего: 50 с" in t and "| модель | Сборка: сетка | 30.0 | 60.0 |" in t and "| модель | Сборка | 40.0 | 80.0 |" in t
+
+
 def test_unsolved_ansys_results_stop_report(tmp_path):
     """Все пояса нулевые (сетка не построилась, расчёт не шёл) - ошибка с причиной из лога, а не отчёт с «Выполнен»."""
     import pytest

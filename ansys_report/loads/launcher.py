@@ -19,7 +19,16 @@ def st(m):
     f = open(status, "a")
     f.write(m + "\\n")
     f.close()
+def tmark(label):
+    try:
+        import io, time
+        f = io.open(os.environ.get("AR_TIMING") or r"C:\\ansys_report_work\\timing.log", "a", encoding="utf-8")
+        f.write(u"%.3f\\t%s\\t%s\\n" % (time.time(), os.environ.get("AR_TIMING_TAG", ""), label))
+        f.close()
+    except:
+        pass
 st("START")
+tmark(u"WB сборка: журнал запущен, создание системы")
 try:
     template1 = None
     for kw in ({"TemplateName": "Static Structural", "Solver": "ANSYS"},
@@ -37,21 +46,26 @@ try:
         raise Exception("Static Structural template not available in this Workbench (check licence / installed Mechanical)")
     system1 = template1.CreateSystem()
     geometry1 = system1.GetContainer(ComponentName="Geometry")
+    tmark(u"WB сборка: импорт геометрии STEP")
     geometry1.SetFile(FilePath=os.path.join(pkg, "model.step"))
     try:
         system1.GetComponent(Name="Geometry").Update(AllDependencies=True)
     except:
         st("GEOMETRY UPDATE: " + traceback.format_exc().replace("\\n", " | "))
+    tmark(u"WB сборка: обновление модели (Refresh)")
     system1.GetComponent(Name="Model").Refresh()
     model1 = system1.GetContainer(ComponentName="Model")
+    tmark(u"WB сборка: запуск Mechanical")
     model1.Edit()
     st("MECHANICAL OPEN")
     model1.SendCommand(Language="Python", Command="import io, os\\nexec(io.open(os.path.join(os.environ['AR_PKG'], 'build_model.py'), encoding='utf-8').read())")
     st("BUILD DONE")
+    tmark(u"WB сборка: сохранение проекта")
     Save(FilePath=os.path.join(pkg, "Tank_model.wbpj"), Overwrite=True)
     st("SAVED")
 except:
     st("ERROR " + traceback.format_exc().replace("\\n", " | "))
+tmark(u"WB сборка: конец журнала, закрытие Workbench")
 '''
 
 

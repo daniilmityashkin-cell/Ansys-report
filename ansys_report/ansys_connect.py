@@ -88,6 +88,18 @@ def _system_name(mechdb: Path) -> str:
     return mechdb.stem
 
 
+# метка времени этапа в журнале Workbench (ansys_report/timing.py)
+_JOURNAL_TMARK = r'''def tmark(label):
+    try:
+        import io, time
+        f = io.open(os.environ.get('AR_TIMING') or r'C:\ansys_report_work\timing.log', 'a', encoding='utf-8')
+        f.write(u'%.3f\t%s\t%s\n' % (time.time(), os.environ.get('AR_TIMING_TAG', ''), label))
+        f.close()
+    except:
+        pass
+'''
+
+
 def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path, mechdb: Path,
                           scripts: list[str] | None = None, extra_files: dict | None = None, extra_env: dict | None = None,
                           save_as: Path | None = None) -> None:
@@ -112,10 +124,12 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
         body = []
         for name in (scripts or SCRIPT_ORDER):
             code = "import io\nexec(io.open(r" + repr(str(SCRIPTS / name)) + ", encoding='utf-8').read())"
+            body.append('    tmark(u"WB выгрузка: скрипт ' + name + '")')
             body.append('    model.SendCommand(Language="Python", Command=' + repr(code) + ')')
             body.append('    st("DONE ' + name + '")')
         journal = work / "run.wbjn"
         journal.write_text(
+            "# -*- coding: utf-8 -*-\n"                 # без этой строки IronPython не выполняет журнал с кириллицей (метки времени)
             "import os, traceback\n"
             f'os.environ["ANSYS_REPORT_OUT"] = r"{out}"\n'
             f'status = r"{status}"\n'
@@ -123,7 +137,9 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             '    f = open(status, "a")\n'
             '    f.write(m + "\\n")\n'
             "    f.close()\n"
+            + _JOURNAL_TMARK +
             'st("JOURNAL START")\n'
+            'tmark(u"WB выгрузка: журнал запущен, открытие проекта")\n'
             "try:\n"
             f'    Open(FilePath=r"{project}")\n'
             "    target = None\n"
@@ -134,9 +150,11 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             "    if target is None:\n"
             '        raise Exception("system not found")\n'
             '    model = target.GetContainer(ComponentName="Model")\n'
+            '    tmark(u"WB выгрузка: запуск Mechanical")\n'
             "    model.Edit()\n"
             '    st("MECHANICAL OPEN")\n'
             + "\n".join(body) + "\n"
+            '    tmark(u"WB выгрузка: выход из Mechanical, закрытие Workbench")\n'
             "    model.Exit()\n"
             + (f'    Save(FilePath=r"{save_as}", Overwrite=True)\n' if save_as else "") +
             "except:\n"
@@ -144,6 +162,8 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             encoding="utf-8")
         env = dict(os.environ, ANSYS_REPORT_OUT=str(out), **env_extra)
         log("Запускаю Workbench в фоне и открываю проект (несколько минут)…")
+        from . import timing
+        timing.mark("WB выгрузка: запуск Workbench")
         runlog = out / "wb_run.log"
         with open(runlog, "w", encoding="utf-8", errors="replace") as lf:
             proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=lf, stderr=subprocess.STDOUT, env=env)
@@ -159,6 +179,7 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
                         last = [l for l in status.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
                         seen = f" (последний шаг: {last[-1][:60]})" if last else ""
                     log(f"  Workbench работает… {mins} мин{seen}")
+        timing.mark("Отчёт: после Workbench (данные, отчёт Word/Excel)")
         log(f"  Workbench завершился с кодом {proc.returncode}")
         try:
             tail = [l for l in runlog.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()][:8]

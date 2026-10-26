@@ -16,7 +16,8 @@ class ModelSettings:
     def env(self) -> dict[str, str]:
         """Переменные окружения для скриптов, исполняемых внутри Mechanical."""
         return {"ANSYS_REPORT_BELT_REGEX": self.belt_regex, "ANSYS_REPORT_AXIS": self.vertical_axis.upper(),
-                "ANSYS_REPORT_STATIC": self.static_prefix, "ANSYS_REPORT_EIGEN": self.buckling_prefix}
+                "ANSYS_REPORT_STATIC": self.static_prefix, "ANSYS_REPORT_EIGEN": self.buckling_prefix,
+                "ANSYS_REPORT_FULL": self.full_analysis, "ANSYS_REPORT_EMPTY": self.empty_analysis}
 
     def to_dict(self) -> dict:
         return asdict(self)
