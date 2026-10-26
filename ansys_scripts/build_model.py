@@ -334,10 +334,38 @@ def mesh_dents():
     return len(dents)
 
 
+def mesh_annular_ring():
+    """Кольцо окрайки снаружи стенки (узкая грань днища шириной ~200 мм): mapped-сетка. PrimeMesh на длинном узком кольце
+    крупного резервуара (РВС-30000, окружность 143 м) сетит грань частично - «One or more faces failed to mesh», расчёт не идёт."""
+    ax = {"X": 0, "Y": 1, "Z": 2}[(os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()]
+    fz = []
+    for b in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):
+        for f in b.GetGeoBody().Faces:
+            fz.append((f.Centroid[ax], f.Area, f.Id))
+    k_ = 1000.0 if WALL_H and max([abs(z) for z, a, i in fz]) < 0.05 * WALL_H else 1.0
+    bot = [(a, i) for z, a, i in fz if abs(z * k_) < 0.002 * WALL_H]
+    if len(bot) < 2:
+        return 0
+    amax = max([a for a, i in bot])
+    ids = [i for a, i in bot if a < 0.2 * amax]
+    if ids:
+        sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
+        sel.Ids = ids
+        fm = model.Mesh.AddFaceMeshing()
+        fm.Name = u"AR сетка окрайки"
+        fm.Location = sel
+        bsay(u"Кольцо окрайки: mapped-сетка на %d гранях" % len(ids))
+    return len(ids)
+
+
 # --- сетка
 try:
     size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 200)
     model.Mesh.ElementSize = Quantity(size, "mm")
+    try:
+        mesh_annular_ring()
+    except Exception as e:
+        bsay(u"Сетка окрайки не задана: %s" % e)
     try:
         mesh_dents()
     except Exception as e:

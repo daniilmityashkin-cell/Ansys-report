@@ -276,6 +276,8 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
                     _report_problems(out, log)
                     return out
                 log("Через Workbench не вышло, пробую запасной способ…")
+            except ConnectError:
+                raise
             except Exception as e:  # noqa: BLE001
                 log(f"Workbench-способ не сработал ({e}), пробую запасной способ…")
         try:
@@ -332,11 +334,20 @@ def _report_problems(out: Path, log):
         for parts in list(csv.reader(st.read_text(encoding="utf-8").splitlines()))[1:]:
             if len(parts) >= 3 and float(parts[-1]) <= 0:
                 log(f"  ! stability.csv: для «{parts[0]}», мода {parts[1]} коэффициент равен 0 - результат расчёта на устойчивость не прочитан")
-    for f in out.glob("*_belts.csv"):
+    files = list(out.glob("*_belts.csv"))
+    zero = []
+    for f in files:
         rows = list(csv.reader(f.read_text(encoding="utf-8").splitlines()))[1:]
         if rows and all(float(x) == 0 for r in rows for x in r[1:]):
+            zero.append(f.name)
             log(f"  ! {f.name}: все напряжения равны 0 - результаты расчёта не прочитаны. "
                 "Откройте проект в Ansys, убедитесь что расчёт выполнен (зелёные галочки), сохраните и повторите.")
+    if files and len(zero) == len(files):          # ни один случай не решён: отчёт с нулями и «Выполнен» выпускать нельзя
+        why = []
+        if f0.exists():
+            why = sorted({ln.strip() for ln in f0.read_text(encoding="utf-8").splitlines() if "[Error]" in ln})
+        raise ConnectError("Расчёт в Ansys не выполнен ни для одного случая (напряжения по поясам равны 0), отчёт не формируется."
+                           + (" Сообщения Mechanical: " + "; ".join(why[:3]) if why else ""))
 
 
 # доли кадра (x0, y0, x1, y1): где в общем виде резервуара (камера: X вверх, вид сбоку сверху) нижний и верхний край стенки

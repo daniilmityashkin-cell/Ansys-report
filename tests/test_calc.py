@@ -340,6 +340,20 @@ def test_points_geometry_check_and_report(tmp_path):
     assert "Оценка отклонений по точкам" in text and "5 Выводы" in text
 
 
+def test_unsolved_ansys_results_stop_report(tmp_path):
+    """Все пояса нулевые (сетка не построилась, расчёт не шёл) - ошибка с причиной из лога, а не отчёт с «Выполнен»."""
+    import pytest
+    from ansys_report.ansys_connect import ConnectError, _report_problems
+    zero = "belt,fiber,equivalent,membrane\n1,0.00,0.00,0.00\n2,0.00,0.00,0.00\n"
+    for n in ("AR__Эксплуатация_belts.csv", "AR__Налив_7.2_м_belts.csv"):
+        (tmp_path / n).write_text(zero, encoding="utf-8")
+    (tmp_path / "log.txt").write_text("  сообщение [Error]: One or more faces failed to mesh in the meshing engine.\n", encoding="utf-8")
+    with pytest.raises(ConnectError, match="failed to mesh"):
+        _report_problems(tmp_path, log=lambda s: None)
+    (tmp_path / "AR__Эксплуатация_belts.csv").write_text("belt,fiber,equivalent,membrane\n1,5.0,6.0,3.0\n", encoding="utf-8")
+    _report_problems(tmp_path, log=lambda s: None)            # хотя бы один случай решён - только предупреждение
+
+
 def test_dent_zones_for_mesh_refinement():
     """Зона сгущения сетки у вмятины: дуга 20 м на R = 14,25 м -> угол 20/14,25 рад; радиус - полудиагональ участка
     с переходной зоной (±0,6 м + 2 шага по 0,3 м = ±1,2 м) плюс 200 мм."""
