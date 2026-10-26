@@ -8,7 +8,10 @@ set "WT=C:\ansys_report_work\diag_wt"
 for /f %%H in ('git rev-parse HEAD') do set "HEADSHA=%%H"
 git worktree prune >nul 2>&1
 if not exist "%WT%\.git" git worktree add --force --detach "%WT%" %HEADSHA% >nul 2>&1
+git -C "%WT%" fetch -q origin diag-logs >nul 2>&1
 git -C "%WT%" checkout -q -f -B diag-logs %HEADSHA%
+rem saved files (diag\report_30000.docx and the like) are carried over from the previous diag-logs; diag.txt and report.docx are replaced below
+git -C "%WT%" checkout origin/diag-logs -- diag >nul 2>&1
 if not exist "%WT%\diag" mkdir "%WT%\diag"
 (
 for %%F in ("%W%\out\log_build.txt" "%W%\out\log_loads.txt" "%W%\out\wb_status.txt" ) do (
@@ -35,8 +38,7 @@ for /r "%W%\Tank_model_files" %%F in (solve.out file0.err file.err *.err) do (
 if exist "%WT%\diag\report.docx" del "%WT%\diag\report.docx"
 for /r "%W%\report" %%F in (Report_*.docx) do copy /y "%%F" "%WT%\diag\report.docx" >nul
 pushd "%WT%"
-if exist diag\report.docx git add -f diag\report.docx
-git add -f diag\diag.txt
+git add -f -A diag
 git status --short
 git -c user.name=ansys-report -c user.email=ansys-report@local commit -m "diag logs"
 git push -f origin diag-logs
