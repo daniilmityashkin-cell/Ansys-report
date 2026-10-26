@@ -73,6 +73,22 @@ def analyze(project: dict) -> dict:
     }
 
 
+def dent_zones(project: dict, margin_mm: float = 200.0) -> list[dict]:
+    """Зоны сгущения сетки Ansys у вмятин: центр измеренного участка (x, y, z в мм, полярный угол как в STEP) и радиус сферы,
+    охватывающей участок с переходной зоной (два шага сетки замеров) и запасом margin_mm."""
+    model = rc.TankModel(project)
+    out = []
+    for d in model.defects:
+        s = d.sc + (d.x[0] + d.x[-1]) / 2.0 - d.xp                 # середина участка по дуге, м
+        z = d.zc + (d.y[0] + d.y[-1]) / 2.0 - d.yp
+        hw = (d.xx[-1] - d.xx[0]) / 2.0                             # полуширина и полувысота с переходной зоной, м
+        hh = (d.yy[-1] - d.yy[0]) / 2.0
+        th = s / model.R
+        out.append({"name": d.name, "x_mm": round(model.R * np.cos(th) * 1000, 1), "y_mm": round(model.R * np.sin(th) * 1000, 1),
+                    "z_mm": round(z * 1000, 1), "radius_mm": round(float(np.hypot(hw, hh)) * 1000 + margin_mm, 1)})
+    return out
+
+
 def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 50.0, log=lambda s: None) -> dict:
     """Модель для расчётного пакета: STEP, где КАЖДЫЙ пояс - своя грань (общие рёбра), и thickness_zones.csv по поясам.
     Нужна, чтобы Ansys выдавал результаты по поясам стенки (в отличие от файла для заказчика, где пояса одной толщины объединены)."""

@@ -297,12 +297,44 @@ def apdl_band():
     return u"\n".join(t)
 
 
-# --- сетка
+def mesh_dents():
+    """Сгущение сетки у вмятин (dents.json из пакета: центр и радиус сферы, мм): Sizing «сфера влияния» на тело.
+    ANSYS_REPORT_DENT_MESH_MM - размер элемента в зоне (100 по умолчанию, 0 - без сгущения). Сетка 200 мм занижает пик во вмятине на 7-19 %."""
+    import json
+    dsize = float(os.environ.get("ANSYS_REPORT_DENT_MESH_MM") or 100)
+    dp = os.path.join(pkg, "dents.json")
+    if dsize <= 0 or not os.path.exists(dp):
+        return 0
+    dents = json.loads(_rd(dp))
+    body = model.Geometry.GetChildren(DataModelObjectCategory.Body, True)[0]
+    sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
+    sel.Ids = [body.GetGeoBody().Id]
+    for k, d in enumerate(dents, 1):
+        cs = model.CoordinateSystems.AddCoordinateSystem()
+        cs.Name = u"AR вмятина %d" % k
+        cs.OriginDefineBy = CoordinateSystemAlignmentType.Fixed
+        cs.OriginX = Quantity(d["x_mm"], "mm")
+        cs.OriginY = Quantity(d["y_mm"], "mm")
+        cs.OriginZ = Quantity(d["z_mm"], "mm")
+        sz = model.Mesh.AddSizing()
+        sz.Name = u"AR сетка вмятины %d" % k
+        sz.Location = sel
+        sz.Type = SizingType.SphereOfInfluence
+        sz.SphereCenter = cs
+        sz.SphereRadius = Quantity(d["radius_mm"], "mm")
+        sz.ElementSize = Quantity(dsize, "mm")
+    bsay(u"Сгущение сетки у вмятин: %d зон, элемент %g мм" % (len(dents), dsize))
+    return len(dents)
+
 
 # --- сетка
 try:
     size = float(os.environ.get("ANSYS_REPORT_MESH_MM") or 200)
     model.Mesh.ElementSize = Quantity(size, "mm")
+    try:
+        mesh_dents()
+    except Exception as e:
+        bsay(u"Сгущение у вмятин не задано: %s" % e)
     model.Mesh.GenerateMesh()
     bsay(u"Сетка построена, размер элемента %g мм" % size)
 except Exception as e:

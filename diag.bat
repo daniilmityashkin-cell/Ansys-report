@@ -1,9 +1,15 @@
 @echo off
 rem Collects Ansys logs into diag\diag.txt and pushes them to branch diag-logs so the developer can read them.
+rem Logs are committed in a separate worktree (C:\ansys_report_work\diag_wt): the working copy and its branch stay untouched.
 setlocal
 cd /d "%~dp0"
 set "W=C:\ansys_report_work\model"
-if not exist diag mkdir diag
+set "WT=C:\ansys_report_work\diag_wt"
+for /f %%H in ('git rev-parse HEAD') do set "HEADSHA=%%H"
+git worktree prune >nul 2>&1
+if not exist "%WT%\.git" git worktree add --force --detach "%WT%" %HEADSHA% >nul 2>&1
+git -C "%WT%" checkout -q -f -B diag-logs %HEADSHA%
+if not exist "%WT%\diag" mkdir "%WT%\diag"
 (
 for %%F in ("%W%\out\log_build.txt" "%W%\out\log_loads.txt" "%W%\out\wb_status.txt" ) do (
   echo ===== %%~F =====
@@ -25,14 +31,14 @@ for /r "%W%\Tank_model_files" %%F in (solve.out file0.err file.err *.err) do (
     powershell -NoProfile -Command "Get-Content -LiteralPath '%%F' -Tail 80"
   )
 )
-) > diag\diag.txt 2>&1
-git checkout -B diag-logs >nul 2>&1
-if exist diag\report.docx del diag\report.docx
-for /r "%W%\report" %%F in (Report_*.docx) do copy /y "%%F" diag\report.docx >nul
+) > "%WT%\diag\diag.txt" 2>&1
+if exist "%WT%\diag\report.docx" del "%WT%\diag\report.docx"
+for /r "%W%\report" %%F in (Report_*.docx) do copy /y "%%F" "%WT%\diag\report.docx" >nul
+pushd "%WT%"
 if exist diag\report.docx git add -f diag\report.docx
 git add -f diag\diag.txt
 git status --short
 git -c user.name=ansys-report -c user.email=ansys-report@local commit -m "diag logs"
 git push -f origin diag-logs
+popd
 echo Logs sent (branch diag-logs).
-git checkout - >nul 2>&1

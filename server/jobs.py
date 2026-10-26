@@ -55,6 +55,12 @@ def _ansys_pack(gen: Path, project: dict, belts_dir: Path, dest: Path, title: st
     from ansys_report.loads.launcher import write_open_package
     md = write_open_package(dest, step, zones, loads_data,
                             anketa={"tag": title, "tank_name": title, "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
+    try:                                                           # вмятины: зоны сгущения сетки в Ansys (сфера влияния 100 мм)
+        dz = gcheck.dent_zones(project)
+        if dz:
+            (md / "dents.json").write_text(json.dumps(dz, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:   # noqa: BLE001
+        (md / "dents_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
     try:                                                           # каркас крыши и опорное кольцо (если заданы в файле проекта) - балочные элементы в Ansys
         from ansys_report.loads.beams import beams_package
         bp = beams_package(project, float(str(project["diameter"]).replace(",", ".")) * 500.0)

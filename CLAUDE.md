@@ -19,7 +19,7 @@
 - Без f-строк; `exec` только на уровне модуля; APDL через `AddCommandSnippet` (EXTRA_APDL начинается с `/PREP7`, заканчивается `/SOLU`).
 - Модель: одна оболочка из STEP (стенка по поясам + днище + окрайка + крыша), тела `p1..pN`, `dno`, `okrayka`, `krovlya`; именованные выборки `AR_WALL/AR_ROOF/AR_BOTTOM/AR_ANNULAR/AR_BASE_EDGE`.
 - Балки (BEAM188): каркас крыши и опорное кольцо из `beams.json`, ветровые кольца на границах поясов.
-- Окружение: `AR_WORK` (рабочая папка), `AR_NODIAG`, `AR_NOPAUSE`, `ANSYS_REPORT_MESH_MM` (200), `ANSYS_REPORT_HOME`.
+- Окружение: `AR_WORK` (рабочая папка), `AR_NODIAG`, `AR_NOPAUSE`, `ANSYS_REPORT_MESH_MM` (200), `ANSYS_REPORT_DENT_MESH_MM` (100: сгущение сферой у вмятин из `dents.json`, 0 - выкл.), `ANSYS_REPORT_HOME`.
 - Известные открытые вопросы: узел «стенка–крыша» (12-й пояс 150–210 МПа почти во всех случаях), линии сетки на картинках результатов (`prep_results_view`: `ExtraModelDisplay` через отражение).
 
 ## Проверки

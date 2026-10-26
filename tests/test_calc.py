@@ -340,6 +340,19 @@ def test_points_geometry_check_and_report(tmp_path):
     assert "Оценка отклонений по точкам" in text and "5 Выводы" in text
 
 
+def test_dent_zones_for_mesh_refinement():
+    """Зона сгущения сетки у вмятины: дуга 20 м на R = 14,25 м -> угол 20/14,25 рад; радиус - полудиагональ участка
+    с переходной зоной (±0,6 м + 2 шага по 0,3 м = ±1,2 м) плюс 200 мм."""
+    import math
+    import pytest
+    from ansys_report.geometry.check import dent_zones
+    z = dent_zones(_points_project())
+    assert len(z) == 1
+    th = 20.0 / 14.25
+    assert z[0]["x_mm"] == pytest.approx(14250 * math.cos(th), abs=0.1) and z[0]["y_mm"] == pytest.approx(14250 * math.sin(th), abs=0.1)
+    assert z[0]["z_mm"] == pytest.approx(6000.0) and z[0]["radius_mm"] == pytest.approx(1200 * math.sqrt(2) + 200, abs=0.1)
+
+
 def test_report_with_ideal_tank(tmp_path):
     """Результаты идеального РВС попадают в выводы и в таблицу устойчивости."""
     import docx
