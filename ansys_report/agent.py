@@ -16,9 +16,16 @@ WORK = Path(os.environ.get("ANSYS_REPORT_AGENT_DIR") or r"C:\ansys_report_work")
 SKIP_DIAG = {"AR_NODIAG": "1", "AR_NOPAUSE": "1"}
 
 
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)       # дочерние процессы без окна консоли (заказчик не должен видеть чёрные окна)
+
+
 def say(msg: str) -> None:
-    """Печатает в окно и дописывает в журнал помощника (C:\\ansys_report_work\\agent.log)."""
-    print(msg, flush=True)
+    """Печатает в окно (если оно есть) и дописывает в журнал помощника (C:\\ansys_report_work\\agent.log)."""
+    try:
+        if sys.stdout:                                  # под pythonw консоли нет
+            print(msg, flush=True)
+    except (OSError, ValueError):
+        pass
     try:
         WORK.mkdir(parents=True, exist_ok=True)
         with open(WORK / "agent.log", "a", encoding="utf-8") as f:
@@ -52,7 +59,7 @@ class Site:
         try:
             urllib.request.urlopen(req, timeout=30).read()
         except Exception as e:      # noqa: BLE001  - сбой связи не должен останавливать расчёт
-            print("(статус не отправлен:", e, ")")
+            say(f"(статус не отправлен: {e})")
 
     def download(self, dest: Path) -> None:
         with urllib.request.urlopen(self.url("package.zip"), timeout=300) as r, open(dest, "wb") as f:
@@ -85,7 +92,7 @@ def _ideal_cache(ideal_pkg: Path) -> Path:
 
 def _run_bat(bat: Path, env_extra: dict) -> int:
     env = dict(os.environ, **env_extra)
-    return subprocess.call(["cmd", "/c", str(bat)], cwd=str(bat.parent), env=env)
+    return subprocess.call(["cmd", "/c", str(bat)], cwd=str(bat.parent), env=env, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
 
 
 def run(link: str) -> int:
@@ -225,16 +232,44 @@ def _run(info: dict, site: "Site") -> int:
         return 1
 
 
+def _pythonw() -> str:
+    """pythonw.exe рядом с текущим python.exe (запуск без окна консоли); если нет - обычный python."""
+    exe = Path(sys.executable)
+    w = exe.with_name("pythonw.exe")
+    return str(w if w.exists() else exe)
+
+
+def popup(title: str, text: str) -> None:
+    """Окно сообщения Windows (когда консоли нет и показать ошибку иначе нечем)."""
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, text, title, 0x10)
+    except Exception:      # noqa: BLE001
+        pass
+
+
+def launch(link: str) -> int:
+    """Точка входа для ссылки ansysreport:// из браузера: работает без окна консоли; при ошибке - окно сообщения и журнал."""
+    try:
+        return run(link)
+    except Exception as e:      # noqa: BLE001
+        say(f"Ошибка запуска: {e}")
+        popup("ANSYS REPORT", f"Помощник не смог выполнить расчёт:\n{e}\n\nПодробности: {WORK / 'agent.log'}")
+        return 1
+
+
 def install() -> int:
     """Регистрирует ссылки ansysreport:// для текущего пользователя Windows (без прав администратора).
-    Помощник запускается из папки программы (иначе python не найдёт модуль) и при ошибке оставляет окно открытым."""
+    Помощник запускается через pythonw (без окна консоли) из папки программы; ошибки показываются окном сообщения и пишутся в agent.log."""
     import winreg
     home = str(Path(__file__).resolve().parent.parent)
-    cmd = f'cmd /c "cd /d "{home}" && "{sys.executable}" -m ansys_report agent "%1" || pause"'
+    boot = ("import os, sys; os.chdir(r'%s'); sys.path.insert(0, r'%s'); "
+            "from ansys_report import agent; sys.exit(agent.launch(sys.argv[1]))") % (home, home)
+    cmd = f'"{_pythonw()}" -c "{boot}" "%1"'
     key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\ansysreport")
     winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "URL:ANSYS REPORT")
     winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
     winreg.SetValue(winreg.HKEY_CURRENT_USER, r"Software\Classes\ansysreport\shell\open\command", winreg.REG_SZ, cmd)
-    print("Готово: ссылки «Собрать отчёт в Ansys» на сайте теперь открывают помощника.")
+    print("Готово: ссылки «Собрать отчёт в Ansys» на сайте теперь открывают помощника без окон.")
     print("Команда запуска:", cmd)
     return 0

@@ -88,9 +88,8 @@ def compute(gen_dir: str, title: str) -> dict:
         from ansys_report.loads.rvs_loads import compute as compute_loads
         pack_dir = gen / "result" / "loads"
         loads_res = compute_loads(json.loads(lp.read_text(encoding="utf-8")))
-        fill0 = float(loads_res["loads"]["hydrostatic_operation"]["fill_height_m"])
-        Hw = float(loads_res["inputs"]["H"])
-        levels = [lv for lv in (round(Hw * f, 1) for f in (0.4, 0.7, 0.95)) if abs(lv - fill0) > 0.5]     # серия уровней налива для допустимой высоты
+        from ansys_report.loads.export import report_fill_levels
+        levels = report_fill_levels(loads_res)                                                              # серия уровней налива для допустимой высоты
         pack = write_package(loads_res, pack_dir, fill_levels_m=levels)
         pack_ideal = write_package(loads_res, gen / "result" / "loads_ideal")                              # идеальный бак считается без серии уровней
         shutil.copy2(SCRIPTS / "apply_loads.py", pack_dir / "apply_loads.py")

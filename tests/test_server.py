@@ -534,3 +534,43 @@ def test_studio_thicknesses_required_profiles_and_edit(site):
     register(other, "b@example.com")
     assert other.get(f"/studio/edit/{gid}").status_code == 404
     assert TestClient(site).get(f"/studio/edit/{gid}").status_code in (303, 404)
+
+
+def test_loads3d_endpoints(site):
+    """Показ нагрузок на модели: сохранённые и введённые прямо сейчас (без записи), чужому недоступно."""
+    c = TestClient(site)
+    register(c)
+    gen = new_generation(c).headers["location"]
+    gid = gen.rsplit("/", 1)[1]
+    d = c.get(f"/g/{gid}/loads3d.json").json()
+    assert d["cases"][0]["name"] == "Эксплуатация" and len(d["cases"][0]["wall"]["p_kpa"]) == 96 and d["belts_m"][0] == 0.0
+    tok = csrf_of(c, gen)
+    live = c.post(f"/g/{gid}/loads3d.json", data={"csrf": tok, "l_fill": "3", "l_vac": "500"}).json()
+    assert live["cases"][0]["free_surface_m"] == 3.0 and any(x["id"] == "vacuum" and x["uniform_kpa"] < 0 for x in live["cases"])
+    assert c.post(f"/g/{gid}/loads3d.json", data={"csrf": "bad", "l_fill": "3"}).status_code == 400
+    assert c.post(f"/g/{gid}/loads3d.json", data={"csrf": tok, "l_fill": "999"}).status_code == 400          # налив выше стенки - понятная ошибка
+    other = TestClient(site)
+    register(other, "b@example.com")
+    assert other.get(f"/g/{gid}/loads3d.json").status_code == 404
+
+
+def test_studio_thickness_recognition(site):
+    """Толщины из документа: фраза, таблица docx, вставленный текст; без входа и без толщин - понятный отказ."""
+    import io
+    import docx
+    c = TestClient(site)
+    assert c.post("/studio/thickness", data={"csrf": "x"}).status_code in (400, 401)
+    register(c)
+    tok = re.search(r'data-csrf="([^"]+)"', c.get("/studio").text).group(1)
+    phrase = "Номинальные толщины стенки по поясам: с первого по второй – 16,0 мм; с третьего по четвертый – 15,0 мм."
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4", "text": phrase})
+    assert r.status_code == 200 and r.json()["columns"][0]["values"] == [16, 16, 15, 15]
+    d = docx.Document(); d.add_paragraph(phrase); buf = io.BytesIO(); d.save(buf)
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("паспорт.docx", buf.getvalue())})
+    assert r.status_code == 200 and r.json()["columns"][0]["values"] == [16, 16, 15, 15]
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "6", "text": phrase})              # число поясов не совпадает с замерами
+    assert r.status_code == 400 and "в замерах 6" in r.json()["error"]
+    assert c.post("/studio/thickness", data={"csrf": tok, "nz": "4", "text": "ничего полезного"}).status_code == 400
+    assert c.post("/studio/thickness", data={"csrf": "bad", "nz": "4", "text": phrase}).status_code == 400
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("scan.pdf", b"%PDF-1.4")})
+    assert r.status_code == 400 and "xlsx" in r.json()["error"]

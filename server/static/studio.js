@@ -9,6 +9,7 @@ const STEPS = 7;
 function thickOf(v) { const x = parseFloat(String(v === null || v === undefined ? "" : v).replace(",", ".").trim()); return isFinite(x) && x > 0 ? x : null; }
 const S = { D: 34.2, H: 12, angles: [], heights: [], values: [], thick: [], defects: [], raw: null, nozzles: [], title: "РВС-10000" };
 let step = 1;
+let titleTouched = false;                                       // название меняем по имени файла, пока его не правили руками
 
 function num(v, d) { const x = parseFloat(String(v).replace(",", ".").replace("−", "-").trim()); return isFinite(x) ? x : (d === undefined ? 0 : d); }
 function showErr(m) { const e = $("st-err"); e.textContent = m || ""; e.hidden = !m; if (m) e.scrollIntoView({ block: "center" }); }
@@ -59,6 +60,73 @@ $("grid").addEventListener("change", (e) => {
   else if (d.a !== undefined) S.angles[+d.a] = num(t.value);
   else if (d.z !== undefined) S.heights[+d.z] = num(t.value);
   else if (d.t !== undefined) S.thick[+d.t] = thickOf(t.value);
+  drawGrid();
+});
+/* быстрый ввод толщин: список, диапазоны («1-2=16; 3-4=15») или одно число для всех; столбец из Excel - вставкой в клетку */
+function parseThick(text, nz) {
+  const t = String(text || "").replace(/мм/gi, " ").replace(/[–—]/g, "-").trim();
+  if (!t) throw new Error("Введите толщины поясов.");
+  const out = Array(nz).fill(null);
+  if (/[=:]/.test(t)) {
+    t.split(/[;\n]+/).map((r) => r.trim()).filter((r) => r).forEach((r) => {
+      const m = r.match(/^(\d+)\s*(?:-\s*(\d+))?\s*[=:]\s*(\d+(?:[.,]\d+)?)$/);
+      if (!m) throw new Error("Не понял «" + r + "». Пример: 1-2=16; 3-4=15");
+      const a = +m[1], b = +(m[2] || m[1]), v = thickOf(m[3]);
+      if (a < 1 || b > nz || a > b || v === null) throw new Error("Пояса «" + r + "»: номера от 1 до " + nz + ", толщина больше нуля.");
+      for (let k = a; k <= b; k++) out[k - 1] = v;
+    });
+    const miss = out.map((v, k) => v === null ? k + 1 : 0).filter((k) => k);
+    if (miss.length) throw new Error("Не заданы пояса: " + miss.join(", "));
+    return out;
+  }
+  const nums = (t.match(/\d+(?:[.,]\d+)?/g) || []).map(thickOf);
+  if (nums.some((v) => v === null)) throw new Error("Толщина должна быть больше нуля.");
+  if (nums.length === 1) return out.fill(nums[0]);
+  if (nums.length !== nz) throw new Error("Указано толщин: " + nums.length + ", а поясов: " + nz + ". Введите ровно " + nz + " чисел, одно число для всех или диапазоны вида 1-2=16.");
+  return nums;
+}
+let thCols = [];
+function thMsg(m, bad) { const e = $("th-msg"); e.textContent = m || ""; e.className = "srcmsg" + (bad ? " bad" : ""); }
+function thUse(k, src) {
+  const c = thCols[k]; if (!c) return;
+  S.thick = c.values.slice(); showErr(""); drawGrid(); $("th-pick").hidden = true;
+  thMsg("Распознано из " + src + " (" + c.how + (thCols.length > 1 ? ", столбец «" + c.name + "»" : "") + "): " + c.values.length + " поясов. Проверьте значения в таблице.");
+}
+async function thAuto(file, text, src) {                           // распознавание документа на сервере; результат всегда показывается для проверки
+  const fd = new FormData(); fd.append("csrf", csrf); fd.append("nz", S.heights.length - 1); fd.append("text", text || "");
+  if (file) fd.append("doc", file);
+  thMsg("Читаю документ…");
+  const r = await fetch("/studio/thickness", { method: "POST", body: fd, credentials: "same-origin" }), d = await r.json();
+  if (!r.ok) { $("th-pick").hidden = true; thMsg(d.error || "Не удалось распознать", true); return false; }
+  thCols = d.columns;
+  if (thCols.length > 1) {
+    $("th-col").innerHTML = thCols.map((c, k) => "<option value=\"" + k + "\">" + c.name + ": " + c.values.join(" ") + "</option>").join(""); $("th-pick").hidden = false;
+    thMsg("В документе найдено столбцов: " + thCols.length + ". Выберите нужный (для прочности обычно берут минимальные толщины, для устойчивости — максимальные).");
+    thUse(0, src); $("th-pick").hidden = false;
+  } else thUse(0, src);
+  return true;
+}
+$("th-use").onclick = () => thUse(+$("th-col").value, "документа");
+$("th-file").onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await thAuto(f, "", "«" + f.name + "»"); } catch (er) { thMsg(er.message, true); } } };
+$("th-apply").onclick = async () => {
+  const txt = $("th-all").value;
+  thMsg(""); $("th-pick").hidden = true;
+  try { S.thick = parseThick(txt, S.heights.length - 1); showErr(""); drawGrid(); $("th-all").value = ""; return; }
+  catch (e) {
+    if (txt.trim().length < 25 || /^[\d\s.,;:=\-–]+$/.test(txt)) {                          // только числа и разделители - это список толщин, а не документ
+      showErr(e.message + (/Указано толщин/.test(e.message) ? " Число поясов задаётся полем «Отметок по высоте» (сейчас " + (S.heights.length - 1) + "): измените его и нажмите «Создать сетку»." : ""));
+      return;
+    }                                                                              // иначе это вставленный документ: пробуем распознать на сервере
+  }
+  try { if (await thAuto(null, txt, "вставленного текста")) $("th-all").value = ""; } catch (er) { thMsg(er.message, true); }
+};
+$("th-all").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("th-apply").click(); } });
+$("grid").addEventListener("paste", (e) => {
+  const t = e.target; if (!t.dataset || t.dataset.t === undefined) return;
+  const txt = (e.clipboardData || window.clipboardData).getData("text"), nums = (txt.match(/\d+(?:[.,]\d+)?/g) || []).map(thickOf);
+  if (nums.length < 2) return;                                    // одно число - обычная вставка в клетку
+  e.preventDefault();
+  nums.forEach((v, i) => { const k = +t.dataset.t + i; if (k < S.thick.length) S.thick[k] = v; });
   drawGrid();
 });
 $("b-grid").onclick = () => {
@@ -149,7 +217,7 @@ async function handleFile(f, sheet) {
   try {
     if (name.endsWith(".json")) {
       const p = JSON.parse((await f.text()).replace(/^\uFEFF/, "")); if (!p.angles || !p.values) throw new Error("В файле нет замеров (angles / values).");
-      loadProject(p); if (/^РВС-10000$|^$/.test($("p-title").value)) $("p-title").value = f.name.replace(/\.json$/i, "").replace(/^[0-9a-f]{8}-/, "");
+      loadProject(p); if (!titleTouched || !$("p-title").value.trim()) $("p-title").value = f.name.replace(/\.json$/i, "").replace(/^[0-9a-f]{8}-/, "");
       afterLoad("Проект загружен: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов, вмятин " + S.defects.length + ", патрубков " + $("nz-rows").children.length + ".");
     } else if (name.endsWith(".xlsx")) {
       say("Читаю файл…");
@@ -165,7 +233,7 @@ async function handleFile(f, sheet) {
       const keepD = d.need_dims ? $("p-D").value : d.diameter, keepH = d.need_dims ? $("p-H").value : d.height;
       loadProject(d.project); S.raw = null; S.D = num(keepD); S.H = num(keepH); $("p-D").value = keepD; $("p-H").value = keepH;
       S.heights = S.heights.map((_, k) => +(S.H * k / (S.heights.length - 1)).toFixed(4));
-      $("p-title").value = f.name.replace(/\.xlsx$/i, "").replace(/^[0-9a-f]{8}-/, "");
+      if (!titleTouched || !$("p-title").value.trim()) $("p-title").value = f.name.replace(/\.xlsx$/i, "").replace(/^[0-9a-f]{8}-/, "");
       if (d.need_thickness) S.thick = S.thick.map(() => null);
       afterLoad("Геодезия загружена: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов." + (d.need_dims ? " Проверьте диаметр, высоту и толщины поясов." : "") + (sheet ? " Лист «" + sheet + "» (можно выбрать другой ниже)." : ""), !!sheet || d.need_dims);
     } else throw new Error("Нужен файл .json (проект) или .xlsx (геодезия).");
@@ -186,14 +254,14 @@ function drawProfiles() {
   const nz = S.heights.length;
   S.angles.forEach((a, i) => {
     const wrap = document.createElement("div"); wrap.className = "prof";
-    const c = document.createElement("canvas"); c.width = 150; c.height = 240; wrap.appendChild(c);
+    const c = document.createElement("canvas"); c.width = 300; c.height = 480; wrap.appendChild(c);
     const lab = document.createElement("div"); lab.textContent = "№" + (i + 1) + " · " + a + "°"; wrap.appendChild(lab); box.appendChild(wrap);
-    const g = c.getContext("2d"), X = (v) => 75 + v / mx * 60, Y = (z) => 228 - z / S.H * 214;
-    g.strokeStyle = "#2a2e35"; g.beginPath(); g.moveTo(75, 8); g.lineTo(75, 232); g.stroke();
-    g.strokeStyle = "#ffb71b"; g.lineWidth = 1.6; g.beginPath();
+    const g = c.getContext("2d"), X = (v) => 150 + v / mx * 120, Y = (z) => 456 - z / S.H * 428;
+    g.strokeStyle = "#2a2e35"; g.beginPath(); g.moveTo(150, 16); g.lineTo(150, 464); g.stroke();
+    g.strokeStyle = "#ffb71b"; g.lineWidth = 3; g.beginPath();
     for (let j = 0; j < nz; j++) { const x = X(S.values[j][i]), y = Y(S.heights[j]); j ? g.lineTo(x, y) : g.moveTo(x, y); }
     g.stroke(); g.fillStyle = "#ff6b6b";
-    for (let j = 0; j < nz; j++) { g.beginPath(); g.arc(X(S.values[j][i]), Y(S.heights[j]), 2.4, 0, 6.3); g.fill(); }
+    for (let j = 0; j < nz; j++) { g.beginPath(); g.arc(X(S.values[j][i]), Y(S.heights[j]), 4.2, 0, 6.3); g.fill(); }
   });
 }
 
@@ -217,13 +285,15 @@ function drawDentMap(d) {
   for (let py = 0; py < Hh; py++) for (let px = 0; px < W; px++) { const v = Math.abs(f(px / (W - 1), 1 - py / (Hh - 1))) / mx, col = jet(v), k = 4 * (py * W + px); img.data[k] = col[0] * 255; img.data[k + 1] = col[1] * 255; img.data[k + 2] = col[2] * 255; img.data[k + 3] = 255; }
   g.putImageData(img, 0, 0);
   g.fillStyle = "rgba(255,255,255,.9)";                                   // точки измерений
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { g.beginPath(); g.arc(i / (nx - 1) * (W - 1), (1 - j / (ny - 1)) * (Hh - 1), 2.2, 0, 6.3); g.fill(); }
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { g.beginPath(); g.arc(i / (nx - 1) * (W - 1), (1 - j / (ny - 1)) * (Hh - 1), 3.6, 0, 6.3); g.fill(); }
   $("d-max").textContent = mx.toFixed(1) + " мм";
 }
+function r2(v) { const x = Number(v); return isFinite(x) ? String(Math.round(x * 100) / 100) : v; }
+function r4(v) { const x = Number(v); return isFinite(x) ? String(Math.round(x * 10000) / 10000) : v; }
 function drawDentGrid(d) {
   const ny = d.y.length, nx = d.x.length;
-  let h = "<tr><th>Z, м \\ x, м</th>" + d.x.map((x, i) => "<th>" + (i + 1) + "<br><span>" + x + "</span></th>").join("") + "</tr>";
-  for (let j = 0; j < ny; j++) { h += "<tr><th>" + d.y[j] + "</th>"; for (let i = 0; i < nx; i++) h += "<td><input data-j=\"" + j + "\" data-i=\"" + i + "\" value=\"" + d.values[j][i] + "\"></td>"; h += "</tr>"; }
+  let h = "<tr><th>Z, м \\ x, м</th>" + d.x.map((x, i) => "<th>" + (i + 1) + "<br><span>" + r4(x) + "</span></th>").join("") + "</tr>";
+  for (let j = 0; j < ny; j++) { h += "<tr><th>" + r4(d.y[j]) + "</th>"; for (let i = 0; i < nx; i++) h += "<td><input data-j=\"" + j + "\" data-i=\"" + i + "\" value=\"" + r2(d.values[j][i]) + "\"></td>"; h += "</tr>"; }
   $("d-grid").innerHTML = h;
 }
 function drawDents() {
@@ -516,7 +586,7 @@ function go(n) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 $("b-next").onclick = () => go(step + 1); $("b-prev").onclick = () => go(step - 1);
-$("p-title").onchange = readParams; $("p-D").onchange = readParams;
+$("p-title").oninput = () => { titleTouched = true; }; $("p-title").onchange = readParams; $("p-D").onchange = readParams;
 $("p-H").onchange = () => {                                    // меняем высоту: отметки пропорционально
   const old = S.H; readParams();
   if (old > 0 && S.H > 0 && S.H !== old) { S.heights = S.heights.map((z) => +(z * S.H / old).toFixed(4)); drawGrid(); }

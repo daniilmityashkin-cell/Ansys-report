@@ -166,7 +166,7 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
         timing.mark("WB выгрузка: запуск Workbench")
         runlog = out / "wb_run.log"
         with open(runlog, "w", encoding="utf-8", errors="replace") as lf:
-            proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=lf, stderr=subprocess.STDOUT, env=env)
+            proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=lf, stderr=subprocess.STDOUT, env=env, stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             started = time.time()
             while True:                      # сообщаем, что программа жива: Workbench работает без окна
                 try:
