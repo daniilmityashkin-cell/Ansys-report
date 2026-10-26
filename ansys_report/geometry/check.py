@@ -90,22 +90,25 @@ def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 50.0, 
     return {"step": step, "zones": zones, "belts": len(groups)}
 
 
-def export_wall_belts(project: dict, out_step: Path, tolerance_mm: float = 0.5, log=lambda s: None) -> int:
-    """Стенка для заказчика: фактическая поверхность, каждый пояс - отдельная грань (с толщиной), мелкая CAD-сетка."""
-    model = rc.TankModel(project)
+def make_cad_adaptive(model, tolerance_mm: float, log=lambda s: None):
+    """CAD-оболочка для крупного резервуара: если сетка по шагу замеров слишком большая, сначала растёт допуск, потом шаг CAD-сетки (50, 100, 200 мм)."""
     last = None
-    steps = [(t, None) for t in (0.5, 2.0, 10.0) if t >= tolerance_mm] + [(50.0, c) for c in (0.05, 0.1, 0.2)]       # крупный резервуар: сначала растёт допуск, потом шаг CAD-сетки (50, 100, 200 мм)
+    steps = [(t, None) for t in (0.1, 0.5, 2.0, 10.0) if t >= tolerance_mm] + [(50.0, c) for c in (0.05, 0.1, 0.2)]
     for tol, cell in steps:
         try:
             kw = {} if cell is None else {"max_nt": int(model.C / cell) + 1, "max_nz": int(model.H / cell) + 2}
-            poles, tu, tv, _ = rc.make_cad(model, tol, log, **kw)
-            break
+            return rc.make_cad(model, tol, log, **kw)
         except ValueError as e:
             if "слишком большая CAD" not in str(e):
                 raise
             last = e
-    else:
-        raise last
+    raise last
+
+
+def export_wall_belts(project: dict, out_step: Path, tolerance_mm: float = 0.5, log=lambda s: None) -> int:
+    """Стенка для заказчика: фактическая поверхность, каждый пояс - отдельная грань (с толщиной), мелкая CAD-сетка."""
+    model = rc.TankModel(project)
+    poles, tu, tv, _ = make_cad_adaptive(model, tolerance_mm, log)
     groups = [dict(index=b["number"], first_belt=b["number"], last_belt=b["number"], bottom_m=b["bottom_m"], top_m=b["top_m"], thickness_mm=b["thickness_mm"]) for b in model.bands]
     rc.step_write(Path(out_step), poles, tu, tv, groups)
     return len(groups)
@@ -116,7 +119,7 @@ def export_geometry(project: dict, out_dir: Path, tolerance_mm: float = 0.1, fmt
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     model = rc.TankModel(project)
-    poles, tu, tv, check = rc.make_cad(model, tolerance_mm, log)
+    poles, tu, tv, check = make_cad_adaptive(model, tolerance_mm, log)
     groups = rc.thickness_groups(model.bands)
     files = []
     if "STEP" in fmt:
