@@ -552,3 +552,25 @@ def test_loads3d_endpoints(site):
     other = TestClient(site)
     register(other, "b@example.com")
     assert other.get(f"/g/{gid}/loads3d.json").status_code == 404
+
+
+def test_studio_thickness_recognition(site):
+    """Толщины из документа: фраза, таблица docx, вставленный текст; без входа и без толщин - понятный отказ."""
+    import io
+    import docx
+    c = TestClient(site)
+    assert c.post("/studio/thickness", data={"csrf": "x"}).status_code in (400, 401)
+    register(c)
+    tok = re.search(r'data-csrf="([^"]+)"', c.get("/studio").text).group(1)
+    phrase = "Номинальные толщины стенки по поясам: с первого по второй – 16,0 мм; с третьего по четвертый – 15,0 мм."
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4", "text": phrase})
+    assert r.status_code == 200 and r.json()["columns"][0]["values"] == [16, 16, 15, 15]
+    d = docx.Document(); d.add_paragraph(phrase); buf = io.BytesIO(); d.save(buf)
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("паспорт.docx", buf.getvalue())})
+    assert r.status_code == 200 and r.json()["columns"][0]["values"] == [16, 16, 15, 15]
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "6", "text": phrase})              # число поясов не совпадает с замерами
+    assert r.status_code == 400 and "в замерах 6" in r.json()["error"]
+    assert c.post("/studio/thickness", data={"csrf": tok, "nz": "4", "text": "ничего полезного"}).status_code == 400
+    assert c.post("/studio/thickness", data={"csrf": "bad", "nz": "4", "text": phrase}).status_code == 400
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("scan.pdf", b"%PDF-1.4")})
+    assert r.status_code == 400 and "xlsx" in r.json()["error"]

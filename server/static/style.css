@@ -250,3 +250,9 @@ main:has(.studio){max-width:min(1900px,97vw);padding-left:clamp(12px,1.6vw,28px)
 .l3table{width:100%;margin:10px 0 4px;font-size:13.5px}.l3table td{padding:5px 8px;border-bottom:1px solid var(--line)}.l3table td:last-child{text-align:right;font-weight:600}
 #l3-info.bad{color:var(--bad)}
 @media(max-width:1100px){.loads-split{grid-template-columns:1fr}.l3col{position:static}}
+
+.thick-box{border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:10px 0;background:rgba(255,183,27,.04)}
+.thick-h{margin-bottom:10px}.thick-row{align-items:flex-start;gap:24px;margin-bottom:0}
+.thick-auto,.thick-man{display:flex;flex-direction:column;gap:8px;flex:1;min-width:300px}.thick-man{flex:1.4}
+.thick-t{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.thick-auto .filebtn{align-self:flex-start;white-space:normal}.thick-box .muted{font-size:12.5px}

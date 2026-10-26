@@ -85,9 +85,36 @@ function parseThick(text, nz) {
   if (nums.length !== nz) throw new Error("Указано толщин: " + nums.length + ", а поясов: " + nz + ". Введите ровно " + nz + " чисел, одно число для всех или диапазоны вида 1-2=16.");
   return nums;
 }
-$("th-apply").onclick = () => {
-  try { S.thick = parseThick($("th-all").value, S.heights.length - 1); showErr(""); drawGrid(); $("th-all").value = ""; }
-  catch (e) { showErr(e.message); }
+let thCols = [];
+function thMsg(m, bad) { const e = $("th-msg"); e.textContent = m || ""; e.className = "srcmsg" + (bad ? " bad" : ""); }
+function thUse(k, src) {
+  const c = thCols[k]; if (!c) return;
+  S.thick = c.values.slice(); showErr(""); drawGrid(); $("th-pick").hidden = true;
+  thMsg("Распознано из " + src + " (" + c.how + (thCols.length > 1 ? ", столбец «" + c.name + "»" : "") + "): " + c.values.length + " поясов. Проверьте значения в таблице.");
+}
+async function thAuto(file, text, src) {                           // распознавание документа на сервере; результат всегда показывается для проверки
+  const fd = new FormData(); fd.append("csrf", csrf); fd.append("nz", S.heights.length - 1); fd.append("text", text || "");
+  if (file) fd.append("doc", file);
+  thMsg("Читаю документ…");
+  const r = await fetch("/studio/thickness", { method: "POST", body: fd, credentials: "same-origin" }), d = await r.json();
+  if (!r.ok) { thMsg(d.error || "Не удалось распознать", true); return false; }
+  thCols = d.columns;
+  if (thCols.length > 1) {
+    $("th-col").innerHTML = thCols.map((c, k) => "<option value=\"" + k + "\">" + c.name + ": " + c.values.join(" ") + "</option>").join(""); $("th-pick").hidden = false;
+    thMsg("В документе найдено столбцов: " + thCols.length + ". Выберите нужный (для прочности обычно берут минимальные толщины, для устойчивости — максимальные).");
+    thUse(0, src); $("th-pick").hidden = false;
+  } else thUse(0, src);
+  return true;
+}
+$("th-use").onclick = () => thUse(+$("th-col").value, "документа");
+$("th-file").onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await thAuto(f, "", "«" + f.name + "»"); } catch (er) { thMsg(er.message, true); } } };
+$("th-apply").onclick = async () => {
+  const txt = $("th-all").value;
+  try { S.thick = parseThick(txt, S.heights.length - 1); showErr(""); thMsg(""); drawGrid(); $("th-all").value = ""; return; }
+  catch (e) {
+    if (txt.trim().length < 25) { showErr(e.message); return; }    // длинный текст - это вставленный документ, пробуем распознать на сервере
+  }
+  try { if (await thAuto(null, txt, "вставленного текста")) $("th-all").value = ""; } catch (er) { thMsg(er.message, true); }
 };
 $("th-all").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("th-apply").click(); } });
 $("grid").addEventListener("paste", (e) => {

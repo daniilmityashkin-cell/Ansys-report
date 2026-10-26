@@ -374,6 +374,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sp = d / "structure.json"
             return JSONResponse({"title": g.title, "project": project, "structure": json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None})
 
+    @app.post("/studio/thickness")
+    async def studio_thickness(request: Request, csrf: str = Form(""), nz: int = Form(0), text: str = Form(""), doc: UploadFile | None = File(None)):
+        """Толщины поясов из документа заказчика (xlsx / docx / txt) или вставленного текста. Только распознаёт: результат пользователь проверяет в таблице."""
+        bad = deny_csrf(request, csrf)
+        if bad:
+            return bad
+        with Session() as db:
+            if not current_user(request, db):
+                return JSONResponse({"error": "login"}, status_code=401)
+        try:
+            from .thickparse import parse_document, read_file
+            tables = []
+            if doc is not None and doc.filename:
+                raw = await doc.read(st.max_upload_bytes + 1)
+                if len(raw) > st.max_upload_bytes:
+                    return JSONResponse({"error": "Файл слишком большой."}, status_code=400)
+                text, tables = read_file(doc.filename, raw)
+            return JSONResponse(parse_document(text[:200000], tables, nz or None))
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": "Не удалось прочитать документ: " + str(e)[:150]}, status_code=400)
+
     @app.post("/studio/xlsx")
     async def studio_xlsx(request: Request, xlsx: UploadFile = File(...), sheet: str = Form(""), csrf: str = Form("")):
         bad = deny_csrf(request, csrf)
