@@ -62,3 +62,11 @@ def test_not_found_and_mismatch_are_explained():
 
 def test_implausible_values_ignored():
     assert tp.from_phrases("пояс 1: 1600 мм") == {}
+
+
+def test_phrase_from_real_report_t001():
+    """Фраза из правильного отчёта по Т-001 (РВС-9985): перечисление порядковыми словами и диапазоны вперемешку."""
+    txt = ("Номинальная толщина первого пояса стенки резервуара – 16,0 мм; второго – 14,0 мм, третьего – 13,0 мм, "
+           "с четвертого по восьмой – 12 мм, с девятого по двенадцатый – 11 мм.")
+    r = tp.parse_document(txt, n_belts=12)
+    assert r["columns"][0]["values"] == [16, 14, 13, 12, 12, 12, 12, 12, 11, 11, 11, 11]
