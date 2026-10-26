@@ -347,8 +347,12 @@ def test_ideal_cache_key_follows_inputs(tmp_path):
     (tmp_path / "loads_data.py").write_text("LOADS = {}", encoding="utf-8")
     k1 = _ideal_cache(tmp_path)
     assert _ideal_cache(tmp_path) == k1 and k1.suffix == ".json"
+    (tmp_path / "model.step").write_text("ISO-10303-21;\nHEADER;\nFILE_NAME('m','2026-10-27T01:31:41');\nENDSEC;\nDATA;\n#1=POINT;", encoding="utf-8")
+    k2 = _ideal_cache(tmp_path)
+    (tmp_path / "model.step").write_text("ISO-10303-21;\nHEADER;\nFILE_NAME('m','2026-10-28T09:00:00');\nENDSEC;\nDATA;\n#1=POINT;", encoding="utf-8")
+    assert _ideal_cache(tmp_path) == k2                     # другое время в заголовке STEP - тот же ключ
     (tmp_path / "loads_data.py").write_text("LOADS = {'snow': 1}", encoding="utf-8")
-    assert _ideal_cache(tmp_path) != k1
+    assert _ideal_cache(tmp_path) != k2
 
 
 def test_agent_lock_blocks_second_run(tmp_path, monkeypatch):

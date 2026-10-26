@@ -75,7 +75,11 @@ def _ideal_cache(ideal_pkg: Path) -> Path:
     scripts = Path(__file__).resolve().parent.parent / "ansys_scripts"
     for f in sorted([p for p in ideal_pkg.rglob("*") if p.is_file()]) + sorted(scripts.glob("*.py")):
         h.update(f.name.encode("utf-8"))
-        h.update(f.read_bytes())
+        data = f.read_bytes()
+        if f.suffix.lower() in (".step", ".stp"):              # в заголовке STEP - время создания файла: хэшируем только геометрию
+            i = data.find(b"DATA;")
+            data = data[i:] if i >= 0 else data
+        h.update(data)
     return WORK / "ideal_cache" / (h.hexdigest()[:32] + ".json")
 
 
