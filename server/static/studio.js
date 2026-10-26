@@ -62,6 +62,42 @@ $("grid").addEventListener("change", (e) => {
   else if (d.t !== undefined) S.thick[+d.t] = thickOf(t.value);
   drawGrid();
 });
+/* быстрый ввод толщин: список, диапазоны («1-2=16; 3-4=15») или одно число для всех; столбец из Excel - вставкой в клетку */
+function parseThick(text, nz) {
+  const t = String(text || "").replace(/мм/gi, " ").replace(/[–—]/g, "-").trim();
+  if (!t) throw new Error("Введите толщины поясов.");
+  const out = Array(nz).fill(null);
+  if (/[=:]/.test(t)) {
+    t.split(/[;\n]+/).map((r) => r.trim()).filter((r) => r).forEach((r) => {
+      const m = r.match(/^(\d+)\s*(?:-\s*(\d+))?\s*[=:]\s*(\d+(?:[.,]\d+)?)$/);
+      if (!m) throw new Error("Не понял «" + r + "». Пример: 1-2=16; 3-4=15");
+      const a = +m[1], b = +(m[2] || m[1]), v = thickOf(m[3]);
+      if (a < 1 || b > nz || a > b || v === null) throw new Error("Пояса «" + r + "»: номера от 1 до " + nz + ", толщина больше нуля.");
+      for (let k = a; k <= b; k++) out[k - 1] = v;
+    });
+    const miss = out.map((v, k) => v === null ? k + 1 : 0).filter((k) => k);
+    if (miss.length) throw new Error("Не заданы пояса: " + miss.join(", "));
+    return out;
+  }
+  const nums = (t.match(/\d+(?:[.,]\d+)?/g) || []).map(thickOf);
+  if (nums.some((v) => v === null)) throw new Error("Толщина должна быть больше нуля.");
+  if (nums.length === 1) return out.fill(nums[0]);
+  if (nums.length !== nz) throw new Error("Указано толщин: " + nums.length + ", а поясов: " + nz + ". Введите ровно " + nz + " чисел, одно число для всех или диапазоны вида 1-2=16.");
+  return nums;
+}
+$("th-apply").onclick = () => {
+  try { S.thick = parseThick($("th-all").value, S.heights.length - 1); showErr(""); drawGrid(); $("th-all").value = ""; }
+  catch (e) { showErr(e.message); }
+};
+$("th-all").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("th-apply").click(); } });
+$("grid").addEventListener("paste", (e) => {
+  const t = e.target; if (!t.dataset || t.dataset.t === undefined) return;
+  const txt = (e.clipboardData || window.clipboardData).getData("text"), nums = (txt.match(/\d+(?:[.,]\d+)?/g) || []).map(thickOf);
+  if (nums.length < 2) return;                                    // одно число - обычная вставка в клетку
+  e.preventDefault();
+  nums.forEach((v, i) => { const k = +t.dataset.t + i; if (k < S.thick.length) S.thick[k] = v; });
+  drawGrid();
+});
 $("b-grid").onclick = () => {
   loaded = false;
   const ng = Math.max(3, Math.min(120, Math.round(num($("p-ng").value, 18)))), nz = Math.max(1, Math.min(60, Math.round(num($("p-nz").value, 9))));

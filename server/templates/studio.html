@@ -19,6 +19,9 @@
 <button type="button" class="btn light" id="b-grid">Создать сетку</button>
 </div>
 <div class="st-row"><button type="button" class="btn light" id="b-ideal">Идеальный резервуар (без замеров)</button><span class="muted st-hint" style="margin:0">Если замеров нет, можно считать без отклонений.</span></div>
+<div class="st-row thick-row"><label style="flex:3;min-width:320px">Толщины поясов, мм — вставьте списком снизу вверх (1-й пояс первым)<input type="text" id="th-all" autocomplete="off" placeholder="16 16 15 15 14 14 13 13 12 12 11 11   ·   или   1-2=16; 3-4=15; 5-12=12   ·   или одно число для всех"></label>
+<button type="button" class="btn light" id="th-apply">Применить</button></div>
+<p class="muted st-hint" id="th-hint">Где взять: паспорт резервуара (таблица поясов), чертежи КМ или отчёт толщинометрии. Столбец из Excel можно вставить прямо в первую клетку колонки «t, мм».</p>
 <p class="muted st-hint">Отклонения стенки, мм: «+» наружу, «−» внутрь. Верхняя строка — углы, °; левый столбец — отметки по высоте, м. Значения можно править в ячейках или вставить блоком из Excel.</p>
 <div class="tablewrap"><table class="st-grid" id="grid"></table></div>
 <div class="st-foot"><span class="muted">Допуск и расчёт ведутся в мм.</span><span id="fill-count" class="muted"></span></div>
