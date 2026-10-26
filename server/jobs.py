@@ -62,7 +62,9 @@ def _ansys_pack(gen: Path, project: dict, belts_dir: Path, dest: Path, title: st
     except Exception as e:   # noqa: BLE001
         (md / "dents_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
     try:                                                           # каркас крыши и опорное кольцо (если заданы в файле проекта) - балочные элементы в Ansys
-        from ansys_report.loads.beams import beams_package
+        from ansys_report.loads.beams import beams_package, with_structure_sections
+        sp = gen / "structure.json"
+        project = with_structure_sections(project, json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None)
         bp = beams_package(project, float(str(project["diameter"]).replace(",", ".")) * 500.0)
         if bp:
             (md / "beams.json").write_text(json.dumps(bp, ensure_ascii=False), encoding="utf-8")

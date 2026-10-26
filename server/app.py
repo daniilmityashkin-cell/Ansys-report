@@ -344,6 +344,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse("/login", status_code=303)
             return render(request, "studio.html", u, f={**DEFAULTS, **SDEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS, **SCTX)
 
+    @app.get("/studio/profiles.json")
+    def studio_profiles():
+        from ansys_report.loads.profiles import catalog_names
+        return JSONResponse({"names": catalog_names()})
+
+    @app.get("/studio/profile")
+    def studio_profile(label: str = ""):
+        """Свойства сечения по подписи (подсказка под полем в студии)."""
+        from ansys_report.loads.profiles import parse_profile
+        try:
+            p = parse_profile(label[:80])
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse(p)
+
+    @app.get("/studio/edit/{gid}")
+    def studio_edit(request: Request, gid: int):
+        """Генерация для правки: замеры и конструкция возвращаются в студию (новая генерация создаётся при «Создать модель», старая остаётся)."""
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "Не найдено"}, status_code=404)
+            d = gen_dir(g.id)
+            try:
+                project = json.loads((d / "input.json").read_text(encoding="utf-8-sig"))
+            except Exception:   # noqa: BLE001
+                return JSONResponse({"error": "Файл замеров не найден."}, status_code=404)
+            sp = d / "structure.json"
+            return JSONResponse({"title": g.title, "project": project, "structure": json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None})
+
     @app.post("/studio/xlsx")
     async def studio_xlsx(request: Request, xlsx: UploadFile = File(...), sheet: str = Form(""), csrf: str = Form("")):
         bad = deny_csrf(request, csrf)
@@ -372,7 +402,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             rows = _cells(table)
             n_belts = len(rows[0]) if rows else 0
             proj = build_project(dia or "30", hei or "18", table, " ".join(["10"] * n_belts), "gens") if n_belts else None
-            return JSONResponse({"project": proj, "diameter": dia, "height": hei, "need_dims": not dia})
+            for b in (proj or {}).get("bands", []):
+                b[1] = ""                                             # толщин в геодезии нет: их вводит пользователь, подставлять нельзя
+            return JSONResponse({"project": proj, "diameter": dia, "height": hei, "need_dims": not dia, "need_thickness": True})
         except Exception as e:  # noqa: BLE001
             return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -390,13 +422,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return JSONResponse({"error": "login"}, status_code=401)
             try:
                 project = body["project"]
+                from .tableinput import require_thicknesses
+                require_thicknesses(project)
                 summary = _preview(project)
                 from .structinput import build_structure, structure_from_project
                 D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
                 if body.get("struct_source") == "project":
                     structure = structure_from_project(project)
                 else:
-                    structure = build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H)
+                    structure = build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H, project)
                 lform = {k: str(v) for k, v in (body.get("loads") or {}).items() if k.startswith("l_")}
                 from .loadsinput import build_loads_input
                 loads_in = build_loads_input(lform, project) if lform.get("l_on") else None
@@ -410,7 +444,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def _step_struct(body: dict, project: dict):
         from .structinput import build_structure
         D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
-        return build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H)
+        return build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H, project)
 
     @app.post("/studio/step")
     async def studio_step(request: Request):
@@ -429,6 +463,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"error": "Предыдущая модель ещё строится. Подождите минуту."}, status_code=429)
         try:
             project = body["project"]
+            from .tableinput import require_thicknesses
+            require_thicknesses(project)
             _preview(project)
             structure = _step_struct(body, project)
         except Exception as e:  # noqa: BLE001

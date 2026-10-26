@@ -40,6 +40,39 @@ def wind_rings(project: dict) -> list[dict]:
     return out
 
 
+def with_structure_sections(project: dict, structure: dict | None) -> dict:
+    """Конструкция, введённая в студии (structure.json: крыша, узлы, сечения балок с готовыми свойствами), дополняет проект до формата файла «РВС Геометрия»,
+    который читает beams_package. Сечения и параметры крыши из студии имеют приоритет: пользователь мог заменить профиль после загрузки файла."""
+    st = structure or {}
+    roof = st.get("roof")
+    if not roof or not st.get("beam_sections"):
+        return project
+    out = dict(project)
+    r = dict(out.get("roof") or {})
+    r.update(enabled=True, radial_count=roof.get("radial_count", r.get("radial_count", 0)), ring_count=roof.get("ring_count", r.get("ring_count", 0)),
+             central_radius_m=roof.get("central_radius_m", r.get("central_radius_m", 0)), first_angle_deg=roof.get("first_angle_deg", r.get("first_angle_deg", 0)))
+    out["roof"] = r
+    nodes = st.get("roof_nodes")
+    if nodes and not (out.get("roof_nodes") or {}).get("enabled"):
+        out["roof_nodes"] = {"enabled": True, **{k: v for k, v in nodes.items()}}
+    props = {g["group"]: g.get("props") for g in st["beam_sections"] if g.get("props")}
+    bs = dict(out.get("beam_sections") if isinstance(out.get("beam_sections"), dict) else {})
+    def put(key, p):                                               # профиль из файла проекта (с тем же именем) оставляем: у колец он может быть разным по номерам
+        if not (isinstance(bs.get(key), dict) and bs[key].get("name") == p.get("name")):
+            bs[key] = p
+    for group, key in (("Радиальные балки", "radial"), ("Центральное кольцо", "central_ring"), ("Периферийный швеллер", "channel")):
+        if props.get(group):
+            put(key, props[group])
+    if props.get("Кольцевые балки"):
+        ring = props["Кольцевые балки"]
+        changed = not (isinstance(bs.get("hoop_1"), dict) and bs["hoop_1"].get("name") == ring.get("name"))      # подпись в студии - это имя кольца №1
+        for j in range(1, int(float(r.get("ring_count", 0))) + 1):
+            if changed or not isinstance(bs.get(f"hoop_{j}"), dict):
+                bs[f"hoop_{j}"] = ring
+    out["beam_sections"] = bs
+    return out
+
+
 def beams_package(project: dict, wall_radius_mm: float) -> dict | None:
     """None, если в проекте нет крыши с каркасом (сечения заданы только подписями - такие данные в файле программы геометрии есть, в ручном вводе нет)."""
     bs, roof = project.get("beam_sections"), project.get("roof")

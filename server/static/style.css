@@ -215,3 +215,6 @@ details.blk{border:1px solid var(--line);border-radius:12px;padding:8px 14px;mar
 .st-step[data-step="5"] .st-view canvas{height:640px}.st-step[data-step="5"] .st-view{min-height:640px}
 @media(max-width:1000px){.nzgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .st-view{display:flex}.st-view canvas{flex:1;height:auto!important;min-height:560px;width:100%}
+
+.st-grid input.need{background:rgba(229,85,85,.22);outline:1px solid #e55}
+.prof-info{display:block;margin-top:4px;font-size:11.5px;color:var(--muted);line-height:1.35}.prof-info.bad{color:#ff8a80}

@@ -83,8 +83,8 @@
 <div class="grid2"><label>Круг. пластина: высота, мм<input type="text" id="s_node_ring_h" value="{{ f.s_node_ring_h }}"></label><label>Круг. пластина: толщина, мм<input type="text" id="s_node_ring_t" value="{{ f.s_node_ring_t }}"></label>
 <label>Верхние: длина, мм<input type="text" id="s_node_up_l" value="{{ f.s_node_up_l }}"></label><label>Верхние: высота, мм<input type="text" id="s_node_up_h" value="{{ f.s_node_up_h }}"></label><label>Верхние: толщина, мм<input type="text" id="s_node_up_t" value="{{ f.s_node_up_t }}"></label>
 <label>Нижние: длина, мм<input type="text" id="s_node_lo_l" value="{{ f.s_node_lo_l }}"></label><label>Нижние: высота, мм<input type="text" id="s_node_lo_h" value="{{ f.s_node_lo_h }}"></label><label>Нижние: толщина, мм<input type="text" id="s_node_lo_t" value="{{ f.s_node_lo_t }}"></label></div>
-<div class="grid2"><label>Радиальные балки<input type="text" id="s_beam_radial" value="{{ f.s_beam_radial }}"></label><label>Центральное кольцо<input type="text" id="s_beam_central" value="{{ f.s_beam_central }}"></label>
-<label>Кольцевые балки<input type="text" id="s_beam_rings" value="{{ f.s_beam_rings }}"></label><label>Периферийный швеллер<input type="text" id="s_beam_edge" value="{{ f.s_beam_edge }}"></label></div></details>
+<div class="grid2"><label>Радиальные балки<input type="text" id="s_beam_radial" list="prof-list" autocomplete="off" value="{{ f.s_beam_radial }}"><small class="prof-info" id="pi_s_beam_radial"></small></label><label>Центральное кольцо<input type="text" id="s_beam_central" list="prof-list" autocomplete="off" value="{{ f.s_beam_central }}"><small class="prof-info" id="pi_s_beam_central"></small></label>
+<label>Кольцевые балки<input type="text" id="s_beam_rings" list="prof-list" autocomplete="off" value="{{ f.s_beam_rings }}"><small class="prof-info" id="pi_s_beam_rings"></small></label><label>Периферийный швеллер<input type="text" id="s_beam_edge" list="prof-list" autocomplete="off" value="{{ f.s_beam_edge }}"><small class="prof-info" id="pi_s_beam_edge"></small></label></div></details>
 <details class="blk"><summary>Патрубки стенки</summary>
 <div id="nz-rows"></div><p><button type="button" class="btn light" id="nz-add">+ Добавить патрубок</button></p>
 <p class="muted st-hint">Ось горизонтальная, радиальная. Угол — от образующей №1.</p></details>
@@ -115,6 +115,7 @@
 <button type="button" class="btn" id="b-next">Далее →</button></div>
 <div class="err" id="st-err" hidden></div>
 </div>
+<datalist id="prof-list"></datalist>
 <script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
 <script type="module" src="/static/studio.js?v={{ asset_v }}"></script>
 {% endblock %}

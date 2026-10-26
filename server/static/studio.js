@@ -6,6 +6,7 @@ const root = document.getElementById("studio");
 const $ = (id) => document.getElementById(id);
 const csrf = root.dataset.csrf;
 const STEPS = 7;
+function thickOf(v) { const x = parseFloat(String(v === null || v === undefined ? "" : v).replace(",", ".").trim()); return isFinite(x) && x > 0 ? x : null; }
 const S = { D: 34.2, H: 12, angles: [], heights: [], values: [], thick: [], defects: [], raw: null, nozzles: [], title: "РВС-10000" };
 let step = 1;
 
@@ -20,7 +21,7 @@ function makeGrid(ng, nz) {
   S.angles = Array.from({ length: ng }, (_, i) => +(360 * i / ng).toFixed(4));
   S.heights = Array.from({ length: nz + 1 }, (_, k) => +(S.H * k / nz).toFixed(4));
   S.values = Array.from({ length: nz + 1 }, () => Array(ng).fill(0));
-  S.thick = Array(nz).fill(10);
+  S.thick = Array(nz).fill(null);                                // толщины обязательны: молча подставлять нельзя
 }
 function resizeTo(ng, nz) {                                   // меняем размер сетки, сохраняя совпадающие ячейки
   const old = S.values, ot = S.thick;
@@ -45,7 +46,7 @@ function drawGrid() {
       const bg = k > 0 ? "rgba(255,90,70," + Math.min(.75, k * .75) + ")" : k < 0 ? "rgba(70,130,255," + Math.min(.75, -k * .75) + ")" : "transparent";
       h += "<td style=\"background:" + bg + "\"><input data-j=\"" + j + "\" data-i=\"" + i + "\" value=\"" + v + "\"></td>";
     }
-    h += j === 0 ? "<td class=\"muted\">—</td>" : "<td><input data-t=\"" + (j - 1) + "\" value=\"" + S.thick[j - 1] + "\"></td>";
+    h += j === 0 ? "<td class=\"muted\">—</td>" : "<td><input data-t=\"" + (j - 1) + "\" value=\"" + (S.thick[j - 1] === null || S.thick[j - 1] === undefined ? "" : S.thick[j - 1]) + "\"" + (thickOf(S.thick[j - 1]) === null ? " class=\"need\" placeholder=\"?\"" : "") + "></td>";
     h += "</tr>";
   }
   $("grid").innerHTML = h;
@@ -57,7 +58,7 @@ $("grid").addEventListener("change", (e) => {
   if (d.j !== undefined) S.values[+d.j][+d.i] = num(t.value);
   else if (d.a !== undefined) S.angles[+d.a] = num(t.value);
   else if (d.z !== undefined) S.heights[+d.z] = num(t.value);
-  else if (d.t !== undefined) S.thick[+d.t] = num(t.value, 10);
+  else if (d.t !== undefined) S.thick[+d.t] = thickOf(t.value);
   drawGrid();
 });
 $("b-grid").onclick = () => {
@@ -106,7 +107,7 @@ function loadProject(p) {
   S.D = num(p.diameter); S.H = num(p.height);
   S.angles = (p.angles || []).map(Number); S.heights = (p.heights || []).map(Number);
   S.values = (p.values || []).map((r) => r.map(Number));
-  S.thick = (p.bands || []).map((b) => num(b[1], 10));
+  S.thick = (p.bands || []).map((b) => thickOf(b[1]));
   S.defects = p.defects || [];
   $("p-D").value = S.D; $("p-H").value = S.H; $("p-ng").value = S.angles.length; $("p-nz").value = S.heights.length - 1;
   const ex = p.export_selection;                              // что входит в модель — видимость на шаге 5
@@ -137,7 +138,7 @@ function loadProject(p) {
 let loaded = false;
 function say(msg, bad) { const e = $("src-msg"); e.textContent = msg; e.className = "srcmsg" + (bad ? " bad" : ""); }
 function afterLoad(msg, stay) {
-  loaded = true; readParams(); drawGrid(); showErr(""); say(msg);
+  loaded = true; readParams(); drawGrid(); showErr(""); say(msg); if (typeof refreshProfiles === "function") refreshProfiles();
   if (!stay) setTimeout(() => { if (step === 1) go(2); }, 900);             // всё остальное строится само: сразу показываем отклонения образующих
 }
 let lastFile = null;
@@ -165,6 +166,7 @@ async function handleFile(f, sheet) {
       loadProject(d.project); S.raw = null; S.D = num(keepD); S.H = num(keepH); $("p-D").value = keepD; $("p-H").value = keepH;
       S.heights = S.heights.map((_, k) => +(S.H * k / (S.heights.length - 1)).toFixed(4));
       $("p-title").value = f.name.replace(/\.xlsx$/i, "").replace(/^[0-9a-f]{8}-/, "");
+      if (d.need_thickness) S.thick = S.thick.map(() => null);
       afterLoad("Геодезия загружена: " + S.angles.length + " образующих, " + (S.heights.length - 1) + " поясов." + (d.need_dims ? " Проверьте диаметр, высоту и толщины поясов." : "") + (sheet ? " Лист «" + sheet + "» (можно выбрать другой ниже)." : ""), !!sheet || d.need_dims);
     } else throw new Error("Нужен файл .json (проект) или .xlsx (геодезия).");
   } catch (er) { say(er.message, true); showErr(er.message); }
@@ -398,6 +400,26 @@ function applyVis() { const v = views["cv-struct"]; if (!v) return; const map = 
 ["v-wall", "v-roof", "v-bottom", "v-nozzles"].forEach((id) => { $(id).onchange = applyVis; });
 document.querySelector(".st-step[data-step='5']").addEventListener("change", (e) => { if (e.target.id !== undefined && !e.target.id.startsWith("v-")) showStruct(); });
 
+/* ---------- сечения балок: каталог профилей ---------- */
+const BEAM_IDS = ["s_beam_radial", "s_beam_central", "s_beam_rings", "s_beam_edge"];
+function fmtN(v) { return String(Math.round(v * 100) / 100).replace(".", ","); }
+async function profInfo(id) {
+  const el = $(id), out = $("pi_" + id); if (!el || !out) return;
+  const label = el.value.trim(); out.className = "prof-info";
+  if (!label) { out.textContent = "Выберите профиль из списка или задайте габариты"; out.classList.add("bad"); return; }
+  const own = S.raw && S.raw.beam_sections ? Object.values(S.raw.beam_sections).find((x) => x && (x.name === label || x.label === label)) : null;
+  if (own) { const c = own.computed || own.reference || {}; out.textContent = "из файла проекта: A = " + fmtN(c.area_cm2) + " см², Ix = " + fmtN(c.Ix_cm4) + " см⁴, Iy = " + fmtN(c.Iy_cm4) + " см⁴"; return; }
+  try {
+    const r = await fetch("/studio/profile?label=" + encodeURIComponent(label), { credentials: "same-origin" }), d = await r.json();
+    if (el.value.trim() !== label) return;
+    if (!r.ok) { out.textContent = d.error || "Профиль не распознан"; out.classList.add("bad"); return; }
+    out.textContent = d.name + ": A = " + fmtN(d.area_cm2) + " см², Ix = " + fmtN(d.Ix_cm4) + " см⁴, Iy = " + fmtN(d.Iy_cm4) + " см⁴ · " + d.source;
+  } catch (e) { out.textContent = ""; }
+}
+BEAM_IDS.forEach((id) => { const el = $(id); if (el) { el.addEventListener("change", () => profInfo(id)); el.addEventListener("input", () => { clearTimeout(el._t); el._t = setTimeout(() => profInfo(id), 450); }); } });
+fetch("/studio/profiles.json", { credentials: "same-origin" }).then((r) => r.json()).then((d) => { $("prof-list").innerHTML = (d.names || []).map((n) => "<option value=\"" + n + "\">").join(""); }).catch(() => {});
+function refreshProfiles() { BEAM_IDS.forEach(profInfo); }
+
 /* ---------- шаг 6: ветровые кольца ---------- */
 function ringHeights() { return $("r-h").value.split(/[\s;,]+/).map((x) => num(x, NaN)).filter((x) => isFinite(x) && x > 0 && x < S.H); }
 function showRings() {
@@ -447,7 +469,7 @@ function buildProject() {
   const p = Object.assign({}, S.raw || {}, {
     version: S.raw ? S.raw.version : "1.0", diameter: String(S.D), height: String(S.H), angles: S.angles, heights: S.heights,
     values: S.values.map((r) => r.map((v) => String(v))),
-    bands: Array.from({ length: nz }, (_, k) => [String(+(S.heights[k + 1] - S.heights[k]).toFixed(6)), String(S.thick[k])]),
+    bands: Array.from({ length: nz }, (_, k) => [String(+(S.heights[k + 1] - S.heights[k]).toFixed(6)), String(thickOf(S.thick[k]) === null ? "" : S.thick[k])]),
     defects: S.defects, contour_threshold: S.raw ? S.raw.contour_threshold : "0.1", wall_includes_defects: S.raw ? S.raw.wall_includes_defects : !S.defects.length
   });
   const rg = ringHeights(); if (rg.length) p.wind_rings = rg.map((h) => ({ h, flange: $("r-fl").value })); else delete p.wind_rings;
@@ -478,6 +500,8 @@ function validate1() {
   readParams();
   if (S.angles.length < 3) throw new Error("Нужно минимум 3 образующие. Нажмите «Создать сетку» или загрузите данные.");
   if (!(S.D > 0 && S.H > 0)) throw new Error("Укажите диаметр и высоту.");
+  const bad = S.thick.map((t, k) => thickOf(t) === null ? k + 1 : 0).filter((k) => k);
+  if (bad.length) { drawGrid(); throw new Error("Введите толщину каждого пояса, мм (колонка «t, мм» справа в таблице): не заполнены пояса " + bad.join(", ") + ". Толщины берутся из паспорта резервуара или толщинометрии — от них зависят напряжения в отчёте."); }
   if (countFilled() === 0 && !loaded) throw new Error("Замеры не заданы. Перетащите файл (проект .json или геодезию .xlsx), вставьте таблицу из Excel или нажмите «Идеальный резервуар».");
 }
 function go(n) {
@@ -498,3 +522,26 @@ $("p-H").onchange = () => {                                    // меняем �
   if (old > 0 && S.H > 0 && S.H !== old) { S.heights = S.heights.map((z) => +(z * S.H / old).toFixed(4)); drawGrid(); }
 };
 makeGrid(18, 9); drawGrid(); readParams(); go(1);
+
+/* ---------- «Изменить геометрию»: возвращаем замеры и конструкцию сохранённой генерации в студию ---------- */
+function applyStructure(st) {
+  const bt = st.bottom, rf = st.roof;
+  $("s_bot_on").checked = !!bt; $("s_roof_on").checked = !!rf; $("s_node_on").checked = !!st.roof_nodes;
+  loadProject(Object.assign({}, S.raw, { bottom: bt || undefined, roof: rf || undefined, roof_nodes: st.roof_nodes || undefined, beam_sections: undefined }));
+  const lab = {}; (st.beam_sections || []).forEach((g) => { lab[g.group] = g.section; });
+  [["s_beam_radial", "Радиальные балки"], ["s_beam_central", "Центральное кольцо"], ["s_beam_rings", "Кольцевые балки"], ["s_beam_edge", "Периферийный швеллер"]].forEach(([id, g]) => { if (lab[g]) $(id).value = lab[g]; });
+  $("nz-rows").innerHTML = "";
+  (st.nozzles || []).forEach((z) => addNozzle({ name: z.name, shape: z.shape, width: z.width_mm, height: z.height_mm, z: z.height_m, angle: z.angle, t: z.thickness_mm, in: z.inside_mm, out: z.outside_mm }));
+}
+const editId = new URLSearchParams(location.search).get("edit");
+if (editId && /^\d+$/.test(editId)) {
+  fetch("/studio/edit/" + editId, { credentials: "same-origin" }).then((r) => r.json().then((d) => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+    if (!ok) throw new Error(d.error || "Не удалось загрузить генерацию");
+    const raw = d.project, keep = raw.beam_sections;
+    loadProject(raw); if (d.title) $("p-title").value = d.title;
+    if (d.structure) { S.raw = Object.assign({}, S.raw, { beam_sections: keep }); applyStructure(d.structure); S.raw = Object.assign({}, raw); }
+    loaded = true; readParams(); drawGrid(); refreshProfiles();
+    say("Загружена генерация №" + editId + ": правьте данные и нажмите «Создать модель» на последнем шаге — будет создана новая генерация, прежняя останется без изменений.");
+  }).catch((e) => { say(e.message, true); showErr(e.message); });
+}
+refreshProfiles();
