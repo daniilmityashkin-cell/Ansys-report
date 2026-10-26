@@ -30,6 +30,7 @@ def main() -> int:
     ap.add_argument("--out", default=str(Path(tempfile.gettempdir()) / "e2e_out"), help="куда скачать готовые файлы")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--fill", type=float, default=0.0, help="уровень налива, м (0 = 60%% высоты стенки)")
+    ap.add_argument("--loads", help="JSON с полями формы нагрузок (l_density, l_snow, l_ryn, ...) поверх значений по умолчанию")
     ap.add_argument("--no-agent", action="store_true", help="не запускать помощника и Ansys")
     ap.add_argument("--keep-server", action="store_true", help="не останавливать сайт в конце")
     a = ap.parse_args()
@@ -76,6 +77,9 @@ def main() -> int:
             form["l_roof_rise"] = str(round(Rs - (Rs * Rs - R * R) ** 0.5, 3))
         except (TypeError, ValueError):
             pass
+        if a.loads:                                        # нагрузки сверки (например tools/diag/loads_T001.json)
+            form.update({k: str(v) for k, v in json.loads(Path(a.loads).read_text(encoding="utf-8-sig")).items() if k.startswith("l_")})
+            print("нагрузки:", {k: v for k, v in form.items() if k.startswith("l_")})
         r = s.post(f"{gurl}/loads", data=form, allow_redirects=False)
         assert "loads_error" not in r.headers.get("location", ""), "нагрузки: " + r.headers.get("location", "")
         r = s.post(f"{gurl}/pay", data={"csrf": csrf(s.get(gurl).text)}, allow_redirects=True)
