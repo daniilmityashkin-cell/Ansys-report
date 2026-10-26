@@ -404,3 +404,14 @@ def test_report_with_analytic_stability(tmp_path):
     d = docx.Document(path)
     text = "\n".join(x.text for x in d.paragraphs)
     assert "6.2 Проверка устойчивости стенки по аналитической методике" in text and "кольцо жесткости" in text
+
+
+def test_cad_fine_defect_large_tank_falls_back(tmp_path):
+    """РВС-30000 с мелким шагом замеров на вмятине: CAD-сетка по шагу замеров слишком большая - должен сработать запасной вариант, а не ошибка."""
+    from ansys_report.geometry import check
+    pr = _points_project()
+    pr["diameter"] = "45.6"
+    xs = [round(-0.2 + 0.02 * i, 3) for i in range(21)]
+    pr["defects"][0].update(nx="21", ny="21", x=xs, y=xs, values=[["-3" if 0 < i < 20 and 0 < j < 20 else "0" for i in range(21)] for j in range(21)])
+    out = check.export_geometry(pr, tmp_path, 0.1, "STEP", lambda s: None)
+    assert any(str(f).endswith(".step") for f in out["files"])
