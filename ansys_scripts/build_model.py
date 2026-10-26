@@ -315,8 +315,8 @@ def mesh_dents():
     sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
     sel.Ids = [i for z, i in fz if 0.002 * WALL_H < z * k_ < 0.998 * WALL_H]    # только грани стенки: сфера на всё тело портит картинки (днище многоугольником, «точки»)
     for k, d in enumerate(dents, 1):
-        # узлы «стенка-крыша» и «стенка-днище» остаются на опорной сетке: пик там от сетки не сходится (50/100/200 мм), а мембранные - да
-        d["radius_mm"] = max(500.0, min(d["radius_mm"], min(WALL_H - d["z_mm"], d["z_mm"]) - 300.0))
+        # узлы «стенка-крыша» и «стенка-днище» остаются на опорной сетке (800 мм хватает на переход 100 -> 200 мм): пик там от сетки не сходится (50/100/200 мм), а мембранные - да
+        d["radius_mm"] = max(500.0, min(d["radius_mm"], min(WALL_H - d["z_mm"], d["z_mm"]) - 800.0))
         cs = model.CoordinateSystems.AddCoordinateSystem()
         cs.Name = u"AR вмятина %d" % k
         cs.OriginDefineBy = CoordinateSystemAlignmentType.Fixed
