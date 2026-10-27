@@ -5,7 +5,8 @@ from pathlib import Path
 import docx
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
-from docx.oxml import OxmlElement
+from xml.sax.saxutils import escape as xml_escape
+from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Pt, Cm, RGBColor
 from .calc import calc_all, fmt
@@ -15,6 +16,8 @@ from . import text_ru as T
 TEMPLATE = Path(__file__).parent / "templates" / "base.docx"
 ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV"]
 CENTER = WD_ALIGN_PARAGRAPH.CENTER
+MATH_NS = ('xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" '
+           'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"')
 
 
 class Report:
@@ -220,9 +223,61 @@ class Report:
                 self.body(r["contractor"].strip())
             if r.get("contractor_phone"): self.body(f"Тел. {r['contractor_phone']}.")
 
+    # ---------- формулы Word (OMML) и мелочи оформления ----------
+    @staticmethod
+    def _m(parts) -> str:
+        """Части формулы: строка - текст, кортеж (числитель, знаменатель) - дробь (части рекурсивно)."""
+        if isinstance(parts, str):
+            parts = [parts]
+        out = []
+        for x in parts:
+            if isinstance(x, tuple):
+                out.append(f"<m:f><m:num>{Report._m(x[0])}</m:num><m:den>{Report._m(x[1])}</m:den></m:f>")
+            else:
+                out.append('<m:r><w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/><w:sz w:val="24"/></w:rPr>'
+                           f'<m:t xml:space="preserve">{xml_escape(str(x))}</m:t></m:r>')
+        return "".join(out)
+
+    def formula(self, parts):
+        """Формула редактора формул Word по центру (как в эталоне: R = 325∙0.7∙1.0 / 1.05∙1.05 = 206,35 МПа)."""
+        par = self.para(indent=0, align=CENTER, space_before=3, space_after=3)
+        par._p.append(parse_xml(f'<m:oMathPara {MATH_NS}><m:oMath>{self._m(parts)}</m:oMath></m:oMathPara>'))
+        return par
+
+    @staticmethod
+    def _cell_rich(cell, chunks, size=12, align=None):
+        """Ячейка с верхними индексами: chunks = [(текст, верхний_индекс)]."""
+        cell.text = ""
+        par = cell.paragraphs[0]
+        par.paragraph_format.space_after = Pt(0); par.paragraph_format.first_line_indent = Cm(0)
+        if align is not None: par.alignment = align
+        for text, sup in chunks:
+            r = Report._run(par, text, size)
+            r.font.superscript = bool(sup)
+
+    @staticmethod
+    def _merge_text(a, b, text, bold=True, size=12):
+        c = a.merge(b)
+        Report._cell(c, text, bold=bold, align=CENTER, size=size)
+        return c
+
+    @staticmethod
+    def _pow10(v: float) -> list:
+        """2,06·10^11 как в эталоне: [('2,06х10', False), ('11', True)]."""
+        import math
+        e = int(math.floor(math.log10(abs(v)))) if v else 0
+        mant = v / 10 ** e
+        return [(f"{mant:.2f}".rstrip("0").rstrip(",.").replace(".", ",") + "х10", False), (str(e), True)]
+
+    @property
+    def rd(self) -> dict:
+        return self.p.raw.get("report_data") or {}
+
+    # ---------- 2 Информация об объекте ----------
     def sec2(self):
-        t, m, L, c = self.p.tank, self.p.material, self.p.loads, self.c
-        n = len(t["belts_thickness"])
+        t, m, c, rd = self.p.tank, self.p.material, self.c, self.rd
+        th = t["belts_thickness"]
+        n = len(th)
         self.h1("2 Информация об объекте моделирования")
         where = f" установлен на объекте: «{t['site']}»" + (f" (№ {t['site_number']})" if t.get("site_number") else "") if t.get("site") else ""
         self.body(f"Резервуар {t['name']}{where}" + ((f" и предназначен для {t['purpose']}." if where else f" предназначен для {t['purpose']}.") if t.get("purpose") else "."))
@@ -230,75 +285,150 @@ class Report:
         self.bullets([f"диаметр {t['diameter']} мм;", f"высота стенки {t['wall_height']} мм."])
         self.body("Общий вид резервуара показан на рисунке 1.")
         if t.get("fill_level"):
-            self.body(f"Расчётный уровень налива продукта – {fmt(t['fill_level']/1000)} м. "
-                      f"Плотность хранимого продукта составляет {fmt(t['product_density']/1000, 3)} т/м3.")
-        th = t["belts_thickness"]
-        self.body("Номинальные толщины стенки по поясам: " + T.thickness_groups(th) + ".")
-        self.body("Предельное отклонение от вертикали каждого листа любого пояса стенки ограничивается величиной "
-                  "1/200 вертикального расстояния от окрайки днища до контролируемого пояса. Предельные значения "
-                  f"для I – {ROMAN[n-1]} поясов: " + " – ".join(fmt(x) for x in c["limits_dev"]) + " мм.")
-        self.body("Отклонения стенки от вертикали в каждом поясе замерялись в плоскостях x = "
-                  + " – ".join(str(h) for h in c["heights"]) + " мм. "
-                  + (f"Толщины поясов приняты по {t['kmd']}" if t.get("kmd") else "Толщины поясов приняты по расчётной модели."))
-        self.figure("fig01_general", "Общий вид объекта исследования")
-        rows = self.object_rows()
+            rho_t = float(t.get("product_density") or 0) / 1000
+            self.body(f"Верхний аварийный уровень налива продукта по проекту составляет – {fmt(t['fill_level']/1000)} м. "
+                      f"Плотность хранимого продукта составляет {fmt(rho_t, 1 if abs(rho_t * 10 - round(rho_t * 10)) < 1e-9 else 3)} т/м3.")
+        groups = T.thickness_groups(th).replace("первого –", "первого пояса стенки резервуара –", 1)
+        steel = f"Стенка резервуара состоит из листов стали {m['name']}" + (f", {m['standard']}" if (m.get("standard") or "").strip() else "") + ". "
+        self.body(steel + "Номинальная толщина " + groups + ".")
+        self.body("Предельное отклонение от вертикали каждого листа любого пояса стенки ограничивается величиной 1/200 вертикального расстояния "
+                  "от окрайки днища до контролируемого пояса стенки. Соответствующие значения предельных отклонений для "
+                  f"I - {ROMAN[n-1]} поясов стенки составляют " + " – ".join(g3(x) for x in c["limits_dev"]) + " мм.")
+        self.body("Отклонения стенки от вертикали в каждом поясе замерялись в плоскостях x = " + " – ".join(fmt(h, 0) for h in c["heights"]) + " мм.")
+        self.body("Основные характеристики РВС представлены в таблице 1. Толщины стенок по поясам представлены в таблице 2"
+                  + (f" согласно {t['kmd']}." if (t.get("kmd") or "").strip() else "."))
+        self.figure("fig01_general", "Общий вид объекта исследования", width_cm=11.3)
+        rows = self.object_rows_ref() if rd else self.object_rows()
         self.table(["Наименование величин", "Значение"], rows, widths=[11, 5], caption="Характеристика объекта исследования")
+        self.page_break()
         rows = [[f"{ROMAN[i]} пояс", fmt(x), fmt(x)] for i, x in enumerate(th)]
-        if t.get("edge_thickness"):
-            rows.append(["Окрайка днища", fmt(t["edge_thickness"]), fmt(t["edge_thickness"])])
         if t.get("bottom_thickness"):
             rows.append(["Днище резервуара", fmt(t["bottom_thickness"]), fmt(t["bottom_thickness"])])
-        self.table(["Обозначение элемента", "Номинальная толщина стенки, мм", "Расчетная толщина стенки, мм"], rows,
-                   caption="Толщина элементов")
-        self.deviation_section()
-        # 2.1 материал
-        self.para("2.1 Механические характеристики материалов, используемых в расчете", bold=True)
-        src = "приняты по данным проекта Ansys (Engineering Data)" if m.get("source") == "Ansys" else "приведены"
-        std = f" согласно {m['standard']}" if (m.get("standard") or "").strip() else ""
-        self.body(f"Материал резервуара – сталь {m['name']}. Характеристики материала{std} {src} в таблице {self.tab+1}.")
-        self.table(["Сталь", "Плотность, кг/м3", "Модуль Юнга, МПа", "Коэффициент Пуассона", "Предел прочности, МПа",
-                    "Предел текучести, МПа", "Для толщин стенок, мм"],
-                   [[m["name"], m["density"], m["young_modulus_mpa"], fmt(m["poisson"]), m["ultimate_mpa"], m["yield_mpa"], m.get("thickness_range") or "–"]],
-                   caption="Механические характеристики используемых материалов",
-                   widths=[2.6, 2.4, 2.3, 2.9, 2.4, 2.4, 2.0], size=10)
-        sy = m["yield_mpa"]
-        self.body("Согласно ГОСТ 31385-2023 и СП 16.13330.2020 расчетные сопротивления:")
-        self.math(f"1-й пояс: R = {sy}·0,7·1,0 / (1,05·1,05) = {fmt(c['R1'],2)} МПа")
-        self.math(f"2-{len(th)}-й пояса: R = {sy}·0,8·1,0 / (1,05·1,05) = {fmt(c['R2'],2)} МПа")
-        self.math(f"Уторный узел (с учетом пластических деформаций): R = {sy}·1,2·1,0 / (1,05·1,05) = {fmt(c['Rutor'],2)} МПа")
-        self.body(f"Напряжения в первом поясе не должны превышать {c['R1']:.0f} МПа, со второго по {len(th)}-й пояс – "
-                  f"{c['R2']:.0f} МПа. При субмоделировании уторного шва напряжения не должны превышать {c['Rutor']:.0f} МПа.")
-        if m.get("bilinear"):
-            self.body(f"В модели материала стенки и окрайки днища использовалась упругопластическая модель с билинейной диаграммой "
-                      f"деформирования: предел текучести σу = {sy} МПа, модуль упругости второго участка")
-            self.math(f"E2 = (σвр − σу) / (Δ/100 − σу/E) = {fmt(c['E2'],1)} МПа")
-            self.bullets([f"σвр = {m['ultimate_mpa']} МПа – временное сопротивление стали {m['name']};",
-                          f"σу = {sy} МПа – предел текучести;", f"Δ = {m['elongation_pct']} – относительное удлинение, %;",
-                          f"Е = {m['young_modulus_mpa']} МПа – модуль упругости."])
-        else:
-            self.body(f"В расчете принята линейно-упругая модель материала стенки, днища и крыши: модуль упругости Е = {m['young_modulus_mpa']} МПа, "
-                      f"коэффициент Пуассона ν = {fmt(m['poisson'], 2)}, предел текучести σу = {sy} МПа (используется для определения допускаемых напряжений).")
-        self.para("2.2 Необходимый состав расчета", bold=True)
-        for line in T.COMPOSITION: self.body(line)
+        tb = self.table(["Обозначение элемента", "Номинальная толщина стенки, мм", "Расчетная толщина стенки, мм"], rows,
+                        caption="Толщина элементов", widths=[6, 5, 5])
+        for r in tb.rows[1:]:
+            r.cells[0].paragraphs[0].alignment = CENTER
+        self.sec2_1()
+        self.para("2.2 Необходимый состав расчета", bold=True, space_before=6)
+        self.composition()
 
-    def sec3_4(self):
-        me, t, L, c = self.p.raw["mesh"], self.p.tank, self.p.loads, self.c
-        self.h1("3 Сетка конструкции")
-        self.body(f"Количество узлов сетки после ее разбиения: {me['nodes']} шт., количество конечных элементов: {me['elements']} шт. "
-                  f"Размер конечных элементов {fmt(me['element_size_mm'], 0)} мм, тип элемента {me['element_type']}.")
-        self.figure("fig02_mesh_wall_bottom", "Сетка элементов стенки и днища")
-        self.figure("fig03_mesh_wall_roof", "Сетка элементов стенки и кровли")
-        self.h1("4 Граничные условия и нагрузки")
-        self.body("На конструкцию действует:")
-        la = self.p.raw.get("loads_ansys")
-        if la:
-            self.bullets(self.describe_loads(la))
+    def sec2_1(self):
+        m, c, t = self.p.material, self.c, self.p.tank
+        n = len(t["belts_thickness"])
+        sy = m["yield_mpa"]
+        self.para("2.1 Механические характеристики материалов, используемых в расчете", bold=True, space_before=6)
+        std = f" согласно {m['standard']}" if (m.get("standard") or "").strip() else ""
+        self.body(f"Материал резервуара – сталь {m['name']}. Характеристики материала{std} приведены в таблице {self.tab + 1}.")
+        tb = self.table(["Сталь", "Плотность, кг/м3", "Модуль Юнга, Па", "Коэффициент Пуассона", "Предел прочности, МПа",
+                         "Предел текучести, МПа", "Для толщин стенок, мм"],
+                        [[m["name"], fmt(m["density"], 0), "", g3(m["poisson"]), fmt(m["ultimate_mpa"], 0), fmt(sy, 0), m.get("thickness_range") or "–"]],
+                        caption="механические характеристики используемых материалов", widths=[2.4, 2.4, 2.6, 2.7, 2.4, 2.4, 2.4], size=11)
+        self._cell_rich(tb.rows[1].cells[2], self._pow10(float(m["young_modulus_mpa"]) * 1e6), size=11, align=CENTER)
+        self.body("Согласно ГОСТ 31385-2023 и СП 16.13330.2020:")
+        for label, gc, key in ((f"Расчетные сопротивления для 1го пояса:", "0.7", "R1"), (f"Расчетные сопротивления для 2-{n} го поясов:", "0.8", "R2")):
+            self.body(label)
+            self.formula(["R=", (f"{g3(sy)}∙{gc}∙1.0", "1.05∙1.05"), f"={fmt(c[key], 2)} МПа"])
+        self.body("Зона сопряжения стенки с днищем (уторный узел) при необходимости расчета с учетом развития пластических деформаций:")
+        self.formula(["R=", (f"{g3(sy)}∙1.2∙1.0", "1.05∙1.05"), f"={fmt(c['Rutor'], 2)} МПа"])
+        last = T.ORD_NOM[n - 1] if n <= len(T.ORD_NOM) else f"{n}-й"
+        self.body(f"Напряжения в первом поясе не должны превышать {int(c['R1'])} МПа, со второго по {last} пояс не должны превышать {int(c['R2'])} МПа. "
+                  f"При субмоделировании уторного шва РВС напряжения не должны превышать {int(c['Rutor'])} МПа.")
+        self.body(f"Расчеты устойчивости стенки резервуара {t['name']} с учетом отклонений от проектной формы выполнены с использованием "
+                  "программно-вычислительного комплекса, реализующего метод конечных элементов.")
+        if m.get("bilinear"):
+            self.body(f"В модели материала стенки и окрайки днища резервуара использовалась упругопластическая модель с билинейной диаграммой "
+                      f"деформирования. При этом предел текучести был принят равным σу = {g3(sy)} МПа, а модуль упругости второго участка диаграммы определен как:")
         else:
-            self.bullets(self.legacy_load_bullets())
+            self.body("Расчет НДС выполнен в физически линейной постановке (п. 10.2.2 ГОСТ Р 58622-2019): модель материала стенки, днища и крыши – "
+                      f"линейно-упругая. Для расчета уторного узла с учетом развития пластических деформаций используется билинейная диаграмма "
+                      f"деформирования с пределом текучести σу = {g3(sy)} МПа и модулем упругости второго участка:")
+        e_mpa = float(m["young_modulus_mpa"])
+        self.formula(["E2=", ("σвр-σу", [("∆", "100"), "-", ("σу", "E")]), f"={fmt(c['E2'], 1)} МПа"])
+        self.body("где")
+        for line in (f"σвр = {g3(m['ultimate_mpa'])} МПа – временное сопротивление стали {m['name']};", f"σу = {g3(sy)} МПа – предел текучести;",
+                     f"Δ = {g3(m['elongation_pct'])} – относительное удлинение, %;"):
+            self.body(line)
+        par = self.body("Е = ")
+        for text, sup in self._pow10(e_mpa * 1e6):
+            self._run(par, text.replace("х", "·"), 12).font.superscript = sup
+        self._run(par, " Па – модуль упругости.", 12)
+
+    def composition(self):
+        gost = Path(__file__).parent / "templates" / "gost"
+        for x in T.COMPOSITION_REF:
+            if isinstance(x, str):
+                self.body(x)
+            elif x[0] == "img":
+                f = gost / x[1]
+                if f.exists():
+                    self.para(indent=0, align=CENTER, keep_next=True, space_before=6).add_run().add_picture(str(f), width=Cm(x[2]))
+            elif x[0] == "cap":
+                self.para(x[1], indent=0, align=CENTER, space_after=6)
+            elif x[0] == "formula":
+                self.para(x[1], indent=0, align=CENTER, space_before=3, space_after=3)
+            elif x[0] == "item":
+                self.para("– " + x[1], indent=1.25)
+
+    # ---------- 3 Сетка, 4 Нагрузки ----------
+    def sec3_4(self):
+        me, t, c = self.p.raw["mesh"], self.p.tank, self.c
+        self.h1("3 Сетка конструкции", new_page=True)
+        beams = ", для элементов балки BEAM188" if me.get("beams") else ""
+        self.body(f"Количество узлов сетки после ее разбиения: {me['nodes']} шт., количество конечных элементов: {me['elements']} шт. "
+                  f"Качество сетки конструктивных элементов конструкции показано на рисунках 2 и 3. Размер элементов составляет {fmt(me['element_size_mm'], 0)} мм. "
+                  f"Для элементов стенки используется элемент {me['element_type']}{beams}.")
+        self.figure("fig02_mesh_wall_bottom", "Сетка элементов стенки и днища РВС", width_cm=16.5)
+        self.figure("fig03_mesh_wall_roof", "Сетка элементов стенки и кровли РВС", width_cm=16.5)
+        self.h1("4 Граничные условия и нагрузки", new_page=True)
+        self.body("На конструкцию действует:")
+        if self.rd:
+            self.load_lines_ref()
+        else:
+            la = self.p.raw.get("loads_ansys")
+            self.bullets(self.describe_loads(la) if la else self.legacy_load_bullets())
         self.body("Допущения, принятые в модели:")
-        self.bullets(T.ASSUMPTIONS)
-        self.figure("fig04_loads", "Нагрузки")
-        self.figure("fig05_hydrostatic", "Гидростатическое давление", optional=True)
+        for a in T.ASSUMPTIONS:
+            self.body(a)
+        self.figure("fig04_loads", "Нагрузки", width_cm=16.5)
+        self.figure("fig05_hydrostatic", "Гидростатическое давление", width_cm=16.5)
+
+    def load_lines_ref(self):
+        """Нагрузки раздела 4 формулами с числами (как в эталоне), из данных заказчика - те же числа ушли в расчёт Ansys."""
+        from .loads.rvs_loads import CE
+        t, rd = self.p.tank, self.rd
+        G = 9.81
+        L = lambda s: self.para("- " + s)
+        rho = rd.get("product_density_kg_m3") or t.get("product_density")
+        fill = (rd.get("fill_level_mm") or t.get("fill_level") or 0) / 1000
+        L(f"гидростатическое давление продукта плотностью {fmt(rho, 0)} кг/м3, высота налива продукта {fmt(fill)} м.")
+        L("вес металлоконструкций стенки, задан с помощью приложения ускорения свободного падения,")
+        r = float(t["diameter"]) / 2000
+        if rd.get("snow_kpa") is not None:
+            S = rd["snow_gf"] * CE * rd["snow_kpa"] * 1000
+            L(f"расчетная снеговая нагрузка {g3(rd['snow_kpa'])} кПа, приложенная к верхней грани стенки РВС, расчетное значение снеговой нагрузки "
+              "согласно ГОСТ Р 58622-2019, ф. 87:")
+            self.formula(["S = γf∙ce∙Sg = ", f"{g3(rd['snow_gf'])}∙{g3(CE)}∙{fmt(rd['snow_kpa'] * 1000, 0)} = {fmt(S, 0)} Па;"])
+            self.formula(["Fсн = ", ("r∙S", "2"), " = ", (f"{trim(r, 3)}∙{fmt(S, 0)}", "2"), f" = {fmt(r * S / 2, 0)} Н/м."])
+        if rd.get("roof_mass_kg") is not None:
+            eq = rd.get("roof_equipment_kg") or []
+            gf, psi = rd["roof_gf"], rd["psi"]
+            F = gf * (rd["roof_mass_kg"] + psi * sum(eq)) * G
+            mob = "(" + "+".join(g3(x) for x in eq) + ")" if len(eq) > 1 else (g3(eq[0]) if eq else "0")
+            L("Нагрузка от веса крыши, оборудования и площадок обслуживания:")
+            self.formula([f"F = γf∙(Mкр + ψ∙Mоб)∙g = {g3(gf)}∙({g3(rd['roof_mass_kg'])}+{g3(psi)}∙{mob})∙9,81 = {fmt(F, 1)} Н."])
+        pk = rd.get("overpressure_kpa") or 0.0
+        L("Расчетное избыточное давление Ри = γизб∙Ризб")
+        self.formula([f"Ри = {g3(rd.get('overp_gf') or 1.2)}∙{fmt(pk * 1000, 0)} = {fmt((rd.get('overp_gf') or 1.2) * pk * 1000, 0)} Па"])
+        ins = f" {fmt(rd['ins_thickness_mm'], 0)} мм" if rd.get("ins_thickness_mm") else ""
+        if rd.get("wall_ins_kg"):
+            L(f"Вес тепловой изоляции стенки{ins}, задается путем приложения силы ко всей площади стенки РВС, "
+              f"Fизол ст = {g3(rd['wall_ins_kg'])}∙9,81 = {fmt(rd['wall_ins_kg'] * G, 0)} Н")
+        if rd.get("roof_ins_kg"):
+            L(f"Вес тепловой изоляции крыши{ins}, приложенный к верхней грани стенки РВС, Fизол кр = {g3(rd['roof_ins_kg'])}∙9,81 = {fmt(rd['roof_ins_kg'] * G, 0)} Н")
+        if rd.get("wind_kpa") is not None:
+            L(f"ветровая нагрузка (расчет устойчивости пустого резервуара): расчетное ветровое давление w0 = {g3(rd['wind_kpa'])} кПа, тип местности "
+              f"{cyr(rd.get('terrain') or '')}, изменение по высоте – по СП 20.13330.2016;")
+        L("Закрепление модели происходит по днищу путем задания ограничения по всем осям.")
 
     # ---------- нагрузки и свойства объекта ----------
     AXIS = {"X": "оси X (вертикаль)", "Y": "оси Y", "Z": "оси Z"}
@@ -307,7 +437,7 @@ class Report:
             "NegativeZAxis": "по оси −Z", "PositiveZAxis": "по оси +Z"}
 
     def describe_loads(self, la: dict) -> list[str]:
-        """Список нагрузок из проекта Ansys: имя, тип, значение, направление."""
+        """Список нагрузок из проекта Ansys: имя, тип, значение, направление (если данных заказчика нет)."""
         labels, out = la.get("labels", {}), []
         for x in la["items"]:
             nm, t = x["name"], x["type"]
@@ -326,8 +456,31 @@ class Report:
             elif t == "Pressure":
                 out.append(f"«{nm}»{lab}: давление {fmt(abs(x['value']), 0)} Па" + (" (в данном расчёте не учитывается);" if x["suppressed"] else ";"))
             elif t == "FixedSupport":
-                out.append(f"закрепление модели: «{nm}»;")
+                out.append("закрепление модели по днищу: ограничение перемещений по всем осям;")
         return out
+
+    def object_rows_ref(self) -> list[list]:
+        """Таблица 1 как в эталоне ТО-019-26 (18 строк) по данным заказчика."""
+        t, rd = self.p.tank, self.rd
+        rho = rd.get("product_density_kg_m3") or t.get("product_density")
+        fill = rd.get("fill_level_mm") or t.get("fill_level")
+        eq = rd.get("roof_equipment_kg") or []
+        rows = [["Высота стенки резервуара, мм", t["wall_height"]], ["Радиус стенки резервуара, мм", fmt(float(t["diameter"]) / 2, 0)],
+                ["Радиус сферической крыши, мм", fmt(rd.get("roof_radius_mm") or t.get("roof_radius") or 0, 0)],
+                ["Наименование хранимого продукта", rd.get("product") or t.get("product") or ""],
+                ["Плотность продукта, кг/м3", fmt(rho, 0) if rho else ""], ["Расчетный уровень налива продукта, мм", fmt(fill, 0) if fill else ""],
+                ["Нормативное внутреннее избыточное давление, кПа", g3(rd.get("overpressure_kpa") or 0)],
+                ["Коэффициент надежности по нагрузке", g3(rd.get("load_factor"))],
+                ["Собственный фактический вес крыши, оборудования, площадок и ограждений на крыше, кг", g3((rd.get("roof_mass_kg") or 0) + sum(eq))],
+                ["Коэффициент надежности по нагрузке", g3(rd.get("roof_gf"))],
+                ["Нагрузка от веса теплоизоляции крыши, кг", g3(rd.get("roof_ins_kg") or 0)],
+                ["Нагрузка от веса теплоизоляции стенки, кг", g3(rd.get("wall_ins_kg") or 0)],
+                ["Нормативный вес от снегового покрова, кПа", g3(rd.get("snow_kpa"))],
+                ["Коэффициент надежности по снеговой нагрузке", g3(rd.get("snow_gf"))],
+                ["Учет сдувания снега с крыши", rd.get("snow_blowoff") or ""], ["Тип местности", cyr(rd.get("terrain") or "")],
+                ["Расчетное ветровое давление, кПа", g3(rd.get("wind_kpa"))],
+                ["Класс опасности резервуара по ГОСТ 31385-2023", rd.get("hazard_class") or t.get("hazard_class") or ""]]
+        return rows
 
     def object_rows(self) -> list[list]:
         t, L = self.p.tank, self.p.loads
@@ -373,165 +526,124 @@ class Report:
             f"вес тепловой изоляции стенки, Fизол ст = {fmt(c['wall_ins_n'],0)} Н; вес тепловой изоляции крыши, Fизол кр = {fmt(c['roof_ins_n'],0)} Н;",
             "закрепление модели – по днищу, ограничение по всем осям."]
 
-    def deviation_section(self):
-        """Оценка замеров отклонений образующих от вертикали по допускам (по точкам)."""
-        dc = self.c["dev_check"]
-        if not dc:
-            return
-        half_up = lambda x: int(x + 0.5)
-        self.body("Оценка отклонений образующих стенки от вертикали выполнена сравнением каждого замера с допускаемым отклонением "
-                  "для соответствующего пояса: H/200 и H/200 + 30 мм, где H – высота расположения пояса от окрайки днища.")
-        rows = []
-        for r in dc:
-            rows.append([f"{ROMAN[r['belt'] - 1]} ({fmt(r['H'], 0)} мм)", half_up(r["lim1"]), half_up(r["lim2"]),
-                         fmt(r["full"]["max"]), f"{r['full']['over1']} / {r['full']['over2']}",
-                         fmt(r["empty"]["max"]), f"{r['empty']['over1']} / {r['empty']['over2']}"])
-        self.table(["Пояс", "Допуск H/200, мм", "Допуск H/200+30, мм", "Макс. |Δ| полный, мм", "Точек сверх допусков, полный",
-                    "Макс. |Δ| пустой, мм", "Точек сверх допусков, пустой"],
-                   rows, caption="Оценка отклонений образующих от вертикали по точкам (число точек сверх допуска H/200 / сверх H/200+30)",
-                   widths=[2.8, 2.1, 2.3, 2.3, 2.7, 2.3, 2.7], size=10)
-        tot_n = sum(r["full"]["n"] for r in dc)
-        o1 = sum(r["full"]["over1"] for r in dc); o2 = sum(r["full"]["over2"] for r in dc)
-        e1 = sum(r["empty"]["over1"] for r in dc); e2 = sum(r["empty"]["over2"] for r in dc)
-        self.body(f"Для заполненного резервуара из {tot_n} замеров допуск H/200 превышен в {o1} точках, допуск H/200 + 30 мм – в {o2} точках; "
-                  f"для опорожнённого – в {e1} и {e2} точках соответственно.")
-
-    def strength_table(self, caption, key, crit_name, limit, ok_key, limit_label, belts=None, info=False):
-        """info=True: показатель приводится справочно (критерием для листов стенки не является)."""
-        rows = [[b["belt"], f"{b['belt']} пояс", fmt(b[key]), fmt(limit),
-                 "Справочно" if info else ("Выполнен" if b[ok_key] else "Не выполнен")]
-                for b in (belts or self.c["belts"])]
-        self.table(["№ п/п", "Конструктивный элемент резервуара", f"{crit_name}, МПа (максимум)", limit_label,
-                    "Справочно" if info else "Оценка выполнения критерия прочности"] if not info else
-                   ["№ п/п", "Конструктивный элемент резервуара", f"{crit_name}, МПа (максимум)", limit_label, "Примечание"],
-                   rows, caption=caption, widths=[1.3, 4.4, 3.8, 3.8, 3.9])
+    # ---------- 5 Прочность, 6 Устойчивость ----------
+    def strength_table(self, metric: str, key: str, limit: float, limit_label: str, ok_key: str, belts=None):
+        """Таблица по поясам как в эталоне: двухуровневая шапка, строка номеров столбцов 1…5, без подписи «Таблица N»."""
+        t = self.d.add_table(rows=3, cols=5)
+        t.style = "Table Grid"; t.alignment = WD_TABLE_ALIGNMENT.CENTER
+        h0, h1, h2 = t.rows
+        self._merge_text(h0.cells[0], h1.cells[0], "№ п/п", size=11)
+        self._merge_text(h0.cells[1], h1.cells[1], "Конструктивный элемент резервуара", size=11)
+        self._merge_text(h0.cells[2], h0.cells[3], f"{metric}, МПа", size=11)
+        self._merge_text(h0.cells[4], h1.cells[4], "Оценка выполнения критерия прочности", size=11)
+        self._cell(h1.cells[2], "Максимальное расчетное значение напряжений", bold=True, align=CENTER, size=11)
+        self._cell(h1.cells[3], f"Допустимое значение напряжений, {limit_label}", bold=True, align=CENTER, size=11)
+        for i in range(5):
+            self._cell(h2.cells[i], str(i + 1), align=CENTER, size=11)
+        for r in (h0, h1, h2):
+            self._repeat_header(r)
+        for b in (belts or self.c["belts"]):
+            cells = t.add_row().cells
+            for i, v in enumerate([b["belt"], f"{b['belt']} пояс", fmt(b[key]), g3(round(limit, 1)), "Выполнен" if b[ok_key] else "Не выполнен"]):
+                self._cell(cells[i], str(v), align=CENTER, red=(v == "Не выполнен"), size=11)
+        t.autofit = False
+        for r in t.rows:
+            for i, w in enumerate([1.3, 4.0, 4.0, 4.0, 3.6]):
+                r.cells[i].width = Cm(w)
+        self.para(indent=0)
+        return t
 
     def sec5_6(self):
-        c, t = self.c, self.p.tank
-        self.h1("5 Результаты расчета на прочность")
-        self.h1(f"5.1 Результаты расчета НДС РВС при наливе {fmt(t['fill_level']/1000)} м с отклонениями стенки для заполненного резервуара")
-        self.body(f"Обеспечение прочности поясов основной стенки резервуара {t['name']} в соответствии с ГОСТ 58622-2019 оценивается по критериям:")
-        self.body("Согласно таблице 13 ГОСТ Р 58622-2019 для листов стенки резервуара критерием работоспособности являются:")
-        self.bullets(["срединные (мембранные) напряжения σм ≤ 1,5·[σ], где [σ] = σ0,2 / 1,5 – номинальное допускаемое напряжение;",
-                      "отсутствие локальной потери устойчивости («прохлопывания») вмятин."])
-        self.body("Поверхностные (фибровые) и эквивалентные по Мизесу напряжения (σф ≤ 3[σ], σэ ≤ 3[σ]) в соответствии с таблицей 13 ГОСТ Р 58622-2019 "
-                  "нормируются для опорного кольца, рёбер жёсткости и патрубков, для листов стенки они приводятся справочно.")
-        self.body(f"Допускаемые напряжения: [σ] = {self.p.material['yield_mpa']}/1,5 = {fmt(c['allow'])} МПа; "
-                  f"1,5[σ] = {fmt(c['allow15'],1)} МПа; 3[σ] = {fmt(c['allow3'],0)} МПа.")
-        self.figure("fig06_eq_stress", "Эквивалентные поверхностные напряжения в стенке")
-        self.figure("fig07_membrane", "Срединные (мембранные) напряжения в кольцевом направлении")
-        self.figure("fig08_fiber", "Поверхностные (фибровые) напряжения в кольцевом направлении")
-        self.figure("fig09_deform", "Деформации стенки")
-        self.strength_table("Первые главные поверхностные (фибровые) напряжения", "fiber", "Максимальное расчетное значение",
-                            c["allow3"], "ok_fiber", "Для сравнения 3[σ], МПа", info=True)
-        self.strength_table("Эквивалентные по Мизесу поверхностные напряжения", "equivalent", "Максимальное расчетное значение",
-                            c["allow3"], "ok_eq", "Для сравнения 3[σ], МПа", info=True)
-        self.strength_table("Первые главные срединные (мембранные) напряжения", "membrane", "Максимальное расчетное значение",
-                            c["allow15"], "ok_mem", "Допустимое значение напряжений, 1,5[σ], МПа")
-        self.h1(f"5.2 Результаты расчета НДС РВС при наливе {fmt(t['fill_level']/1000)} м с отклонениями стенки для пустого резервуара")
-        self.figure("fig10_empty_eq", "Эквивалентные напряжения в стенке")
-        self.figure("fig11_empty_mem", "Мембранные (срединные) напряжения в стенке")
-        self.figure("fig12_empty_fiber", "Фибровые (поверхностные) напряжения в стенке")
-        self.figure("fig13_empty_deform", "Деформации стенки")
-        be = c["belts_empty"]
-        if be:
-            for cap, key, lim, ok, lab, info in (
-                    ("Первые главные поверхностные (фибровые) напряжения, пустой резервуар", "fiber", c["allow3"], "ok_fiber", "Для сравнения 3[σ], МПа", True),
-                    ("Эквивалентные по Мизесу поверхностные напряжения, пустой резервуар", "equivalent", c["allow3"], "ok_eq", "Для сравнения 3[σ], МПа", True),
-                    ("Первые главные срединные (мембранные) напряжения, пустой резервуар", "membrane", c["allow15"], "ok_mem", "Допустимое значение напряжений, 1,5[σ], МПа", False)):
-                self.strength_table(cap, key, "Максимальное расчетное значение", lim, ok, lab, belts=be, info=info)
-        fs = self.p.raw["results"].get("fill_series")
-        if fs and len(fs) >= 3:
-            from .fillcalc import allowable_fill
-            fa = allowable_fill(fs, c["allow15"])
-            self.h1("5.3 Допустимая высота налива продукта по условию прочности")
-            self.body(f"Для определения допустимой высоты налива выполнено {len(fs)} расчетов НДС с отклонениями стенки при уровнях налива "
-                      f"{', '.join(fmt(x['level_m']) for x in fs)} м (давление, снег и вес конструкций те же). Критерий для листов стенки – "
-                      f"срединные (мембранные) напряжения не более 1,5[σ] = {fmt(c['allow15'], 1)} МПа. Допустимая высота налива определена "
-                      "линейной интерполяцией максимальных мембранных напряжений между рассчитанными уровнями.")
-            self.table(["Уровень налива, м", "σм max, МПа", "σф max, МПа", "σэ max, МПа", "Оценка по σм ≤ 1,5[σ]"],
-                       [[fmt(x["level_m"]), fmt(x["membrane"]), fmt(x["fiber"]), fmt(x["equivalent"]),
-                         "Выполнен" if x["membrane"] <= c["allow15"] else "Не выполнен"] for x in fs],
-                       caption="Максимальные напряжения в стенке по уровням налива", widths=[3.2, 3.2, 3.2, 3.2, 4.0])
-            self.body(("Допустимая высота налива по условию прочности составляет не менее " + fmt(fa["level_m"]) + " м (предел 1,5[σ] не достигнут на рассчитанных уровнях)."
-                       if fa["unlimited"] else "Допустимая высота налива по условию прочности составляет " + fmt(fa["level_m"]) + " м."))
-        self.h1("6 Результаты расчета РВС на устойчивость")
+        c, t, m = self.c, self.p.tank, self.p.material
+        lv = fmt((t.get("fill_level") or 0) / 1000)
+        self.h1("5 Результаты расчета на прочность", new_page=True)
+        self.h1(f"5.1 Результаты расчета НДС РВС при наливе {lv} м с отклонениями стенки для заполненного резервуара")
+        self.body(f"Обеспечение прочности поясов основной стенки резервуара {t['name']} в соответствии с ГОСТ 58622-2019 оценивается по выполнению следующих критериев:")
+        self.para(f"– Срединные (мембранные) напряжения в кольцевом направлении σm в поясе основной стенки должны удовлетворять условию: σm ≤ [σ], "
+                  f"где [σ] = σ02 / 1,5 – номинальное допускаемое напряжение для элементов оболочки резервуара, МПа; σ02 – условный предел текучести стали "
+                  f"(σ02 = {g3(m['yield_mpa'])} МПа для стали {m['name']}" + (f" по {m['standard']}" if (m.get("standard") or "").strip() else "") + ").", indent=1.25)
+        self.para("– Поверхностные (фибровые) напряжения в кольцевом направлении σф в поясе основной стенки должны удовлетворять условию: σф ≤ 3[σ].", indent=1.25)
+        self.para("– Эквивалентные по Мизесу поверхностные напряжения σе в поясе основной стенки должны удовлетворять условию: σe ≤ 3[σ].", indent=1.25)
+        self.body(f"[σ] = {g3(m['yield_mpa'])} / 1,5 = {fmt(c['allow'])} МПа; 3[σ] = {fmt(c['allow3'], 0)} МПа.")
+        self.figure("fig06_eq_stress", "Эквивалентные поверхностные напряжения в стенке РВС", width_cm=16.5)
+        self.figure("fig07_membrane", "Срединные (мембранные) напряжения в кольцевом направлении", width_cm=16.5)
+        self.figure("fig08_fiber", "Поверхностные (фибровые) напряжения в кольцевом направлении", width_cm=16.5)
+        self.figure("fig09_deform", "Деформации стенки РВС", width_cm=16.5)
+        self.strength_table("Первые главные поверхностные (фибровые) напряжения σф", "fiber", c["allow3"], "3[σ]", "ok_fiber")
+        self.strength_table("Эквивалентные по Мизесу поверхностные напряжения σе", "equivalent", c["allow3"], "3[σ]", "ok_eq")
+        self.strength_table("Первые главные срединные (мембранные) напряжения σм", "membrane", c["allow"], "[σ]", "ok_mem")
+        self.h1(f"5.2 Результаты расчета НДС РВС при наливе {lv} м с отклонениями стенки для пустого резервуара", new_page=True)
+        self.figure("fig10_empty_eq", "Эквивалентные напряжения в стенке РВС", width_cm=16.5)
+        self.figure("fig11_empty_mem", "Мембранные (срединные) напряжения в стенке РВС", width_cm=16.5)
+        self.figure("fig12_empty_fiber", "Фибровые (поверхностные) напряжения в стенке РВС, максимальное и минимальное главное напряжение", width_cm=16.5)
+        self.figure("fig13_empty_deform", "Деформации стенки РВС", width_cm=16.5)
+        self.h1("6 Результаты расчета РВС на устойчивость", new_page=True)
         self.h1("6.1 Результаты расчета РВС на устойчивость искривленного резервуара без гидростатического давления и с ветровой нагрузкой")
         for i, s in enumerate(self.c["stability"], 1):
-            self.figure(f"fig_stab{i}", f"Коэффициент запаса устойчивости Fкр/F = k = {fmt(s['k']) if s['k'] > 0 else 'нет данных'}, {s['case'][0].lower() + s['case'][1:]}")
-        rows = [[s["case"], fmt(s["k"]) if s["k"] > 0 else "нет данных",
-                 "Не определена" if s["k"] <= 0 else ("Выполнен" if s["k"] >= self.p.raw["results"]["required_k"] else "Не выполнен")]
-                for s in self.c["stability"]]
-        idl = self.p.raw["results"].get("ideal")
-        if idl and idl.get("k"):
-            rows.append(["Идеальный РВС (без отклонений): вакуум, снег и ветер", fmt(idl["k"]),
-                         "Выполнен" if idl["k"] >= self.p.raw["results"]["required_k"] else "Не выполнен"])
-        self.table(["Расчетный случай", "Коэффициент запаса k", "Оценка"], rows, caption="Коэффициенты запаса устойчивости")
-        an = self.p.raw["results"].get("analytic")
-        if an and an.get("stability"):
-            self.h1("6.2 Проверка устойчивости стенки по аналитической методике ГОСТ 31385-2016")
-            self.body("Для сопоставления с численным расчетом выполнена аналитическая проверка устойчивости пустого резервуара под действием собственного веса, снега, "
-                      "вакуума и ветра: условие σ1/σ1кр + σ2/σ2кр ≤ 1, где σ1 - меридиональные, σ2 - кольцевые (от ветрового давления 0,5·ψ·w и вакуума) напряжения. "
-                      f"Критические напряжения: σ1кр = {fmt(an['sigma1_cr_mpa'])} МПа, σ2кр = {fmt(an['sigma2_cr_mpa'])} МПа (без колец жесткости).")
-            arows = [[str(b["belt"]), fmt(b["meridional_mpa"]), "-" if b.get("hoop_mpa") is None else fmt(b["hoop_mpa"]),
-                      "-" if b.get("utilization") is None else fmt(b["utilization"]), "-" if b.get("ok") is None else ("Выполнено" if b["ok"] else "Не выполнено")]
-                     for b in an["stability"]]
-            self.table(["Пояс", "σ1, МПа", "σ2, МПа", "σ1/σ1кр + σ2/σ2кр", "Устойчивость"], arows, caption="Аналитическая проверка устойчивости поясов стенки", widths=[1.8, 3.0, 3.0, 4.2, 3.6])
-            fixable = [b["ring_hr_max_m"] for b in an["stability"] if b.get("ring_hr_max_m")]
-            if any(b.get("ok") is False for b in an["stability"]):
-                self.body("Условие устойчивости по аналитической методике не выполнено для части поясов" + (
-                    f"; его обеспечивает кольцо жесткости с редуцированной высотой не более {fmt(min(fixable))} м." if fixable else "; одним кольцом жесткости оно не обеспечивается."))
-            if an.get("ring_modulus_cm3"):
-                self.body(f"Требуемый момент сопротивления кольца жесткости составляет {fmt(an['ring_modulus_cm3'])} см³.")
+            k = g3(round(s["k"], 1)) if s["k"] > 0 else "нет данных"
+            self.figure(f"fig_stab{i}", f"Коэффициент запаса устойчивости Fкр/F = k = {k}, {s['case'][0].lower() + s['case'][1:]}", width_cm=16.0)
 
-    def _fill_conclusion(self, res, c) -> str:
-        from .fillcalc import allowable_fill
-        fa = allowable_fill(res["fill_series"], c["allow15"])
-        lv = fmt(fa["level_m"])
-        return ((f"Допустимая высота налива продукта по условию прочности (σм ≤ 1,5[σ]) составляет не менее {lv} м "
-                 f"(на рассчитанных уровнях до {lv} м предел не достигнут).") if fa["unlimited"] else
-                f"Допустимая высота налива продукта по условию прочности (σм ≤ 1,5[σ]) составляет {lv} м.")
+    def _allowed_fill(self) -> str | None:
+        res, c = self.p.raw["results"], self.c
+        if res.get("fill_series") and len(res["fill_series"]) >= 3:
+            from .fillcalc import allowable_fill
+            fa = allowable_fill(res["fill_series"], c["allow"])
+            return ("не менее " if fa["unlimited"] else "") + fmt(fa["level_m"])
+        return fmt(res["max_fill_m"]) if c["strength_ok"] and res.get("max_fill_m") else None
 
     def sec8(self):
-        c, t, res = self.c, self.p.tank, self.p.raw["results"]
-        self.h1("7 Выводы и рекомендации")
-        s_ok = "прочность стенки обеспечена (мембранные напряжения не превышают 1,5[σ])" if c["strength_ok"] else "прочность стенки НЕ обеспечена: мембранные напряжения превышают 1,5[σ] на отдельных поясах"
+        c, t, m, res = self.c, self.p.tank, self.p.material, self.p.raw["results"]
+        n = len(t["belts_thickness"])
+        self.h1("7 Выводы и рекомендации", new_page=True)
+        rho = t.get("product_density") or "–"
+        items = [f"Расчеты прочности стенки {t['name']} при наливе продукта с плотностью {fmt(float(rho), 0) if rho != '–' else rho} кг/м3 до расчетной высоты налива "
+                 f"{fmt((t.get('fill_level') or 0) / 1000)} м, с учетом фактической формы стенки показали, что прочность стенки резервуара с учетом имеющихся "
+                 "отклонений при действии расчетных нагрузок и отклонениях от вертикали образующих стенки на высоте каждого пояса заполненного резервуара "
+                 + ("обеспечена." if c["strength_ok"] else "НЕ обеспечена.")]
         i = res.get("ideal")
-        items = [
-            f"Расчеты прочности стенки {t['name']} при наливе продукта плотностью {t.get('product_density') or '–'} кг/м3 до расчетной высоты {fmt((t.get('fill_level') or 0)/1000)} м "
-            f"с учетом фактической формы стенки показали, что {s_ok}.",
-            (f"Для идеального РВС (без отклонений образующих и вмятин) максимальные эквивалентные напряжения в стенке составили {fmt(i['equivalent'])} МПа, мембранные – {fmt(i['membrane'])} МПа, фибровые – {fmt(i['fiber'])} МПа"
-             + (f"; коэффициент запаса устойчивости k = {fmt(i['k'])}" if i.get("k") else "") + "." if i else None),
-            f"Максимальные эквивалентные напряжения в стенке РВС с отклонениями от идеальной формы составили {fmt(c['max_eq'])} МПа, "
-            f"мембранные – {fmt(c['max_mem'])} МПа, фибровые – {fmt(c['max_fiber'])} МПа (критерий для листов стенки: мембранные напряжения не более 1,5[σ] = {fmt(c['allow15'],1)} МПа; фибровые и эквивалентные приведены справочно).",
-            (f"Минимальный запас устойчивости стенки составил k = {fmt(c['kmin'])} (требуется не менее {fmt(res['required_k'])}) – запас устойчивости " + ("достаточный." if c["stability_ok"] else "НЕДОСТАТОЧНЫЙ.")
-             + (f" Коэффициент не получен для случаев: {', '.join(c['stability_missing'])}." if c["stability_missing"] else ""))
-            if c["kmin"] is not None else "Коэффициент запаса устойчивости из проекта Ansys не получен (нет результатов расчёта на устойчивость).",
-            (self._fill_conclusion(res, c) if res.get("fill_series") and len(res["fill_series"]) >= 3 else
-             f"Прочность стенки обеспечена при расчетном уровне налива продукта {fmt(res['max_fill_m'])} м.") if c["strength_ok"] else
-            "Для продолжения эксплуатации требуется снижение уровня налива или вывод резервуара в ремонт; допустимый уровень налива следует определить повторным расчетом."]
-        items = [x for x in items if x]
+        if i:
+            ok_i = i.get("membrane", 0) <= c["allow"] and i.get("fiber", 0) <= c["allow3"] and i.get("equivalent", 0) <= c["allow3"]
+            items.append(f"Максимальные эквивалентные напряжения в стенке идеального РВС составили {fmt(i['equivalent'])} МПа, мембранные напряжения {fmt(i['membrane'])} МПа, "
+                         f"фибровые напряжения {fmt(i['fiber'])} МПа" + (f", максимальные перемещения {fmt(i['deform_mm'])} мм" if i.get("deform_mm") else "")
+                         + f". Допустимые расчетные сопротивления согласно ГОСТ 31385-2023 для 1го пояса составили {int(c['R1'])} МПа, 2-{n} го пояса составили "
+                         f"{fmt(c['R2'])} МПа. Прочность идеализированного РВС без отклонений " + ("обеспечена" if ok_i else "НЕ обеспечена")
+                         + (f", коэффициент запаса устойчивости k = {fmt(i['k'])}." if i.get("k") else "."))
+        dmax = res.get("max_deform_mm")
+        items.append(f"Максимальные эквивалентные напряжения в стенке РВС с отклонениями от идеальной формы составили {fmt(c['max_eq'])} МПа, мембранные напряжения "
+                     f"{fmt(c['max_mem'])} МПа, фибровые напряжения {fmt(c['max_fiber'])} МПа" + (f", максимальные перемещения {fmt(dmax)} мм" if dmax else "")
+                     + ". Прочность РВС " + ("обеспечена." if c["strength_ok"] else "НЕ обеспечена."))
+        if c["kmin"] is not None:
+            smin = min((s for s in c["stability"] if s["k"] > 0), key=lambda s: s["k"])
+            req = res["required_k"]
+            items.append(f"Запас устойчивости стенки составил k = {g3(round(c['kmin'], 1))} для резервуара с отклонениями пустого РВС, "
+                         f"{smin['case'][0].lower() + smin['case'][1:]}, что является " + ("достаточным" if c["stability_ok"] else "НЕДОСТАТОЧНЫМ")
+                         + f" запасом устойчивости (требуется k ≥ {g3(req)}). Данный результат не зависит от высоты налива, поскольку считается пустой РВС под ветровой нагрузкой.")
+        else:
+            items.append("Коэффициент запаса устойчивости не получен (нет результатов расчета на устойчивость).")
+        af = self._allowed_fill()
+        items.append(f"Допустимый уровень налива продукта по условию прочности составил {af} м." if af else
+                     "Для продолжения эксплуатации требуется снижение уровня налива или вывод резервуара в ремонт; допустимый уровень налива следует определить повторным расчетом.")
         for k, x in enumerate(items, 1):
             par = self.body(f"{k}. {x}")
             par.paragraph_format.keep_together = True
-            if k < len(items):
-                par.paragraph_format.keep_with_next = True        # выводы переносятся целиком, без одиноких строк
 
     def appendices(self):
-        self.h1("Приложение 1 – Перечень использованной нормативной технической и методической документации", new_page=True)
+        self.h1("Приложение 1 – Перечень использованной при техническом диагностировании нормативной технической и методической документации", new_page=True)
         for k, x in enumerate(T.NORMS_FULL, 1): self.body(f"{k}. {x}")
-        self.h1("Приложение 2 – Перечень используемых терминов и определений")
+        self.h1("Приложение 2 – Перечень используемых терминов и определений", new_page=True)
         for term, dfn in T.TERMS:
-            self.para(term, bold=True); self.body(dfn)
-        self.h1("Приложение 3 – Исходные данные на выполнение прочностного расчета РВС", new_page=True)
-        tag, n = self.p.tank["tag"], self.p.raw["survey"]["points_per_belt"]
+            self.body(term); self.body(dfn)
+        self.h1("Приложение 3 – Исходные данные на выполнение прочностного расчет РВС", new_page=True)
+        self.body("1. Исходные данные")
+        n = self.p.raw["survey"]["points_per_belt"]
         nb = len(self.p.tank["belts_thickness"])
-        for title, dev in (("Отклонения стенки от вертикали полного резервуара, мм", self.p.survey_full),
-                           ("Отклонения стенки от вертикали резервуара после опорожнения, мм", self.p.survey_empty)):
-            hdr = ["Точка"] + [f"{ROMAN[b]}" for b in range(nb)]
+        for title, dev in (("Таблица 1.1 – Отклонения стенки от вертикали полного резервуара.", self.p.survey_full),
+                           ("Таблица 1.2 – Отклонения стенки от вертикали резервуара после опорожнения.", self.p.survey_empty)):
+            self.para(title, align=WD_ALIGN_PARAGRAPH.LEFT, indent=0, keep_next=True, space_before=6, space_after=3)
+            hdr = ["Образующая"] + [f"{ROMAN[b]}" for b in range(nb)]
             rows = [[i + 1] + [int(dev[b][i]) if float(dev[b][i]).is_integer() else fmt(dev[b][i]) for b in range(nb)] for i in range(n)]
-            self.table(hdr, rows, caption=title)
-        self.body("Требования к моделированию:")
+            self.table(hdr, rows, size=9)
+        self.body("2. Требование к моделированию геометрической модели:")
         for line in T.REQUIREMENTS: self.body(line)
 
     def build(self, out: Path) -> Path:
@@ -540,6 +652,28 @@ class Report:
         out.parent.mkdir(parents=True, exist_ok=True)
         self.d.save(out)
         return out
+
+
+def g3(x) -> str:
+    """Число как в эталоне: до 3 значащих после запятой без лишних нулей (7,45; 14,9; 0,95; 64156; 1571,8)."""
+    if x is None or x == "":
+        return ""
+    x = float(x)
+    if x == int(x):
+        return str(int(x))
+    if abs(x) >= 100:
+        return f"{x:.1f}".rstrip("0").rstrip(".").replace(".", ",")
+    return f"{x:.3g}".replace(".", ",")
+
+
+def trim(x: float, nd: int = 3) -> str:
+    """14.25 -> «14,25» (не более nd знаков после запятой, без лишних нулей)."""
+    return f"{float(x):.{nd}f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
+def cyr(s: str) -> str:
+    """Тип местности латиницей (A, B, C) → кириллицей, как в эталоне."""
+    return str(s).translate(str.maketrans("ABC", "АВС"))
 
 
 def build_report(p: Project, out: Path) -> tuple[Path, list[str]]:

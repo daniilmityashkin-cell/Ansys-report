@@ -259,3 +259,4 @@ main:has(.studio){max-width:min(1900px,97vw);padding-left:clamp(12px,1.6vw,28px)
 
 [hidden]{display:none!important}
 .thick-auto .filebtn:focus-within{outline:none}
+.req{color:var(--accent,#e0a33a);font-weight:700}

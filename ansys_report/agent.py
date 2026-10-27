@@ -165,7 +165,8 @@ def _run(info: dict, site: "Site") -> int:
         tpath.unlink()
     except OSError:
         pass
-    env = dict(SKIP_DIAG, ANSYS_REPORT_HOME=home, PYTHONPATH=home + os.pathsep + os.environ.get("PYTHONPATH", ""), AR_TIMING=str(tpath))
+    env = dict(SKIP_DIAG, ANSYS_REPORT_HOME=home, PYTHONPATH=home + os.pathsep + os.environ.get("PYTHONPATH", ""), AR_TIMING=str(tpath),
+               PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""))      # bat-файлы вызывают просто python: должен быть тот же (с установленными пакетами), что запустил помощника
     os.environ["AR_TIMING"] = str(tpath)
     try:
         pkg = WORK / f"pkg_{info['gid']}"

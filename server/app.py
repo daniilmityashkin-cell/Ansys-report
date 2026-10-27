@@ -22,6 +22,7 @@ from .auth import (hash_password, verify_password, normalize_email, valid_email,
                    canonical_email, is_disposable)
 from .fingerprint import data_key
 from .loadsinput import DEFAULTS, SNOW, WIND, TERRAINS
+from ansys_report import report_input as RI
 from .structinput import DEFAULTS as SDEFAULTS, SHAPES, ROOF_SHAPES
 from .payments import get_provider, settle
 from .jobs import JobRunner
@@ -46,7 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def preview_ready(gid: int) -> bool:
         pv = gen_dir(gid) / "preview"
-        if (pv / "ready").exists():
+        if (pv / "ready").exists() or (pv / "viewer.json").exists():      # 3D-данные пишутся первыми: страница показывает их сразу, картинки догружаются сами
             return True
         u = pv / "prev_unfold.png"          # генерации, созданные до появления признака готовности
         return u.exists() and time.time() - u.stat().st_mtime > 120
@@ -111,7 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return None if csrf_ok(request.session, token) else HTMLResponse("Сессия устарела. Обновите страницу.", status_code=400)
 
     # --- общие страницы ---
-    @app.get("/health")
+    @app.api_route("/health", methods=["GET", "HEAD"])          # HEAD: так стучатся бесплатные мониторы (UptimeRobot)
     def health():
         """Для мониторинга доступности (UptimeRobot и т. п.): отвечает 200 только если база читается."""
         try:
@@ -565,8 +566,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sp = gen_dir(g.id) / "structure.json"
             structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None
             mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
+            rdata = _report_data(g.id)
             return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view, structure=structure,
                           has_loads=lp.exists(), lf=DEFAULTS, snow=SNOW, wind=WIND, terrains=TERRAINS, loads_error=request.query_params.get("loads_error", "")[:300],
+                          rfields=RI.FIELDS, rgroups=RI.GROUPS, rf=rdata or _report_prefill(g), report_missing=RI.missing(rdata) if lp.exists() else [],
+                          report_saved=rdata is not None, report_error=request.query_params.get("report_error", "")[:400],
                           has_preview=preview_ready(g.id),
                           files=_files(g.id) if g.status == "done" else [],
                           agent_url=(f"ansysreport://run?server={(st.public_url or str(request.base_url)).rstrip('/')}&g={g.id}&t={agent_token(g.id)}"
@@ -590,12 +594,68 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 lform = {k: str(v) for k, v in raw_form.items() if k.startswith("l_")}
                 lform["l_on"] = "1"
                 project = json.loads((gen_dir(g.id) / "input.json").read_text(encoding="utf-8-sig"))
-                loads_in = build_loads_input(lform, project)
+                loads_in = _with_report_overrides(g.id, build_loads_input(lform, project))
                 (gen_dir(g.id) / "loads_input.json").write_text(json.dumps(loads_in, ensure_ascii=False), encoding="utf-8")
             except Exception as e:  # noqa: BLE001
                 from urllib.parse import quote
                 return RedirectResponse(f"/g/{gid}?loads_error={quote(str(e)[:250])}#loads", status_code=303)
             return RedirectResponse(f"/g/{gid}#loads", status_code=303)
+
+    def _report_data(gid: int) -> dict | None:
+        rp = gen_dir(gid) / "report_input.json"
+        return json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else None
+
+    def _report_prefill(g) -> dict:
+        """Первое открытие: нормативные коэффициенты по умолчанию, тип резервуара из названия, радиус крыши из подъёма."""
+        f = RI.defaults()
+        f["tank_name"] = g.title or ""
+        try:
+            li = json.loads((gen_dir(g.id) / "loads_input.json").read_text(encoding="utf-8"))
+            r, h = float(li["diameter_m"]) / 2, float(li["roof_rise_m"])
+            f["roof_radius"] = str(round((r * r + h * h) / (2 * h) * 1000))
+        except Exception:  # noqa: BLE001
+            pass
+        return f
+
+    def _with_report_overrides(gid: int, loads_in: dict) -> dict:
+        """Снег, ветер, теплоизоляция и сталь из «Данных для отчёта» - в расчёт нагрузок (Ansys считает с теми же числами, что в отчёте)."""
+        rd = _report_data(gid)
+        if rd:
+            loads_in = {**loads_in, **RI.loads_overrides(rd)}
+            from ansys_report.loads.rvs_loads import compute as compute_loads
+            compute_loads(loads_in)
+        return loads_in
+
+    @app.post("/g/{gid}/report-data")
+    async def set_report_data(request: Request, gid: int):
+        raw_form = await request.form()
+        bad = deny_csrf(request, str(raw_form.get("csrf", "")))
+        if bad:
+            return bad
+        from urllib.parse import quote
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return HTMLResponse("Не найдено", status_code=404)
+            if g.status != "draft":
+                return RedirectResponse(f"/g/{gid}", status_code=303)
+            data, errors = RI.parse({k: str(v) for k, v in raw_form.items()})
+            d = gen_dir(g.id)
+            if errors:
+                return RedirectResponse(f"/g/{gid}?report_error={quote(' '.join(errors)[:380])}#report", status_code=303)
+            prev = (d / "report_input.json").read_text(encoding="utf-8") if (d / "report_input.json").exists() else None
+            (d / "report_input.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            lp = d / "loads_input.json"
+            if lp.exists():
+                try:
+                    lp.write_text(json.dumps(_with_report_overrides(g.id, json.loads(lp.read_text(encoding="utf-8"))), ensure_ascii=False), encoding="utf-8")
+                except Exception as e:  # noqa: BLE001
+                    if prev is None:
+                        (d / "report_input.json").unlink()
+                    else:
+                        (d / "report_input.json").write_text(prev, encoding="utf-8")
+                    return RedirectResponse(f"/g/{gid}?report_error={quote(('Нагрузки с этими данными не считаются: ' + str(e))[:380])}#report", status_code=303)
+            return RedirectResponse(f"/g/{gid}#report", status_code=303)
 
     def _loads3d(g, lform: dict | None) -> dict:
         """Нагрузки расчётных случаев отчёта в виде для 3D-показа: сохранённые (или введённые в форме прямо сейчас - без записи на диск)."""
@@ -605,7 +665,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project = json.loads((d / "input.json").read_text(encoding="utf-8-sig"))
         if lform is not None:
             from .loadsinput import build_loads_input
-            inp = build_loads_input({**lform, "l_on": "1"}, project)
+            inp = _with_report_overrides(g.id, build_loads_input({**lform, "l_on": "1"}, project))
         elif (d / "loads_input.json").exists():
             inp = json.loads((d / "loads_input.json").read_text(encoding="utf-8"))
         else:
@@ -657,6 +717,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bad = deny_csrf(request, csrf)
         if bad:
             return bad
+        if st.demo:                                                 # демо: расчёт в Ansys не запускается
+            return RedirectResponse(f"/g/{gid}", status_code=303)
         with Session() as db:
             u, g = _owned(db, request, gid)
             if not u:
@@ -666,6 +728,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mode, _ = pay_mode(db, u, g)
             if mode == "blocked":
                 return RedirectResponse(f"/g/{g.id}", status_code=303)
+            if (gen_dir(g.id) / "loads_input.json").exists() and RI.missing(_report_data(g.id)):     # отчёт не собирается без данных заказчика
+                return RedirectResponse(f"/g/{g.id}#report", status_code=303)
             if mode in ("credit", "free", "unlimited"):         # из пакета, первая бесплатная и безлимитный аккаунт - без платежа
                 if mode == "credit":
                     u.credits = u.credit_count - 1

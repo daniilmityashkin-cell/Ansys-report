@@ -4,6 +4,8 @@
 <h1>{{ g.title }}</h1><p class="sub">Генерация №{{ g.id }} · <span class="tag {{ g.status }}">{{ {'draft':'проверка пройдена','paid':'оплачено','running':'считается','done':'готово','error':'ошибка'}[g.status] }}</span>{% if g.status in ('draft','done','error') %} · <a href="/studio?edit={{ g.id }}" title="Вернуться в студию с этими замерами и конструкцией; будет создана новая генерация, эта останется">Изменить геометрию</a>{% endif %}</p>
 {% if g.status == 'draft' and not has_loads %}<div class="card actionbar"><div><b>Шаг 2: задайте нагрузки</b><p class="muted" style="margin:4px 0 0">Модель создана. Ниже введите продукт, налив, снег, ветер — после этого можно собрать отчёт.</p></div><a class="btn" href="#loads">Задать нагрузки ↓</a></div>
 {% elif g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card actionbar"><b>Отчёт</b><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
+{% elif report_missing and not st.demo %}<div class="card actionbar"><div><b>Шаг 3: данные для отчёта</b><p class="muted" style="margin:4px 0 0">Отчёт собирается только по вашим данным: заполните {{ report_missing|length }} {{ 'поле' if report_missing|length == 1 else ('поля' if report_missing|length < 5 else 'полей') }} (сталь, реквизиты, нагрузки для таблицы 1).</p></div><a class="btn" href="#report">Заполнить ↓</a></div>
+{% elif st.demo %}<div class="card actionbar"><div><b>Демо-версия</b><p class="muted" style="margin:4px 0 0">Здесь можно посмотреть студию, 3D-модель, нагрузки на модели и ввод толщин. Сборка технического отчёта в Ansys в демо отключена (она запускается на компьютере с Ansys). Готовые отчёты присланы отдельными файлами.</p></div></div>
 {% else %}<div class="card actionbar"><div><b>Собрать технический отчёт одним нажатием</b><p class="muted" style="margin:4px 0 0">Рассчитаем нагрузки, построим модель, посчитаем в Ansys на вашем компьютере и пришлём отчёт сюда.{% if mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% elif mode == 'pay' %} Разовая генерация доступна один раз на аккаунт.{% endif %}</p></div>
 <form method="post" action="/g/{{ g.id }}/pay" onsubmit="try{sessionStorage.setItem('ar_auto{{ g.id }}','1')}catch(e){}"><input type="hidden" name="csrf" value="{{ csrf }}">
 <button class="btn">Собрать отчёт{% if mode == 'pay' %} — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
@@ -37,7 +39,7 @@ tick();setInterval(tick,5000);})();</script>
 <div><label>Уровень воды при гидроиспытаниях, м</label><input type="text" name="l_hydro" value="{{ lf.l_hydro }}"></div>
 <div><label>Избыточное давление, Па</label><input type="text" name="l_overp" value="{{ lf.l_overp }}"></div>
 <div><label>Вакуум, Па</label><input type="text" name="l_vac" value="{{ lf.l_vac }}"></div>
-<div><label>Предел текучести стали R<sub>yn</sub>, МПа</label><input type="text" name="l_ryn" value="{{ lf.l_ryn }}"></div>
+<input type="hidden" name="l_ryn" value="{{ lf.l_ryn }}">
 <div><label>Снеговой район</label><select name="l_snow">{% for v in snow %}<option {{ 'selected' if v == lf.l_snow }}>{{ v }}</option>{% endfor %}</select></div>
 <div><label>Ветровой район</label><select name="l_wind">{% for v in wind %}<option {{ 'selected' if v == lf.l_wind }}>{{ v }}</option>{% endfor %}</select></div>
 <div><label>Тип местности (A, B, C)</label><select name="l_terrain">{% for v in terrains %}<option {{ 'selected' if v == lf.l_terrain }}>{{ v }}</option>{% endfor %}</select></div>
@@ -54,7 +56,16 @@ tick();setInterval(tick,5000);})();</script>
 <div class="viewer l3view"><canvas></canvas></div>
 <div class="vlegend"><span id="l3-min"></span><i class="vgrad l3grad"></i><span id="l3-max"></span></div>
 <table class="l3table" id="l3-table"></table>
-<p class="muted st-hint" id="l3-info">Строю…</p><p><button type="button" class="btn light" id="l3-reset">Сбросить вид</button></p></div></div></div>{% elif has_loads %}<div class="card" id="loads3d" data-src="/g/{{ g.id }}/loads3d.json"{% if g.status == 'draft' %} data-form="loads-form"{% endif %}><h2>Нагрузки на модели</h2>
+<p class="muted st-hint" id="l3-info">Строю…</p><p><button type="button" class="btn light" id="l3-reset">Сбросить вид</button></p></div></div></div>
+{% if has_loads %}<div class="card" id="report"><h2>Данные для отчёта{% if report_saved and not report_missing %} <span class="tag done">заполнены</span>{% endif %}</h2>
+<p class="sub">Всё, чего нет в замерах: реквизиты, сталь, массы и нагрузки для таблицы 1 и раздела 4. Отчёт собирается только по этим данным, ничего не подставляется молча. Снег, ветер, теплоизоляция и сталь отсюда же идут в расчёт Ansys.</p>
+{% if report_error %}<div class="err">{{ report_error }}</div>{% endif %}
+{% if report_missing and report_saved %}<div class="err">Не заполнено: {{ report_missing|join(', ') }}.</div>{% endif %}
+<form method="post" action="/g/{{ g.id }}/report-data" id="report-form"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% for grp in rgroups %}<h3 style="margin:14px 0 6px">{{ grp }}</h3><div class="grid">{% for f in rfields if f[2] == grp %}
+<div><label>{{ f[1] }}{% if f[4] %} <b class="req" title="обязательно">*</b>{% endif %}</label><input type="text" name="r_{{ f[0] }}" value="{{ rf.get(f[0], '') }}"{% if f[6] %} placeholder="{{ f[6] }}"{% endif %}{% if f[4] %} data-req="1"{% endif %}></div>{% endfor %}</div>{% endfor %}
+<p class="muted">Пример заполнения — серые подсказки в полях (эталонный отчёт ТО-019-26). Поля со звёздочкой обязательны.</p>
+<p><button class="btn">Сохранить данные для отчёта</button></p></form></div>{% endif %}{% elif has_loads %}<div class="card" id="loads3d" data-src="/g/{{ g.id }}/loads3d.json"{% if g.status == 'draft' %} data-form="loads-form"{% endif %}><h2>Нагрузки на модели</h2>
 <p class="sub">Так нагрузки ложатся на резервуар в каждом расчётном случае отчёта.{% if g.status == 'draft' %} Меняйте значения слева: картина обновляется сразу, до сохранения.{% endif %}</p>
 <div class="dent-tabs" id="l3-tabs"></div>
 <div class="viewer l3view"><canvas></canvas></div>
@@ -80,10 +91,10 @@ tick();setInterval(tick,5000);})();</script>
 <div class="vlegend"><span id="v-min"></span><i class="vgrad"></i><span id="v-max"></span><span>· цвет по |Δr|</span></div>
 <div id="v-info" class="vinfo">Вращайте мышью, масштаб — ползунком, правая кнопка — сдвиг; колесо прокручивает страницу. Наведите курсор на поверхность или точку, чтобы увидеть отклонение.</div>
 </div>
-<details class="more"><summary>Если 3D не открывается: статичные картинки</summary><div class="grid"><div><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки"></div><div><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность"></div></div></details>
-<h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка">
+<details class="more"><summary>Если 3D не открывается: статичные картинки</summary><div class="grid"><div><img class="pv" src="/g/{{ g.id }}/img/prev_points.png" alt="Точки" onerror="var i=this;if((i._n=(i._n||0)+1)<40)setTimeout(function(){i.src=i.src.split('?')[0]+'?t='+Date.now()},2500)"></div><div><img class="pv" src="/g/{{ g.id }}/img/prev_surface.png" alt="Поверхность" onerror="var i=this;if((i._n=(i._n||0)+1)<40)setTimeout(function(){i.src=i.src.split('?')[0]+'?t='+Date.now()},2500)"></div></div></details>
+<h2 style="margin-top:18px">Развёртка: контуры и привязка вмятин</h2><img class="pv" src="/g/{{ g.id }}/img/prev_unfold.png" alt="Развёртка" onerror="var i=this;if((i._n=(i._n||0)+1)<40)setTimeout(function(){i.src=i.src.split('?')[0]+'?t='+Date.now()},2500)">
 {% if summary.dents and summary.dents[0].id is defined %}<h2 style="margin-top:18px">Локальные участки (вмятины и выпучины)</h2>
-<div class="grid">{% for d in summary.dents %}<div><h3>{{ loop.index }}. {{ d.name }}</h3><p class="sub">P{{ d.id }}: s = {{ d.s_m }} м · φ = {{ d.angle }}° · Z = {{ d.z_m }} м · {{ d.sign }} {{ d.depth_mm }} мм · {{ d.n_points }} точек · {{ d.width_m }}×{{ d.height_m }} м</p><img class="pv" src="/g/{{ g.id }}/img/dent{{ d.id }}.png" alt="{{ d.name }}"></div>{% endfor %}</div>{% endif %}
+<div class="grid">{% for d in summary.dents %}<div><h3>{{ loop.index }}. {{ d.name }}</h3><p class="sub">P{{ d.id }}: s = {{ d.s_m }} м · φ = {{ d.angle }}° · Z = {{ d.z_m }} м · {{ d.sign }} {{ d.depth_mm }} мм · {{ d.n_points }} точек · {{ d.width_m }}×{{ d.height_m }} м</p><img class="pv" src="/g/{{ g.id }}/img/dent{{ d.id }}.png" alt="{{ d.name }}" onerror="var i=this;if((i._n=(i._n||0)+1)<40)setTimeout(function(){i.src=i.src.split('?')[0]+'?t='+Date.now()},2500)"></div>{% endfor %}</div>{% endif %}
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
 {% if summary.belts %}<div class="card"><h2>Оценка замеров по допускам (ГОСТ 31385-2016)</h2><p class="sub">Для каждого пояса: допуск H/200 и расширенный H/200 + 30 мм от высоты пояса, наибольшее по модулю отклонение и число точек за допуском.</p>
 <table><tr><th>Пояс</th><th>Высота, м</th><th>Толщина, мм</th><th>H/200, мм</th><th>H/200+30, мм</th><th>Макс. |Δ|, мм</th><th>Образующая</th><th>Выше H/200</th><th>Выше H/200+30</th></tr>
@@ -128,6 +139,7 @@ tick();setInterval(tick,5000);})();</script>
 {% if structure.roof_nodes %}{% set n = structure.roof_nodes %}<h2 style="margin-top:18px">Узлы крыши: пластины</h2><p>Круговая пластина {{ n.ring_height_mm|round|int }} × {{ n.ring_thickness_mm|round(1) }} мм. Верхние: {{ n.upper_length_mm|round|int }} × {{ n.upper_height_mm|round|int }} × {{ n.upper_thickness_mm|round(1) }} мм. Нижние: {{ n.lower_length_mm|round|int }} × {{ n.lower_height_mm|round|int }} × {{ n.lower_thickness_mm|round(1) }} мм. По {{ r.radial_count }} шт. верхних и нижних.</p>{% endif %}{% endif %}
 </div>{% endif %}
 {% if g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card"><h2>Отчёт и файлы</h2><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
+{% elif report_missing %}<div class="card"><h2>Отчёт и файлы</h2><p>Сначала заполните <a href="#report">данные для отчёта</a>.</p></div>
 {% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — в пакетах.{% elif mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% endif %}</p>
 <form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
 <button class="btn">{% if mode == 'credit' %}Получить отчёт и файлы (из пакета){% elif mode == 'unlimited' %}Получить отчёт и файлы (безлимитный аккаунт){% elif mode == 'free' %}Получить отчёт и файлы бесплатно{% else %}Получить отчёт и файлы — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
