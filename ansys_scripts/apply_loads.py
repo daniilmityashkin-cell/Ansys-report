@@ -6,6 +6,15 @@
 import os, io
 import System
 
+
+def _rd(path, enc="utf-8"):
+    """Читает файл целиком и сразу закрывает (IronPython не закрывает неявно: повторное чтение даёт «файл занят»)."""
+    fh_ = io.open(path, encoding=enc)
+    try:
+        return fh_.read()
+    finally:
+        fh_.close()
+
 out = os.environ.get("ANSYS_REPORT_OUT") or os.path.join(os.environ["TEMP"], "ansys_report_out")
 System.IO.Directory.CreateDirectory(out)
 AXIS = (os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()       # вертикаль модели: геометрия из «RVS Geometry» - Z
@@ -20,7 +29,7 @@ def say(t):
 
 ns_globals = {}
 path = os.environ.get("ANSYS_REPORT_LOADS") or os.path.join(out, "loads_data.py")      # при ручном запуске: положите loads_data.py в эту папку
-exec(io.open(path, encoding="utf-8").read(), ns_globals)
+exec(_rd(path), ns_globals)
 L = ns_globals["LOADS"]
 D = L["geometry"]["diameter_mm"]
 H = L["geometry"]["wall_height_mm"]
@@ -95,21 +104,27 @@ for f, c, a, vs in info:
     zs = [vcoord(p) * scale for p in vs]
     zmin, zmax = min(zs), max(zs)
     area = a * scale * scale
-    flat = (zmax - zmin) < 0.01 * H
-    if area < 0.02 * wall_area:
+    zc = vcoord(c) * scale
+    if area < 0.001 * wall_area:
         kind = "other"
-    elif flat and zmax < 0.03 * H:
-        kind = "bottom"
-    elif flat and zmin > 0.97 * H:
-        kind = "roof"
+    elif zmax < 0.03 * H:
+        kind = "bottom"                                    # днище и окрайка: плоские грани у отметки 0
+    elif zmin > 0.97 * H:
+        kind = "roof"                                      # купол: начинается на отметке верха стенки
     elif (zmax - zmin) >= 0.01 * H:
         kind = "wall"
     else:
         kind = "other"
-    groups[kind].append((zmin, f))
+    groups[kind].append((zc, f, area))
     say(u"  грань: z %.0f..%.0f мм, площадь %.1f м2 -> %s" % (zmin, zmax, area / 1e6, kind))
 for k_ in groups:
-    groups[k_] = [f for _, f in sorted(groups[k_], key=lambda t: t[0])]         # грани стенки снизу вверх: номер грани = номер пояса
+    groups[k_] = sorted(groups[k_], key=lambda t: t[0])
+groups["annular"] = []
+if len(groups["bottom"]) >= 2:                              # самая большая плоская грань - днище, меньшая - окрайка
+    b_ = sorted(groups["bottom"], key=lambda t: -t[2])
+    groups["bottom"], groups["annular"] = [b_[0]], b_[1:]
+for k_ in groups:
+    groups[k_] = [t[1] for t in groups[k_]]                 # грани стенки снизу вверх: номер грани = номер пояса
 say(u"Стенка: %d, крыша: %d, днище: %d, прочие (патрубки и т.п.): %d" % (len(groups["wall"]), len(groups["roof"]), len(groups["bottom"]), len(groups["other"])))
 
 
@@ -132,6 +147,7 @@ def named_selection(name, entities):
 ns_wall = named_selection("AR_WALL", groups["wall"])
 ns_roof = named_selection("AR_ROOF", groups["roof"])
 ns_bottom = named_selection("AR_BOTTOM", groups["bottom"])
+ns_annular = named_selection("AR_ANNULAR", groups["annular"])
 edges = []
 for f in groups["wall"] + groups["bottom"]:
     for e in f.Edges:
@@ -216,16 +232,29 @@ for a in model.Analyses:
         break
 REUSE_FIRST = os.environ.get("ANSYS_REPORT_REUSE_FIRST") == "1"
 extra_apdl = globals().get("EXTRA_APDL", u"")
+statics = {}
 for ci, case in enumerate(L["cases"]):
     try:
         an = base if (REUSE_FIRST and ci == 0 and base is not None) else model.AddStaticStructuralAnalysis()
         an.Name = u"AR: " + case["name"]
-        if ns_base is not None:
+        if os.environ.get("ANSYS_REPORT_LARGE_DEFLECTION", "0") == "1" and case["id"] != "vacuum":       # вакуум - база для устойчивости: линейный, иначе множитель считается от деформированного состояния и теряет смысл; # по умолчанию выключено: в прогоне с большими перемещениями решения не сходились (Unconverged); ГОСТ Р 58622 п. 7.2.7.1: геометрически нелинейный (большие перемещения) упругий расчёт
+            try:
+                an.AnalysisSettings.LargeDeflection = True
+                an.AnalysisSettings.AutomaticTimeStepping = AutomaticTimeStepping.On
+                an.AnalysisSettings.InitialSubsteps = 5
+                an.AnalysisSettings.MinimumSubsteps = 5
+                an.AnalysisSettings.MaximumSubsteps = 30
+            except Exception as e:
+                say(u"  большие перемещения для '%s': %s" % (case["name"], e))
+        statics[case["id"]] = an
+        if ns_bottom is not None or ns_annular is not None:      # закрепление по днищу (как в ГОСТ Р 58622): днище и окрайка закреплены по всем степеням свободы
+            for nsx in (ns_bottom, ns_annular):
+                if nsx is not None:
+                    fx = an.AddFixedSupport()
+                    fx.Location = nsx
+        elif ns_base is not None:
             fx = an.AddFixedSupport()
             fx.Location = ns_base
-        if ns_bottom is not None:
-            fl = an.AddFrictionlessSupport()
-            fl.Location = ns_bottom
         sn = an.AddCommandSnippet()
         sn.Name = u"AR нагрузки: " + case["name"]
         sn.AppendText((extra_apdl + u"\n" if extra_apdl else u"") + apdl_case(case))
@@ -246,6 +275,66 @@ for ci, case in enumerate(L["cases"]):
         say(u"Случай '%s': создан, нагрузки заданы" % case["name"])
     except Exception as e:
         say(u"ОШИБКА случая '%s': %s" % (case["name"], e))
+
+# ---------- 4. Устойчивость: Eigenvalue Buckling по предварительно нагруженному случаю «пустой резервуар, вакуум, снег и ветер» ----------
+try:
+    src = statics.get("vacuum")
+    if src is None:
+        raise Exception("нет статического случая 'vacuum' для связи")
+    bk = model.AddEigenvalueBucklingAnalysis()
+    bk.Name = u"Eigenvalue Устойчивость пустого резервуара"
+    linked = False
+    cands = [bk]
+    try:
+        for ch in bk.Children:
+            cands.append(ch)
+    except Exception:
+        pass
+    for obj in cands:
+        for attr in ("PreStressICEnvironment", "PreStressEnvironment"):
+            if hasattr(obj, attr):
+                try:
+                    setattr(obj, attr, src)
+                    linked = True
+                    say(u"Устойчивость: предварительное нагружение связано через %s.%s" % (obj.GetType().Name, attr))
+                    break
+                except Exception as e:
+                    say(u"  связь через %s.%s: %s" % (obj.GetType().Name, attr, e))
+        if linked:
+            break
+    if not linked:
+        say(u"Устойчивость: связь с статикой не установлена автоматически; доступные свойства: %s" % u", ".join([n for c_ in cands for n in dir(c_) if "Pre" in n]))
+    try:
+        bk.AnalysisSettings.MaximumModesToFind = 3
+    except Exception as e:
+        say(u"  число форм: %s" % e)
+    try:                                   # только положительные множители: запас по заданной (прямой) нагрузке
+        ast_ = bk.AnalysisSettings
+        done_ = False
+        for src_ in (u"IncludeNegativeLoadMultiplier",):
+            if hasattr(ast_, src_):
+                cur_ = getattr(ast_, src_)
+                for nm_ in (u"No", u"Off"):
+                    try:
+                        setattr(ast_, src_, getattr(type(cur_), nm_))
+                        done_ = True
+                        break
+                    except Exception:
+                        pass
+        say(u"Устойчивость: только положительные множители нагрузки: %s" % (u"включено" if done_ else u"не удалось (свойства: %s)" % u", ".join([n for n in dir(ast_) if "Neg" in n or "Multiplier" in n])))
+    except Exception as e:
+        say(u"  отрицательные множители: %s" % e)
+    bsol = bk.Solution
+    for mi in (1, 2, 3):
+        td = bsol.AddTotalDeformation()
+        td.Name = u"Total Deformation" if mi == 1 else u"Total Deformation %d" % mi          # имена, по которым отчёт находит рисунки форм
+        try:
+            td.Mode = mi
+        except Exception as e:
+            say(u"  Mode=%d: %s" % (mi, e))
+    say(u"Случай устойчивости: создан")
+except Exception as e:
+    say(u"Устойчивость не добавлена: %s" % e)
 
 f = io.open(os.path.join(out, "log_loads.txt"), "w", encoding="utf-8")
 f.write(u"\n".join(log))

@@ -24,6 +24,56 @@ Automation -> Scripting -> «+» -> вставьте содержимое apply_
 """
 
 
+def _ansys_pack(gen: Path, project: dict, belts_dir: Path, dest: Path, title: str, loads_data, lp: Path):
+    """Пакет «открыть в Ansys» для заданных замеров: пояса-грани, днище/окрайка/крыша, каркас крыши. Возвращает папку пакета или None."""
+    from ansys_report.geometry import check as gcheck
+    bm = gcheck.export_belt_model(project, belts_dir)
+    step, zones = bm["step"], bm["zones"]                        # пояса стенки - отдельные грани: результаты Ansys по поясам
+    parts = {}
+    try:                                                           # достраиваем окрайку, днище и крышу (нужен Open CASCADE)
+        from ansys_report.geometry.assembly import build_full_step, default_structure
+        sp = gen / "structure.json"
+        structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
+        li = json.loads(lp.read_text(encoding="utf-8"))
+        base = default_structure(float(li["diameter_m"]), float(li["wall_height_m"]), li.get("roof_rise_m"))
+        struct = {"bottom": {**base["bottom"], **(structure.get("bottom") or {})}, "roof": {**base["roof"], **(structure.get("roof") or {})}}
+        full = bm["step"].parent / "model_full.step"
+        info = build_full_step(step, full, struct)
+        if full.stat().st_size > 100_000_000:                       # очень подробная геометрия (много вмятин): полная модель слишком тяжёлая для Ansys
+            raise RuntimeError("полная модель %d МБ: оставлена только стенка" % (full.stat().st_size // 1_000_000))
+        step = full
+        b, r = struct["bottom"], struct["roof"]
+        parts = {"disc_mm": float(b["plate_thickness_mm"]), "annular_mm": float(b["annular_thickness_mm"]),
+                 "roof_mm": float(r.get("deck_thickness_mm") or li.get("roof_deck_thickness_m", 0.004) * 1000), "rise_mm": info["rise_mm"]}
+        if r.get("plate_width_mm") and r.get("plate_thickness_mm"):   # опорная полоса крыши у стенки: в Ansys - утолщённая оболочка края крыши
+            parts.update(band_width_mm=float(r["plate_width_mm"]), band_mm=float(r["plate_thickness_mm"]))
+    except Exception as e:   # noqa: BLE001
+        belts_dir.mkdir(parents=True, exist_ok=True)
+        (belts_dir / "assembly_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+    if not (step.exists() and zones.exists()):
+        return None
+    from ansys_report.loads.launcher import write_open_package
+    md = write_open_package(dest, step, zones, loads_data,
+                            anketa={"tag": title, "tank_name": title, "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
+    try:                                                           # вмятины: зоны сгущения сетки в Ansys (сфера влияния 100 мм)
+        dz = gcheck.dent_zones(project)
+        if dz:
+            (md / "dents.json").write_text(json.dumps(dz, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:   # noqa: BLE001
+        (md / "dents_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+    try:                                                           # каркас крыши и опорное кольцо (если заданы в файле проекта) - балочные элементы в Ansys
+        from ansys_report.loads.beams import beams_package, with_structure_sections
+        sp = gen / "structure.json"
+        project = with_structure_sections(project, json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None)
+        bp = beams_package(project, float(str(project["diameter"]).replace(",", ".")) * 500.0)
+        if bp:
+            (md / "beams.json").write_text(json.dumps(bp, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:   # noqa: BLE001
+        (belts_dir / "beams_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+        (md / "beams_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
+    return md
+
+
 def compute(gen_dir: str, title: str) -> dict:
     """Запускается в рабочем процессе: читает input.json, пишет файлы в result/. Возвращает список файлов."""
     from ansys_report.geometry.pipeline import build_from_points
@@ -37,19 +87,48 @@ def compute(gen_dir: str, title: str) -> dict:
         from ansys_report.loads.export import write_package
         from ansys_report.loads.rvs_loads import compute as compute_loads
         pack_dir = gen / "result" / "loads"
-        pack = write_package(compute_loads(json.loads(lp.read_text(encoding="utf-8"))), pack_dir)
+        loads_res = compute_loads(json.loads(lp.read_text(encoding="utf-8")))
+        from ansys_report.loads.export import report_fill_levels
+        levels = report_fill_levels(loads_res)                                                              # серия уровней налива для допустимой высоты
+        pack = write_package(loads_res, pack_dir, fill_levels_m=levels)
+        pack_ideal = write_package(loads_res, gen / "result" / "loads_ideal")                              # идеальный бак считается без серии уровней
         shutil.copy2(SCRIPTS / "apply_loads.py", pack_dir / "apply_loads.py")
         (pack_dir / "Как_наложить_нагрузки.txt").write_text(README_LOADS, encoding="utf-8")
         files += [pack["json"], pack["data"], pack["summary"], pack_dir / "apply_loads.py", pack_dir / "Как_наложить_нагрузки.txt"]
-        from ansys_report.geometry import check as gcheck
-        bm = gcheck.export_belt_model(json.loads((gen / "input.json").read_text(encoding="utf-8-sig")), gen / "result" / "belts_src")
-        step, zones = bm["step"], bm["zones"]                        # пояса стенки - отдельные грани: результаты Ansys по поясам
-        if step.exists() and zones.exists():                          # модель «открыть в Ansys» у заказчика
-            from ansys_report.loads.launcher import write_open_package
-            md = write_open_package(gen / "result" / "ansys_model", step, zones, pack["data"],
-                                    anketa={"tag": title, "tank_name": title})
+        proj_main = json.loads((gen / "input.json").read_text(encoding="utf-8-sig"))
+        md = _ansys_pack(gen, proj_main, gen / "result" / "belts_src", gen / "result" / "ansys_model", title, pack["data"], lp)
+        if md is not None:
+            try:                                                       # идеальный РВС (без отклонений и вмятин) - отдельная модель для сравнения по ТЗ
+                from ansys_report.geometry.ideal import ideal_project
+                _ansys_pack(gen, ideal_project(proj_main), gen / "result" / "belts_ideal", md / "ideal", title + " (идеальный)", pack_ideal["data"], lp)
+            except Exception as e:   # noqa: BLE001
+                (gen / "result" / "belts_src" / "ideal_error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
             files += [p for p in sorted(md.iterdir()) if p.is_file()]
     return {"files": [str(f.relative_to(gen / "result")) for f in files]}
+
+
+def compute_step(out_dir: str, project: dict, structure: dict | None) -> list[str]:
+    """Файлы геометрии для скачивания из студии: стенка с фактическими отклонениями и целая модель (стенка + окрайка + днище + крыша). Возвращает имена файлов."""
+    import shutil
+    from ansys_report.geometry import check as gcheck
+    from ansys_report.geometry.assembly import build_full_step, default_structure
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    names = []
+    tmp = out / "_w"
+    tmp.mkdir(parents=True, exist_ok=True)
+    gcheck.export_wall_belts(project, out / "Стенка.step", tolerance_mm=0.5, log=lambda s: None)
+    names.append("Стенка.step")
+    bm = gcheck.export_belt_model(project, tmp / "belts")
+    D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
+    st = structure or {}
+    rise = (st.get("roof") or {}).get("rise_m")
+    base = default_structure(D, H, rise)
+    struct = {"bottom": {**base["bottom"], **(st.get("bottom") or {})}, "roof": {**base["roof"], **(st.get("roof") or {})}, "D": D, "H": H}
+    build_full_step(bm["step"], out / "Модель целиком.step", struct, parts_dir=out)
+    names += ["Днище и окрайка.step", "Крыша.step", "Модель целиком.step"]
+    shutil.rmtree(tmp, ignore_errors=True)
+    return names
 
 
 def compute_preview(gen_dir: str) -> None:
@@ -96,6 +175,17 @@ class JobRunner:
             except Exception as e:   # noqa: BLE001
                 self.on_done(gen_id, None, f"{type(e).__name__}: {e}")
         fut.add_done_callback(done)
+
+    def submit_fn(self, fn, *args):
+        """Произвольная тяжёлая функция в пуле процессов (в тестах - сразу). Возвращает Future."""
+        if self.inline:
+            f = cf.Future()
+            try:
+                f.set_result(fn(*args))
+            except Exception as e:   # noqa: BLE001
+                f.set_exception(e)
+            return f
+        return self.pool.submit(fn, *args)
 
     def submit_preview(self, gen_dir: Path):
         if self.inline:

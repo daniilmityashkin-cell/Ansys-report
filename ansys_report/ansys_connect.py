@@ -88,6 +88,18 @@ def _system_name(mechdb: Path) -> str:
     return mechdb.stem
 
 
+# метка времени этапа в журнале Workbench (ansys_report/timing.py)
+_JOURNAL_TMARK = r'''def tmark(label):
+    try:
+        import io, time
+        f = io.open(os.environ.get('AR_TIMING') or r'C:\ansys_report_work\timing.log', 'a', encoding='utf-8')
+        f.write(u'%.3f\t%s\t%s\n' % (time.time(), os.environ.get('AR_TIMING_TAG', ''), label))
+        f.close()
+    except:
+        pass
+'''
+
+
 def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path, mechdb: Path,
                           scripts: list[str] | None = None, extra_files: dict | None = None, extra_env: dict | None = None,
                           save_as: Path | None = None) -> None:
@@ -112,10 +124,12 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
         body = []
         for name in (scripts or SCRIPT_ORDER):
             code = "import io\nexec(io.open(r" + repr(str(SCRIPTS / name)) + ", encoding='utf-8').read())"
+            body.append('    tmark(u"WB выгрузка: скрипт ' + name + '")')
             body.append('    model.SendCommand(Language="Python", Command=' + repr(code) + ')')
             body.append('    st("DONE ' + name + '")')
         journal = work / "run.wbjn"
         journal.write_text(
+            "# -*- coding: utf-8 -*-\n"                 # без этой строки IronPython не выполняет журнал с кириллицей (метки времени)
             "import os, traceback\n"
             f'os.environ["ANSYS_REPORT_OUT"] = r"{out}"\n'
             f'status = r"{status}"\n'
@@ -123,7 +137,9 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             '    f = open(status, "a")\n'
             '    f.write(m + "\\n")\n'
             "    f.close()\n"
+            + _JOURNAL_TMARK +
             'st("JOURNAL START")\n'
+            'tmark(u"WB выгрузка: журнал запущен, открытие проекта")\n'
             "try:\n"
             f'    Open(FilePath=r"{project}")\n'
             "    target = None\n"
@@ -134,9 +150,11 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             "    if target is None:\n"
             '        raise Exception("system not found")\n'
             '    model = target.GetContainer(ComponentName="Model")\n'
+            '    tmark(u"WB выгрузка: запуск Mechanical")\n'
             "    model.Edit()\n"
             '    st("MECHANICAL OPEN")\n'
             + "\n".join(body) + "\n"
+            '    tmark(u"WB выгрузка: выход из Mechanical, закрытие Workbench")\n'
             "    model.Exit()\n"
             + (f'    Save(FilePath=r"{save_as}", Overwrite=True)\n' if save_as else "") +
             "except:\n"
@@ -144,9 +162,11 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
             encoding="utf-8")
         env = dict(os.environ, ANSYS_REPORT_OUT=str(out), **env_extra)
         log("Запускаю Workbench в фоне и открываю проект (несколько минут)…")
+        from . import timing
+        timing.mark("WB выгрузка: запуск Workbench")
         runlog = out / "wb_run.log"
         with open(runlog, "w", encoding="utf-8", errors="replace") as lf:
-            proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=lf, stderr=subprocess.STDOUT, env=env)
+            proc = subprocess.Popen([str(exe), "-B", "-R", str(journal)], stdout=lf, stderr=subprocess.STDOUT, env=env, stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             started = time.time()
             while True:                      # сообщаем, что программа жива: Workbench работает без окна
                 try:
@@ -159,6 +179,7 @@ def extract_via_workbench(project: Path, out: Path, log, ver: int, install: Path
                         last = [l for l in status.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
                         seen = f" (последний шаг: {last[-1][:60]})" if last else ""
                     log(f"  Workbench работает… {mins} мин{seen}")
+        timing.mark("Отчёт: после Workbench (данные, отчёт Word/Excel)")
         log(f"  Workbench завершился с кодом {proc.returncode}")
         try:
             tail = [l for l in runlog.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()][:8]
@@ -276,6 +297,8 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
                     _report_problems(out, log)
                     return out
                 log("Через Workbench не вышло, пробую запасной способ…")
+            except ConnectError:
+                raise
             except Exception as e:  # noqa: BLE001
                 log(f"Workbench-способ не сработал ({e}), пробую запасной способ…")
         try:
@@ -326,17 +349,26 @@ def _report_problems(out: Path, log):
             for line in f.read_text(encoding="utf-8").splitlines():
                 if "ОШИБКА" in line or "ПРОПУЩЕНО" in line:
                     log(f"  ! {name}: {line}")
+    import csv
     st = out / "stability.csv"
     if st.exists():
-        for line in st.read_text(encoding="utf-8").splitlines()[1:]:
-            parts = line.split(",")
-            if len(parts) >= 3 and float(parts[2]) <= 0:
+        for parts in list(csv.reader(st.read_text(encoding="utf-8").splitlines()))[1:]:
+            if len(parts) >= 3 and float(parts[-1]) <= 0:
                 log(f"  ! stability.csv: для «{parts[0]}», мода {parts[1]} коэффициент равен 0 - результат расчёта на устойчивость не прочитан")
-    for f in out.glob("*_belts.csv"):
-        rows = f.read_text(encoding="utf-8").splitlines()[1:]
-        if rows and all(float(x) == 0 for r in rows for x in r.split(",")[1:]):
+    files = list(out.glob("*_belts.csv"))
+    zero = []
+    for f in files:
+        rows = list(csv.reader(f.read_text(encoding="utf-8").splitlines()))[1:]
+        if rows and all(float(x) == 0 for r in rows for x in r[1:]):
+            zero.append(f.name)
             log(f"  ! {f.name}: все напряжения равны 0 - результаты расчёта не прочитаны. "
                 "Откройте проект в Ansys, убедитесь что расчёт выполнен (зелёные галочки), сохраните и повторите.")
+    if files and len(zero) == len(files):          # ни один случай не решён: отчёт с нулями и «Выполнен» выпускать нельзя
+        why = []
+        if f0.exists():
+            why = sorted({ln.strip() for ln in f0.read_text(encoding="utf-8").splitlines() if "[Error]" in ln})
+        raise ConnectError("Расчёт в Ansys не выполнен ни для одного случая (напряжения по поясам равны 0), отчёт не формируется."
+                           + (" Сообщения Mechanical: " + "; ".join(why[:3]) if why else ""))
 
 
 # доли кадра (x0, y0, x1, y1): где в общем виде резервуара (камера: X вверх, вид сбоку сверху) нижний и верхний край стенки
@@ -362,7 +394,8 @@ def crop_mesh_views(img_dir: Path, log=print) -> None:
 
 
 def _fname(analysis: str) -> str:
-    return analysis.replace(" ", "_")
+    """Имя случая в имени файла: так же, как в export_results.py (без символов, недопустимых в Windows)."""
+    return re.sub(r'[<>:"/\\|?*,;()\s]', "_", analysis)
 
 
 def _blocks(d: Path, settings) -> dict[str, str]:
@@ -380,13 +413,15 @@ def _blocks(d: Path, settings) -> dict[str, str]:
     eigen = []
     st = d / "stability.csv"
     if st.exists():
-        for row in st.read_text(encoding="utf-8").splitlines()[1:]:
-            name = row.split(",")[0]
+        import csv as _csv
+        for row in list(_csv.reader(st.read_text(encoding="utf-8").splitlines()))[1:]:
+            name = row[0] if row else ""
             if name and name not in eigen:
                 eigen.append(name)
     lines += ["  stability_csv: stability.csv", "  stability_modes: 2", "  stability_labels:"]
+    q = lambda t: json.dumps(str(t), ensure_ascii=False)          # строка YAML в двойных кавычках с экранированием
     for n in eigen:
-        lines.append(f'    "{n}": "{(settings.buckling_labels or {}).get(n, n)}"')
+        lines.append(f'    {q(n)}: {q((settings.buckling_labels or {}).get(n, n))}')
     lines += ["  required_k: 1.0", "", "images_dir: images", "images:"]
     img = d / "images"
 

@@ -338,3 +338,182 @@ def test_points_geometry_check_and_report(tmp_path):
     assert "B_SPLINE_SURFACE_WITH_KNOTS" in step and step.count("ADVANCED_FACE") == 3      # три участка толщины 13 / 12 / 11 мм
     text = "\n".join(p.text for p in docx.Document(next(x for x in files if x.suffix == ".docx")).paragraphs)
     assert "Оценка отклонений по точкам" in text and "5 Выводы" in text
+
+
+def test_ideal_cache_key_follows_inputs(tmp_path):
+    """Кэш идеального РВС: те же файлы пакета - тот же ключ, любое изменение - другой (считаем заново)."""
+    from ansys_report.agent import _ideal_cache
+    (tmp_path / "model.step").write_text("STEP-1", encoding="utf-8")
+    (tmp_path / "loads_data.py").write_text("LOADS = {}", encoding="utf-8")
+    k1 = _ideal_cache(tmp_path)
+    assert _ideal_cache(tmp_path) == k1 and k1.suffix == ".json"
+    (tmp_path / "model.step").write_text("ISO-10303-21;\nHEADER;\nFILE_NAME('m','2026-10-27T01:31:41');\nENDSEC;\nDATA;\n#1=POINT;", encoding="utf-8")
+    k2 = _ideal_cache(tmp_path)
+    (tmp_path / "model.step").write_text("ISO-10303-21;\nHEADER;\nFILE_NAME('m','2026-10-28T09:00:00');\nENDSEC;\nDATA;\n#1=POINT;", encoding="utf-8")
+    assert _ideal_cache(tmp_path) == k2                     # другое время в заголовке STEP - тот же ключ
+    (tmp_path / "loads_data.py").write_text("LOADS = {'snow': 1}", encoding="utf-8")
+    assert _ideal_cache(tmp_path) != k2
+
+
+def test_agent_lock_blocks_second_run(tmp_path, monkeypatch):
+    """Второй помощник не трогает рабочую папку, пока жив первый; брошенная блокировка (процесс умер) снимается."""
+    import os
+    from ansys_report import agent
+    monkeypatch.setattr(agent, "WORK", tmp_path)
+    lock = agent._take_lock()
+    assert lock is not None and lock.read_text() == str(os.getpid())
+    assert agent._take_lock() is None                       # занята живым процессом (этим)
+    lock.write_text("999999")                               # такого процесса нет
+    assert agent._take_lock() is not None
+
+
+def test_timing_table(tmp_path):
+    from ansys_report.timing import read, table_md
+    f = tmp_path / "timing.log"
+    f.write_text("100.0\t\tАгент: старт\n110.0\tмодель\tСборка: сетка\n140.0\tмодель\tСборка: нагрузки\n150.0\t\tконец\n", encoding="utf-8")
+    t = table_md(read(f))
+    assert "Всего: 50 с" in t and "| модель | Сборка: сетка | 30.0 | 60.0 |" in t and "| модель | Сборка | 40.0 | 80.0 |" in t
+
+
+def test_unsolved_ansys_results_stop_report(tmp_path):
+    """Все пояса нулевые (сетка не построилась, расчёт не шёл) - ошибка с причиной из лога, а не отчёт с «Выполнен»."""
+    import pytest
+    from ansys_report.ansys_connect import ConnectError, _report_problems
+    zero = "belt,fiber,equivalent,membrane\n1,0.00,0.00,0.00\n2,0.00,0.00,0.00\n"
+    for n in ("AR__Эксплуатация_belts.csv", "AR__Налив_7.2_м_belts.csv"):
+        (tmp_path / n).write_text(zero, encoding="utf-8")
+    (tmp_path / "log.txt").write_text("  сообщение [Error]: One or more faces failed to mesh in the meshing engine.\n", encoding="utf-8")
+    with pytest.raises(ConnectError, match="failed to mesh"):
+        _report_problems(tmp_path, log=lambda s: None)
+    (tmp_path / "AR__Эксплуатация_belts.csv").write_text("belt,fiber,equivalent,membrane\n1,5.0,6.0,3.0\n", encoding="utf-8")
+    _report_problems(tmp_path, log=lambda s: None)            # хотя бы один случай решён - только предупреждение
+
+
+def test_dent_zones_for_mesh_refinement():
+    """Зона сгущения сетки у вмятины: дуга 20 м на R = 14,25 м -> угол 20/14,25 рад; радиус - полудиагональ участка
+    с переходной зоной (±0,6 м + 2 шага по 0,3 м = ±1,2 м) плюс 200 мм."""
+    import math
+    import pytest
+    from ansys_report.geometry.check import dent_zones
+    z = dent_zones(_points_project())
+    assert len(z) == 1
+    th = 20.0 / 14.25
+    assert z[0]["x_mm"] == pytest.approx(14250 * math.cos(th), abs=0.1) and z[0]["y_mm"] == pytest.approx(14250 * math.sin(th), abs=0.1)
+    assert z[0]["z_mm"] == pytest.approx(6000.0) and z[0]["radius_mm"] == pytest.approx(1200 * math.sqrt(2) + 200, abs=0.1)
+
+
+def test_report_with_ideal_tank(tmp_path):
+    """Результаты идеального РВС попадают в выводы и в таблицу устойчивости."""
+    import docx
+    p = load_project(YAML)
+    p.raw["results"]["ideal"] = {"equivalent": 111.1, "membrane": 99.9, "fiber": 88.8, "k": 2.5}
+    path, _ = build_report(p, tmp_path / "i.docx")
+    text = "\n".join(x.text for x in docx.Document(path).paragraphs)
+    assert "идеального РВС" in text and "111,1" in text and "k = 2,5" in text
+
+
+def test_report_with_fill_series(tmp_path):
+    """Допустимая высота налива по серии уровней: таблица 5.3 и вывод."""
+    import docx
+    p = load_project(YAML)
+    p.raw["results"]["fill_series"] = [{"level_m": 7.2, "membrane": 100.0, "fiber": 150.0, "equivalent": 160.0},
+                                       {"level_m": 11.0, "membrane": 200.0, "fiber": 250.0, "equivalent": 260.0},
+                                       {"level_m": 17.1, "membrane": 900.0, "fiber": 950.0, "equivalent": 960.0}]
+    path, _ = build_report(p, tmp_path / "f.docx")
+    text = "\n".join(x.text for x in docx.Document(path).paragraphs)
+    assert "5.3 Допустимая высота налива" in text and "Допустимая высота налива продукта по условию прочности" in text
+
+
+def test_loads_cases_with_fill_levels():
+    from ansys_report.loads.rvs_loads import compute
+    from ansys_report.loads.export import build_cases
+    from tests.test_calc import _points_project  # noqa: F401
+    inp = {"diameter_m": 28.5, "wall_height_m": 18.0, "belt_height_m": 1.5, "n_belts": 12, "thicknesses_mm": [12] * 12, "product_density_t_m3": 0.934, "fill_height_m": 11.0,
+           "hydrotest_height_m": 11.0, "max_fill_height_m": 11.0, "overpressure_pa": 0, "vacuum_pa": 0, "snow_district": "IV", "wind_district": "II", "terrain": "A", "aero_coef": 0.8,
+           "roof_rise_m": 3.7, "roof_deck_thickness_m": 0.004, "ryn_mpa": 420, "e_mpa": 206000, "steel_density_kg_m3": 7850, "g": 9.8, "water_density_kg_m3": 1000,
+           "gamma_m": 1.1, "gamma_n": 1.1, "gamma_c1": 0.7, "gamma_c2": 0.8, "gamma_c_rest": 0.8, "gamma_c_hydro": 0.9, "corrosion_weak_mm_year": 0.05,
+           "corrosion_medium_mm_year": 0.1, "service_life_years": 40, "anticorrosion_life_years": 10, "diagnostics_interval_years": 10, "insulation_thickness_m": 0,
+           "insulation_density_kg_m3": 140, "equipment": []}
+    cs = build_cases(compute(inp), True, [7.2, 17.1])
+    assert [c["name"] for c in cs][-2:] == ["Налив 7.2 м", "Налив 17.1 м"] and cs[-1]["hydro"]["free_surface_mm"] == 17100.0
+
+
+def test_stability_ring_limit_matches_excel():
+    import json
+    from pathlib import Path
+    from ansys_report.loads.rvs_loads import compute
+    r = compute(json.loads((Path(__file__).parent.parent / "examples" / "loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    b = r["stability"]["belts"]
+    assert abs(b[0]["utilization"] - 1.2417) < 1e-3
+    assert abs(b[5]["ring_hr_max_m"] - 0.5115) < 1e-3 and abs(b[7]["ring_hr_max_m"] - 2.369) < 1e-3
+    assert abs(r["ring_modulus_cm3"] - 120.1) < 0.1
+
+
+def test_report_with_analytic_stability(tmp_path):
+    """Аналитическая проверка устойчивости (Excel ГОСТ 31385) попадает в раздел 6.2 отчёта."""
+    import json
+    import docx
+    from pathlib import Path
+    from ansys_report.loads.rvs_loads import compute
+    from ansys_report.loads.export import write_package
+    res = compute(json.loads((Path(__file__).parent.parent / "examples" / "loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    pk = write_package(res, tmp_path / "pk")
+    ns: dict = {}
+    exec(pk["data"].read_text(encoding="utf-8"), ns)
+    p = load_project(YAML)
+    p.raw["results"]["analytic"] = ns["LOADS"]["analytic"]
+    path, _ = build_report(p, tmp_path / "a.docx")
+    d = docx.Document(path)
+    text = "\n".join(x.text for x in d.paragraphs)
+    assert "6.2 Проверка устойчивости стенки по аналитической методике" in text and "кольцо жесткости" in text
+
+
+def test_cad_fine_defect_large_tank_falls_back(tmp_path):
+    """РВС-30000 с мелким шагом замеров на вмятине: CAD-сетка по шагу замеров слишком большая - должен сработать запасной вариант, а не ошибка."""
+    from ansys_report.geometry import check
+    pr = _points_project()
+    pr["diameter"] = "45.6"
+    xs = [round(-0.2 + 0.02 * i, 3) for i in range(21)]
+    pr["defects"][0].update(nx="21", ny="21", x=xs, y=xs, values=[["-3" if 0 < i < 20 and 0 < j < 20 else "0" for i in range(21)] for j in range(21)])
+    out = check.export_geometry(pr, tmp_path, 0.1, "STEP", lambda s: None)
+    assert any(str(f).endswith(".step") for f in out["files"])
+
+
+def test_agent_launch_is_windowless_and_survives_bad_link(tmp_path, monkeypatch):
+    """Помощник под pythonw: нет консоли (stdout=None), дочерние процессы запускаются без окна, плохая ссылка не роняет запуск."""
+    import subprocess
+    import sys
+    from ansys_report import agent
+    monkeypatch.setattr(agent, "WORK", tmp_path)
+    shown = []
+    monkeypatch.setattr(agent, "popup", lambda title, text: shown.append(text))          # в тесте окно сообщения не показываем
+    monkeypatch.setattr(sys, "stdout", None)
+    assert agent.launch("ansysreport://run?x=1") == 1
+    assert "Неверная ссылка" in (tmp_path / "agent.log").read_text(encoding="utf-8") and "Неверная ссылка" in shown[0]
+    calls = []
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: calls.append(k) or 0)
+    bat = tmp_path / "x.bat"
+    bat.write_text("@echo off")
+    agent._run_bat(bat, {})
+    assert calls[0]["creationflags"] == agent.NO_WINDOW and calls[0]["stdin"] == subprocess.DEVNULL
+
+
+def test_pressure_view_matches_apply_loads_formula():
+    """Показ нагрузок на сайте считает давление той же формулой, что скрипт наложения в Ansys: равномерное + гидростатика + ветер по поясам."""
+    from ansys_report.loads.export import build_cases, pressure_view, report_fill_levels
+    from ansys_report.loads.rvs_loads import compute
+    res = compute(json.loads((Path(__file__).parent.parent / "examples/loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    cases = build_cases(res, True, report_fill_levels(res))
+    H = res["inputs"]["H"] * 1000
+    for c in cases:
+        v = pressure_view(c, H)
+        hy = c.get("hydro")
+        for z, p in zip(v["wall"]["z_m"], v["wall"]["p_kpa"]):
+            zz = z * 1000
+            want = c["uniform_mpa"] + (hy["gradient_mpa_mm"] * (hy["free_surface_mm"] - zz) if hy and zz < hy["free_surface_mm"] else 0) \
+                + sum(w["p_mpa"] for w in c["wind"] if w["z_lo_mm"] <= zz < w["z_hi_mm"])
+            assert abs(p - want * 1000) < 1e-3
+        assert abs(v["roof_kpa"] - (c["uniform_mpa"] + c["roof_extra_mpa"]) * 1000) < 1e-3
+        assert (v["bottom_kpa"] is None) == (hy is None)
+    names = [pressure_view(c, H)["name"] for c in cases]
+    assert names[0] == "Эксплуатация" and any(n.startswith("Налив") for n in names)

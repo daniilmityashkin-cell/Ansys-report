@@ -233,8 +233,16 @@ def compute(inp: dict) -> dict:
         s1 = ((1.05 * Gm[i] + 1.05 * Go[i] * PSI["l1"] + 1.3 * Gt[i] * PSI["l2"]) / (2 * 3.14 * (D / 2) * tr[i])
               + (snow_design + 1.2 * pv_pa * 1e-6 * PSI["l3"]) / tr[i] * (D / 2))
         u = None if s2 is None else s1 / sigma1_cr + s2 / sigma2_cr
+        # [X137:X144] предельная редуцированная высота, при которой U = 1 (ставится кольцо жёсткости); возможно, только если меридиональное условие s1 < sigma1_cr
+        hr_max = None if (u is None or u <= 1 or s1 >= sigma1_cr or not s2) else 0.55 * (D / 2) * E / e_par ** 1.5 * (1 - s1 / sigma1_cr) / s2
         stability.append({"belt": i + 1, "hoop_mpa": s2, "meridional_mpa": s1, "utilization": u, "ok": None if u is None else u <= 1,
-                          "reduced_height_m": Hr[i]})
+                          "reduced_height_m": Hr[i], "ring_hr_max_m": hr_max})
+    fixable = [b["ring_hr_max_m"] for b in stability if b["ring_hr_max_m"] is not None]
+    if any(b["ok"] is False for b in stability):
+        if len(fixable) == sum(1 for b in stability if b["ok"] is False):
+            notes.append("Устойчивость стенки не обеспечена; её даёт кольцо жёсткости с редуцированной высотой не более %.2f м (Excel [X137:X144])." % min(fixable))
+        else:
+            notes.append("Устойчивость стенки не обеспечена; одним кольцом жёсткости не исправить (меридиональные напряжения превышают критические) - нужно увеличить толщины.")
     w_top = wind[-1]["w_mpa"]
     ring_w = None if w_top is None else 1.4 * w_top / 215 / R_op[2] * D ** 2 * Hw * 1e6      # [B172] требуемый момент сопротивления кольца жёсткости, см3
 

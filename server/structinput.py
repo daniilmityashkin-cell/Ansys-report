@@ -11,7 +11,7 @@ ROOF = {"s_roof_on": "1", "s_roof_shape": "Сферическая", "s_roof_sphe
         "s_roof_beam_drop": "20", "s_roof_deck_inset": "200"}
 NODES = {"s_node_on": "1", "s_node_ring_h": "200", "s_node_ring_t": "10", "s_node_up_l": "700", "s_node_up_h": "200", "s_node_up_t": "7",
          "s_node_lo_l": "1000", "s_node_lo_h": "100", "s_node_lo_t": "7"}
-BEAMS = {"s_beam_radial": "Двутавр 25Б2", "s_beam_central": "Швеллер 24П", "s_beam_rings": "Уголок L90×90×6", "s_beam_edge": "Швеллер 24П"}
+BEAMS = {"s_beam_radial": "Двутавр 24", "s_beam_central": "Швеллер 24П", "s_beam_rings": "Уголок L90×90×6", "s_beam_edge": "Швеллер 24П"}
 DEFAULTS = {**BOTTOM, **ROOF, **NODES, **BEAMS}
 SHAPES = ("Круглый", "Овальный")
 ROOF_SHAPES = ("Сферическая", "Коническая")
@@ -48,8 +48,45 @@ def parse_nozzles(fields: dict[str, list[str]], D: float, H: float) -> list[dict
     return out
 
 
-def build_structure(fields: dict[str, list[str]], D: float, H: float) -> dict | None:
-    """fields: имя поля -> список значений. None, если ничего из конструкции не введено."""
+BEAM_GROUPS = (("Радиальные балки", "s_beam_radial", "radial"), ("Центральное кольцо", "s_beam_central", "central_ring"),
+               ("Кольцевые балки", "s_beam_rings", "hoop_1"), ("Периферийный швеллер", "s_beam_edge", "channel"))
+
+
+def project_sections(project: dict | None) -> dict:
+    """Сечения, уже посчитанные в файле проекта «РВС Геометрия»: подпись (и имя) -> свойства. Нужны, чтобы профиль из файла (например серии Б), которого нет в каталоге, не отклонялся."""
+    out = {}
+    bs = (project or {}).get("beam_sections")
+    for sec in (bs.values() if isinstance(bs, dict) else []):
+        if isinstance(sec, dict) and (sec.get("computed") or sec.get("reference")):
+            for key in (sec.get("label"), sec.get("name")):
+                if key:
+                    out[str(key).strip()] = sec
+    return out
+
+
+def beam_sections(f: dict, known: dict | None = None) -> list[dict]:
+    """Четыре группы сечений крыши: подпись -> свойства (каталог профилей, габариты или значения; профиль из файла проекта берётся как есть)."""
+    from ansys_report.loads.profiles import section_props
+    out = []
+    for group, field, _ in BEAM_GROUPS:
+        label = f.get(field, "").strip()
+        if not label:
+            raise ValueError(f"Сечение «{group}» не задано. Выберите профиль из списка.")
+        sec = (known or {}).get(label)
+        if sec is not None:
+            c = sec.get("computed") or sec.get("reference") or {}
+            props = {"name": sec.get("name") or label, "label": label, "computed": {k: c.get(k) for k in ("area_cm2", "Ix_cm4", "Iy_cm4")}, "dimensions_m": sec.get("dimensions_m", {})}
+        else:
+            try:
+                props = section_props(label)
+            except ValueError as e:
+                raise ValueError(f"{group}: {e}") from None
+        out.append({"group": group, "section": label, "props": props})
+    return out
+
+
+def build_structure(fields: dict[str, list[str]], D: float, H: float, project: dict | None = None) -> dict | None:
+    """fields: имя поля -> список значений. None, если ничего из конструкции не введено. project - файл проекта (сечения из него принимаются как есть)."""
     f = {k: (v[0] if v else "") for k, v in fields.items()}
     s: dict = {"nozzles": parse_nozzles(fields, D, H)}
     R = D / 2
@@ -77,10 +114,7 @@ def build_structure(fields: dict[str, list[str]], D: float, H: float) -> dict | 
                                "upper_length_mm": _n(f, "s_node_up_l", "Узлы: верхние, длина", 1, 5000), "upper_height_mm": _n(f, "s_node_up_h", "Узлы: верхние, высота", 1, 2000),
                                "upper_thickness_mm": _n(f, "s_node_up_t", "Узлы: верхние, толщина", 1, 100), "lower_length_mm": _n(f, "s_node_lo_l", "Узлы: нижние, длина", 1, 5000),
                                "lower_height_mm": _n(f, "s_node_lo_h", "Узлы: нижние, высота", 1, 2000), "lower_thickness_mm": _n(f, "s_node_lo_t", "Узлы: нижние, толщина", 1, 100)}
-        s["beam_sections"] = [{"group": "Радиальные балки", "section": f.get("s_beam_radial", "").strip()},
-                              {"group": "Центральное кольцо", "section": f.get("s_beam_central", "").strip()},
-                              {"group": "Кольцевые балки", "section": f.get("s_beam_rings", "").strip()},
-                              {"group": "Периферийный швеллер", "section": f.get("s_beam_edge", "").strip()}]
+        s["beam_sections"] = beam_sections(f, project_sections(project))
     if not (s["nozzles"] or "bottom" in s or "roof" in s):
         return None
     s["D"], s["H"] = D, H

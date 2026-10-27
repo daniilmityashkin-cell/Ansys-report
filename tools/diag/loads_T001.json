@@ -1,0 +1,15 @@
+{
+ "_source": "tests/data/reference_T001.json (inputs)",
+ "_note_snow": "нормативный снег 1,8 кПа - такого района нет (III = 1,5, IV = 2,0 кПа): взят IV",
+ "_note_rise": "подъём крыши = 34,2 - sqrt(34,2^2 - 14,25^2) = 3,110 м",
+ "l_density": "1.0",
+ "l_fill": "17.2",
+ "l_hydro": "17.2",
+ "l_overp": "0",
+ "l_vac": "0",
+ "l_snow": "IV",
+ "l_wind": "II",
+ "l_terrain": "A",
+ "l_roof_rise": "3.110",
+ "l_ryn": "325"
+}

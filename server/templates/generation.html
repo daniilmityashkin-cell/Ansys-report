@@ -1,5 +1,66 @@
 {% extends "base.html" %}{% block body %}
-<h1>{{ g.title }}</h1><p class="sub">Генерация №{{ g.id }} · <span class="tag {{ g.status }}">{{ {'draft':'проверка пройдена','paid':'оплачено','running':'считается','done':'готово','error':'ошибка'}[g.status] }}</span></p>
+<div class="studio"><div class="st-head"><div class="st-title">РВС Геометрия <small>2.0</small></div><div class="st-tank">{{ g.title }} · {{ summary.diameter_m }} × {{ summary.height_m }} м</div></div>
+<div class="st-stages" style="margin:8px 0 2px"><span>Измерения</span> → <span>Геометрия</span> → <span>Конструкция</span> → <span>STEP</span> → <span class="{{ 'on' if g.status == 'draft' else '' }}">Нагрузки</span> → <span class="{{ 'on' if g.status != 'draft' else '' }}">Отчёт</span> <a href="/studio" style="margin-left:14px">+ Новая модель</a></div></div>
+<h1>{{ g.title }}</h1><p class="sub">Генерация №{{ g.id }} · <span class="tag {{ g.status }}">{{ {'draft':'проверка пройдена','paid':'оплачено','running':'считается','done':'готово','error':'ошибка'}[g.status] }}</span>{% if g.status in ('draft','done','error') %} · <a href="/studio?edit={{ g.id }}" title="Вернуться в студию с этими замерами и конструкцией; будет создана новая генерация, эта останется">Изменить геометрию</a>{% endif %}</p>
+{% if g.status == 'draft' and not has_loads %}<div class="card actionbar"><div><b>Шаг 2: задайте нагрузки</b><p class="muted" style="margin:4px 0 0">Модель создана. Ниже введите продукт, налив, снег, ветер — после этого можно собрать отчёт.</p></div><a class="btn" href="#loads">Задать нагрузки ↓</a></div>
+{% elif g.status == 'draft' %}{% if mode == 'blocked' %}<div class="card actionbar"><b>Отчёт</b><p>{{ why }}</p><p><a class="btn" href="/packs">Купить пакет генераций</a></p></div>
+{% else %}<div class="card actionbar"><div><b>Собрать технический отчёт одним нажатием</b><p class="muted" style="margin:4px 0 0">Рассчитаем нагрузки, построим модель, посчитаем в Ansys на вашем компьютере и пришлём отчёт сюда.{% if mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% elif mode == 'pay' %} Разовая генерация доступна один раз на аккаунт.{% endif %}</p></div>
+<form method="post" action="/g/{{ g.id }}/pay" onsubmit="try{sessionStorage.setItem('ar_auto{{ g.id }}','1')}catch(e){}"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="btn">Собрать отчёт{% if mode == 'pay' %} — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
+{% elif g.status == 'done' %}<div class="card" id="agent"><h2>Технический отчёт: расчёт в Ansys на вашем компьютере</h2>
+<p class="muted">Нажмите кнопку: откроется помощник, сам скачает модель, запустит Ansys, посчитает и пришлёт готовый отчёт сюда. Ничего искать в папках не нужно. Нужен установленный Ansys и помощник (ставится один раз: <a href="/agent/setup">инструкция</a>).</p>
+<p><a class="btn" id="agentbtn" href="{{ agent_url }}">Собрать отчёт в Ansys</a> <a class="btn light" href="#files">Файлы</a></p>
+<details class="more"><summary>Не запускается? Запуск вручную</summary><p class="muted">Скопируйте и выполните в PowerShell:</p><pre style="white-space:pre-wrap;word-break:break-all">cd C:\Ansys-report; python -m ansys_report agent "{{ agent_url }}"</pre></details>
+<div id="agentstat" class="muted">{{ agent.message if agent and agent.message else '' }}</div>
+<div id="agentfiles"></div></div>
+<script>(function(){var gid={{ g.id }},st=document.getElementById('agentstat'),fl=document.getElementById('agentfiles');
+var names={idle:'Ожидание запуска помощника',download:'Скачиваю модель…',build:'Строю модель и сетку в Ansys…',solve:'Считаю и собираю отчёт (до 40 минут)…',upload:'Отправляю отчёт…',done:'Готово',error:'Ошибка'};
+function tick(){fetch('/g/'+gid+'/agent.json').then(function(r){return r.json()}).then(function(a){
+var t=(names[a.stage]||a.stage||'');if(a.message)t+=(t?' · ':'')+a.message;st.textContent=t;
+function lab(n){var l=n.toLowerCase();if(l.slice(-5)=='.docx')return 'Технический отчёт (Word)';if(l.slice(-5)=='.xlsx')return 'Таблицы замеров (Excel)';if(l.indexOf('points_')==0&&l.indexOf('full')>0)return 'Точки: полный резервуар (текст)';if(l.indexOf('points_')==0)return 'Точки: пустой резервуар (текст)';return n}
+fl.innerHTML=(a.files||[]).map(function(n){return '<p><a class="btn light" href="/g/'+gid+'/agent-files/'+encodeURIComponent(n)+'" title="'+n+'">'+lab(n)+'</a></p>'}).join('');
+}).catch(function(){});}
+tick();setInterval(tick,5000);})();</script>
+{% endif %}
+{% if g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
+{% elif g.status == 'done' %}<div class="card done"><h2>Готово: отчёт и файлы сформированы</h2><p class="muted">Скачайте архив и распакуйте его: внутри папка <b>ansys_model</b> (модель и скрипты для Ansys) и технический отчёт.</p>
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a> <a class="btn light" href="#files">Список файлов</a></p></div>
+{% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>{% endif %}
+{% if not has_preview %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
+{% set l3 = has_loads or g.status == 'draft' %}{% if g.status == 'draft' %}<div class="loads-split"><div>
+<div class="card" id="loads"><h2>Нагрузки{% if has_loads %} <span class="tag done">заданы</span>{% endif %}</h2>
+<p class="sub">Гидростатика, давление, вакуум, снег, ветер и оборудование задаются после того, как модель создана.{% if has_loads %} Можно изменить и сохранить заново.{% endif %}</p>
+{% if loads_error %}<div class="err">{{ loads_error }}</div>{% endif %}
+<form method="post" action="/g/{{ g.id }}/loads" id="loads-form"><input type="hidden" name="csrf" value="{{ csrf }}"><div class="grid">
+<div><label>Плотность продукта, т/м³</label><input type="text" name="l_density" value="{{ lf.l_density }}"></div>
+<div><label>Уровень налива продукта, м</label><input type="text" name="l_fill" value="{{ lf.l_fill }}"></div>
+<div><label>Уровень воды при гидроиспытаниях, м</label><input type="text" name="l_hydro" value="{{ lf.l_hydro }}"></div>
+<div><label>Избыточное давление, Па</label><input type="text" name="l_overp" value="{{ lf.l_overp }}"></div>
+<div><label>Вакуум, Па</label><input type="text" name="l_vac" value="{{ lf.l_vac }}"></div>
+<div><label>Предел текучести стали R<sub>yn</sub>, МПа</label><input type="text" name="l_ryn" value="{{ lf.l_ryn }}"></div>
+<div><label>Снеговой район</label><select name="l_snow">{% for v in snow %}<option {{ 'selected' if v == lf.l_snow }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Ветровой район</label><select name="l_wind">{% for v in wind %}<option {{ 'selected' if v == lf.l_wind }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Тип местности (A, B, C)</label><select name="l_terrain">{% for v in terrains %}<option {{ 'selected' if v == lf.l_terrain }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Высота подъёма крыши, м</label><input type="text" name="l_roof_rise" value="{{ lf.l_roof_rise }}"></div>
+<div><label>Толщина настила крыши, мм</label><input type="text" name="l_deck" value="{{ lf.l_deck }}"></div>
+<div><label>Теплоизоляция: толщина, мм (0 — нет)</label><input type="text" name="l_ins_t" value="{{ lf.l_ins_t }}"></div>
+<div><label>Теплоизоляция: плотность, кг/м³</label><input type="text" name="l_ins_rho" value="{{ lf.l_ins_rho }}"></div></div>
+<label>Оборудование: по строке на позицию «Название; количество; масса одной штуки, кг; пояса (1,2) или крыша»</label>
+<textarea name="l_equipment" style="min-height:90px" placeholder="Люк-лаз 600; 2; 170; 1&#10;Площадка на крыше; 1; 4297; крыша">{{ lf.l_equipment }}</textarea>
+<p><button class="btn">Сохранить нагрузки</button></p></form></div>
+</div><div class="l3col"><div class="card" id="loads3d" data-src="/g/{{ g.id }}/loads3d.json"{% if g.status == 'draft' %} data-form="loads-form"{% endif %}><h2>Нагрузки на модели</h2>
+<p class="sub">Так нагрузки ложатся на резервуар в каждом расчётном случае отчёта.{% if g.status == 'draft' %} Меняйте значения слева: картина обновляется сразу, до сохранения.{% endif %}</p>
+<div class="dent-tabs" id="l3-tabs"></div>
+<div class="viewer l3view"><canvas></canvas></div>
+<div class="vlegend"><span id="l3-min"></span><i class="vgrad l3grad"></i><span id="l3-max"></span></div>
+<table class="l3table" id="l3-table"></table>
+<p class="muted st-hint" id="l3-info">Строю…</p><p><button type="button" class="btn light" id="l3-reset">Сбросить вид</button></p></div></div></div>{% elif has_loads %}<div class="card" id="loads3d" data-src="/g/{{ g.id }}/loads3d.json"{% if g.status == 'draft' %} data-form="loads-form"{% endif %}><h2>Нагрузки на модели</h2>
+<p class="sub">Так нагрузки ложатся на резервуар в каждом расчётном случае отчёта.{% if g.status == 'draft' %} Меняйте значения слева: картина обновляется сразу, до сохранения.{% endif %}</p>
+<div class="dent-tabs" id="l3-tabs"></div>
+<div class="viewer l3view"><canvas></canvas></div>
+<div class="vlegend"><span id="l3-min"></span><i class="vgrad l3grad"></i><span id="l3-max"></span></div>
+<table class="l3table" id="l3-table"></table>
+<p class="muted st-hint" id="l3-info">Строю…</p><p><button type="button" class="btn light" id="l3-reset">Сбросить вид</button></p></div>{% endif %}
 <div class="card"><h2>Результат проверки</h2>
 <div class="kv"><span>Диаметр × высота</span><span>{{ summary.diameter_m }} × {{ summary.height_m }} м</span>
 <span>Замеров</span><span>{{ summary.n_points }} ({{ summary.n_gens }} образующих × {{ summary.n_belts }} поясов)</span>
@@ -29,7 +90,7 @@
 {% for b in summary.belts %}<tr><td>{{ b.belt }}</td><td>{{ b.z_m }}</td><td>{{ summary.thickness_belts[loop.index0] if summary.thickness_belts else '' }}</td><td>{{ b.lim_a }}</td><td>{{ b.lim_b }}</td><td{% if b.max_abs > b.lim_b %} class="bad"{% elif b.max_abs > b.lim_a %} class="warn"{% endif %}>{{ b.max_abs }}</td><td>{{ b.max_gen }}</td><td>{{ b.over_a }} из {{ b.n }}</td><td>{{ b.over_b }} из {{ b.n }}</td></tr>{% endfor %}</table>
 {% if summary.worst %}<h2 style="margin-top:18px">Точки с наибольшим превышением допуска H/200</h2><table><tr><th>Пояс</th><th>Образующая</th><th>Угол, °</th><th>Высота, м</th><th>Δ, мм</th><th>Допуск, мм</th><th>|Δ| / допуск</th></tr>
 {% for w in summary.worst %}<tr><td>{{ w.belt }}</td><td>{{ w.gen }}</td><td>{{ w.angle }}</td><td>{{ w.z_m }}</td><td>{{ w.dev }}</td><td>{{ w.lim_a }}</td><td>{{ w.ratio }}</td></tr>{% endfor %}</table>{% endif %}</div>{% endif %}
-{% else %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="preview"><div class="spin"></div><div><b>Строим просмотр геометрии…</b><p class="muted">Обычно 5–20 секунд. Страница откроется сама.</p></div></div>{% endif %}
+{% else %}{% endif %}
 {% if loads_view %}{% if loads_view.error %}<div class="err">Нагрузки не рассчитаны: {{ loads_view.error }}</div>{% else %}{% set L = loads_view.loads %}{% set I = loads_view.inputs %}
 <div class="card"><h2>Нагрузки на резервуар</h2><p class="sub">Расчёт по методике ГОСТ 31385-2016 и СП 20.13330. Здесь значения без коэффициентов; расчётные сочетания войдут в пакет для Ansys.</p>
 <table><tr><th>Нагрузка</th><th>Значение</th></tr>
@@ -70,17 +131,23 @@
 {% else %}<div class="card"><h2>Отчёт и файлы</h2><p>Технический отчёт, поверхность STEP/IGES, таблицы толщин, рисунки и отчёт по геометрии.{% if mode == 'pay' %} Разовая генерация доступна один раз на аккаунт, дальше — в пакетах.{% elif mode == 'credit' %} Будет списана 1 генерация из пакета (осталось {{ user.credit_count }}).{% endif %}</p>
 <form method="post" action="/g/{{ g.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}">
 <button class="btn">{% if mode == 'credit' %}Получить отчёт и файлы (из пакета){% elif mode == 'unlimited' %}Получить отчёт и файлы (безлимитный аккаунт){% elif mode == 'free' %}Получить отчёт и файлы бесплатно{% else %}Получить отчёт и файлы — {{ st.price_generation_rub|rub }} ₽{% endif %}</button></form></div>{% endif %}
-{% elif g.status in ('paid','running') %}<div class="card wait" data-poll="/g/{{ g.id }}/status" data-wait="done"><div class="spin"></div><div><b>Готовим отчёт и файлы…</b><p class="muted">Обычно меньше минуты. Страница обновится сама.</p></div></div>
+{% elif g.status in ('paid','running') %}
 {% elif g.status == 'error' %}<div class="err">Не удалось выполнить расчёт: {{ g.error }}</div>
-{% elif g.status == 'done' %}<div class="card"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
-<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview or structure %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
-{% if has_preview %}<script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}{% if structure %}<script type="module" src="/static/structure3d.js?v={{ asset_v }}"></script>{% endif %}{% endif %}
+{% elif g.status == 'done' %}<div class="card" id="files"><h2>Файлы</h2><table>{% for f in files %}<tr><td><a href="/g/{{ g.id }}/files/{{ f }}">{{ f }}</a></td></tr>{% endfor %}</table>
+<p><a class="btn" href="/g/{{ g.id }}/all.zip">Скачать всё архивом</a> <a class="btn light" href="/g/{{ g.id }}/report">Технический отчёт</a></p></div>{% endif %}{% if has_preview or structure or l3 %}<script type="importmap">{"imports":{"three":"/static/vendor/three.module.min.js","three/addons/":"/static/vendor/"}}</script>
+{% if l3 %}<script type="module" src="/static/loads3d.js?v={{ asset_v }}"></script>{% endif %}{% if has_preview %}<script type="module" src="/static/viewer3d.js?v={{ asset_v }}"></script>{% endif %}{% if structure %}<script type="module" src="/static/structure3d.js?v={{ asset_v }}"></script>{% endif %}{% endif %}
 <script>
-(function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now();
+(function(){var w=document.querySelector("[data-poll]");if(!w)return;var url=w.getAttribute("data-poll"),what=w.getAttribute("data-wait"),t0=Date.now(),slow=false;
 function fail(m){w.innerHTML='<div><b>'+m+'</b><p class="muted"><a href="">Обновить страницу</a></p></div>';}
 function tick(){fetch(url,{credentials:"same-origin"}).then(function(r){return r.json();}).then(function(d){
  if(d.preview_error&&what==="preview"){fail("Не удалось построить просмотр: "+d.preview_error);return;}
  if((what==="preview"&&d.preview)||(what==="done"&&(d.status==="done"||d.status==="error"))){location.reload();return;}
- if(Date.now()-t0>180000){fail("Это занимает дольше обычного.");return;}setTimeout(tick,1500);}).catch(function(){setTimeout(tick,3000);});}
+ if(Date.now()-t0>180000&&!slow){slow=true;var m=w.querySelector("p");if(m)m.textContent="Сервер сейчас занят, это дольше обычного. Страница обновится сама, ничего нажимать не нужно.";}
+ setTimeout(tick,Date.now()-t0>60000?3000:1500);}).catch(function(){setTimeout(tick,3000);});}
 setTimeout(tick,800);})();
-</script>{% endblock %}
+</script>{% if g.status == 'done' and agent_url %}<script>try{if(sessionStorage.getItem('ar_auto{{ g.id }}')){sessionStorage.removeItem('ar_auto{{ g.id }}');
+var bar=document.createElement('div');bar.className='card actionbar';bar.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:50;max-width:92%;box-shadow:0 12px 40px rgba(0,0,0,.6)';
+var n=5;bar.innerHTML='<div><b>Расчёт готов к запуску.</b> Запускаю помощника через <span id="arn">5</span> с и начинаю считать в Ansys на этом компьютере.</div><button type="button" class="btn light" id="arcancel">Отмена</button>';document.body.appendChild(bar);
+var t=setInterval(function(){n--;document.getElementById('arn').textContent=n;if(n<=0){clearInterval(t);bar.remove();location.href={{ agent_url|tojson }}}},1000);
+document.getElementById('arcancel').onclick=function(){clearInterval(t);bar.remove()}}}catch(e){}</script>{% endif %}
+{% endblock %}

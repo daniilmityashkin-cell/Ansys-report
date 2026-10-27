@@ -58,6 +58,17 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
         import shutil
         shutil.copy2(survey_full, data / "survey_full.csv")
         log("Замеры «полного» обновлены для Excel и файлов точек (расчёт Ansys не перезапускался)")
+    import os
+    lf = os.environ.get("ANSYS_REPORT_LOADS")
+    if lf and os.path.exists(lf):                  # схемы нагрузок по loads_data.py (в Ansys нагрузки заданы командами и на картинке не видны)
+        try:
+            from .loads.figures import make_load_figures
+            for stem in ("fig04_loads", "fig05_hydrostatic"):          # рисунок Ansys (видны только опоры) заменяем нашей схемой
+                (data / f"{stem}.png").unlink(missing_ok=True)
+            make_load_figures(lf, data / "images")
+            log("Схемы нагрузок построены (рисунки 4 и 5)")
+        except Exception as e:      # noqa: BLE001
+            log(f"Схемы нагрузок не построены: {e}")
     from .ansys_connect import _has_belts
     if not _has_belts(data):
         from .universal import build_universal
@@ -68,7 +79,34 @@ def build_from_ansys(project_file, out_dir, anketa, log=print, reuse_data=False,
         docx_path, _ = build_universal(data, out_dir / nm["word"], anketa)
         log(f"Отчёт лежит в папке: {out_dir}")
         return [docx_path]
+    ideal = anketa.pop("ideal", None) if isinstance(anketa.get("ideal"), dict) else None
     yaml_path = make_project_folder(data, anketa, settings)
+    if ideal:                                  # расчёт идеального РВС (без отклонений) - в выводы отчёта
+        import yaml
+        raw0 = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        raw0.setdefault("results", {})["ideal"] = ideal
+        yaml_path.write_text(yaml.safe_dump(raw0, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        log(f"Идеальный РВС: {ideal}")
+    try:                                       # серия уровней налива: максимумы напряжений по каждому расчёту «Налив …» и «Эксплуатация»
+        lf2 = os.environ.get("ANSYS_REPORT_LOADS")
+        if lf2 and os.path.exists(lf2):
+            import yaml
+            from .fillcalc import read_series
+            from .ansys_connect import _fname
+            ns2: dict = {}
+            exec(Path(lf2).read_text(encoding="utf-8"), ns2)
+            if ns2["LOADS"].get("analytic"):                       # аналитическая проверка устойчивости (ГОСТ 31385-2016) - для сравнения с расчётом в Ansys
+                rawa = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+                rawa.setdefault("results", {})["analytic"] = ns2["LOADS"]["analytic"]
+                yaml_path.write_text(yaml.safe_dump(rawa, allow_unicode=True, sort_keys=False), encoding="utf-8")
+            series = read_series(data, ns2["LOADS"]["cases"], "AR: ", _fname)
+            if len(series) >= 3:
+                raw1 = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+                raw1.setdefault("results", {})["fill_series"] = series
+                yaml_path.write_text(yaml.safe_dump(raw1, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                log(f"Серия уровней налива: {[(x['level_m'], x['membrane']) for x in series]}")
+    except Exception as e:      # noqa: BLE001
+        log(f"Серия уровней налива не прочитана: {e}")
     try:
         import yaml
         raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))

@@ -11,7 +11,7 @@ from pathlib import Path
 from .rvs_loads import PSI, CE
 
 
-def build_cases(res: dict, design: bool = True) -> list[dict]:
+def build_cases(res: dict, design: bool = True, fill_levels_m=None, all_cases: bool = False) -> list[dict]:
     """Расчётные случаи. design=True - с коэффициентами надёжности и сочетаний из методики (1,2·p; 1,4·снег; 1,2·ψ·вакуум; 0,5·ψ·ветер)."""
     L, I = res["loads"], res["inputs"]
     g = L["gravity_m_s2"]
@@ -24,20 +24,59 @@ def build_cases(res: dict, design: bool = True) -> list[dict]:
 
     def hydro(h):  # градиент МПа/мм и уровень свободной поверхности, мм
         return {"gradient_mpa_mm": h["density_kg_m3"] * g * 1e-9, "free_surface_mm": h["fill_height_m"] * 1000}
-    return [
+    cases = [
         {"id": "op", "name": "Эксплуатация", "gravity": True, "masses": True, "hydro": hydro(ho), "uniform_mpa": p_over, "roof_extra_mpa": -snow, "wind": []},
         {"id": "op_wind", "name": "Эксплуатация с ветром", "gravity": True, "masses": True, "hydro": hydro(ho), "uniform_mpa": p_over, "roof_extra_mpa": -snow, "wind": wind},
         {"id": "hydrotest", "name": "Гидроиспытания", "gravity": True, "masses": True, "hydro": hydro(hg), "uniform_mpa": 0.0, "roof_extra_mpa": 0.0, "wind": []},
         {"id": "vacuum", "name": "Вакуум, снег и ветер (пустой резервуар)", "gravity": True, "masses": True, "hydro": None,
          "uniform_mpa": -vac, "roof_extra_mpa": -snow, "wind": wind},
     ]
+    if not all_cases:                         # в отчёт входят «Эксплуатация», «пустой резервуар» и серия уровней; остальные случаи считаются только по запросу
+        cases = [c for c in cases if c["id"] in ("op", "vacuum")]
+    for lv in (fill_levels_m or []):          # серия уровней налива для определения допустимой высоты (те же давление и снег, без ветра)
+        cases.append({"id": "fill_%g" % lv, "name": "Налив %g м" % lv, "gravity": True, "masses": True,
+                      "hydro": hydro({"density_kg_m3": ho["density_kg_m3"], "fill_height_m": lv}), "uniform_mpa": p_over, "roof_extra_mpa": -snow, "wind": []})
+    return cases
+
+
+def report_fill_levels(res: dict) -> list[float]:
+    """Серия уровней налива для допустимой высоты (3 уровня от высоты стенки, кроме близкого к уровню эксплуатации) - единый расчёт для отчёта и для показа на сайте."""
+    fill0 = float(res["loads"]["hydrostatic_operation"]["fill_height_m"])
+    Hw = float(res["inputs"]["H"])
+    return [lv for lv in (round(Hw * f, 1) for f in (0.4, 0.7, 0.95)) if abs(lv - fill0) > 0.5]
+
+
+def pressure_view(case: dict, H_mm: float, n: int = 96) -> dict:
+    """Нагрузки расчётного случая в виде для показа на сайте: давление, кПа, по высоте стенки (ровно та же формула, что в apply_loads.py:
+    равномерное + гидростатика ниже свободной поверхности + ветер по поясам), на крышу и на днище. «+» - изнутри наружу, «−» - снаружи внутрь."""
+    pu = case["uniform_mpa"]
+    hy = case.get("hydro")
+    grad = hy["gradient_mpa_mm"] if hy else 0.0
+    zfs = hy["free_surface_mm"] if hy else 0.0
+    zs, ps = [], []
+    for i in range(n):
+        z = (i + 0.5) * H_mm / n
+        pv = pu
+        if grad > 0 and z < zfs:
+            pv += grad * (zfs - z)
+        for w in case.get("wind") or []:
+            if w["z_lo_mm"] <= z < w["z_hi_mm"]:
+                pv += w["p_mpa"]
+        zs.append(round(z / 1000.0, 4))
+        ps.append(round(pv * 1000.0, 4))
+    return {"id": case["id"], "name": case["name"], "gravity": bool(case["gravity"]), "masses": bool(case["masses"]),
+            "wall": {"z_m": zs, "p_kpa": ps}, "roof_kpa": round((pu + case["roof_extra_mpa"]) * 1000.0, 4),
+            "bottom_kpa": round((pu + grad * zfs) * 1000.0, 4) if hy else None,
+            "free_surface_m": round(zfs / 1000.0, 3) if hy else None, "uniform_kpa": round(pu * 1000.0, 4),
+            "snow_kpa": round(-case["roof_extra_mpa"] * 1000.0, 4), "wind": bool(case.get("wind")),
+            "wind_kpa": [round(w["p_mpa"] * 1000.0, 4) for w in (case.get("wind") or [])]}
 
 
 def _json_default(o):
     raise TypeError(type(o))
 
 
-def write_package(res: dict, out_dir: str | Path, design: bool = True) -> dict:
+def write_package(res: dict, out_dir: str | Path, design: bool = True, fill_levels_m=None, all_cases: bool = False) -> dict:
     """Записывает loads.json (для просмотра), loads_data.py (для скрипта в Mechanical), loads_summary.csv (таблица для отчёта)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -45,12 +84,15 @@ def write_package(res: dict, out_dir: str | Path, design: bool = True) -> dict:
     data = {
         "geometry": {"diameter_mm": I["D"] * 1000, "wall_height_mm": I["H"] * 1000, "n_belts": I["n_belts"], "belt_height_mm": I["belt_height"] * 1000},
         "gravity_mm_s2": L["gravity_m_s2"] * 1000,
-        "cases": build_cases(res, design),
+        "cases": build_cases(res, design, fill_levels_m, all_cases),
         "point_masses": [{"name": m["name"], "category": m["category"], "mass_kg": m["mass_kg"], "location": m["location"]} for m in L["point_masses"]
                          if not m["name"].startswith("Пояс стенки")],
         "belt_z_mm": [[b * I["belt_height"] * 1000, (b + 1) * I["belt_height"] * 1000] for b in range(I["n_belts"])],
         "belt_thickness_mm": [float(t["nominal_mm"]) for t in res["thickness"]],
         "design_factors": design,
+        "analytic": {"stability": [{k: b[k] for k in ("belt", "hoop_mpa", "meridional_mpa", "utilization", "ok", "reduced_height_m", "ring_hr_max_m") if k in b} for b in res["stability"]["belts"]],
+                     "sigma1_cr_mpa": res["stability"]["sigma1_cr_mpa"], "sigma2_cr_mpa": res["stability"]["sigma2_cr_mpa"], "ring_modulus_cm3": res.get("ring_modulus_cm3"),
+                     "frequency_hz": (res["frequency"]["f_hz"] or [None])[0], "f_lim_hz": res["frequency"]["f_lim_hz"]},
         "resistance_mpa": {"operation": float(min(res["materials"]["R_operation"])), "hydrotest": float(res["materials"]["R_hydrotest"])},
     }
     (out / "loads.json").write_text(json.dumps({"input_summary": I, "loads": L, "cases": data["cases"], "notes": res["notes"]}, ensure_ascii=False, indent=1,

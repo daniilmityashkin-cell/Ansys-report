@@ -4,6 +4,7 @@ services:
     name: rvs-geometry
     runtime: python
     plan: free
+    autoDeploy: true
     branch: claude/ansys-report-automation-8asxtm
     buildCommand: pip install -r requirements-server.txt
     startCommand: ASR_HOST=0.0.0.0 ASR_PORT=$PORT ASR_BASE_URL=$RENDER_EXTERNAL_URL ASR_HTTPS_ONLY=1 ASR_WORKERS=1 ASR_TRUST_PROXY=1 python -m server
@@ -17,5 +18,9 @@ services:
         value: /tmp/asr_data
       - key: ASR_UNLIMITED_EMAILS      # почты без лимита генераций через запятую (задаётся в панели Render, в репозиторий не пишется)
         sync: false
+      - key: ASR_PAYMENT_PROVIDER      # демо: оплата тестовая, деньги не списываются
+        value: fake
+      - key: ASR_FIRST_FREE            # первая генерация на аккаунте бесплатно
+        value: "1"
       - key: ASR_MAX_REG_PER_IP
         value: "20"

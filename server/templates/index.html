@@ -3,7 +3,7 @@
 <span class="pill">От данных к расчёту за минуты</span>
 <h1>От замеров стенки до <em>геометрии для Ansys</em></h1>
 <p>Загрузите геодезические замеры РВС. Проверим отклонения по допускам, восстановим стенку и подготовим поверхность STEP/IGES с участками толщины для расчёта.</p>
-{% if user %}<a class="btn" href="/new">Новая генерация</a> <a class="btn light" href="/cabinet">Кабинет</a>
+{% if user %}<a class="btn" href="/studio">Новая генерация</a> <a class="btn light" href="/cabinet">Кабинет</a>
 {% else %}<a class="btn" href="/register">Начать бесплатно</a>{% endif %}
 </section>
 
@@ -36,5 +36,5 @@
 </div></section>
 
 <section class="cta"><h2>Проверьте свои замеры за минуту</h2><p>Регистрация и первая проверка бесплатны.</p>
-{% if user %}<a class="btn" href="/new">Новая генерация</a>{% else %}<a class="btn" href="/register">Создать аккаунт</a>{% endif %}</section>
+{% if user %}<a class="btn" href="/studio">Новая генерация</a>{% else %}<a class="btn" href="/register">Создать аккаунт</a>{% endif %}</section>
 {% endblock %}

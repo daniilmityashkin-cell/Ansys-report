@@ -24,7 +24,7 @@ def _packs(text: str) -> dict:
 class Settings:
     data_dir: Path = field(default_factory=lambda: Path(os.environ.get("ASR_DATA_DIR", "server_data")))
     db_url: str = field(default_factory=lambda: os.environ.get("ASR_DB_URL", ""))
-    secret_key: str = field(default_factory=lambda: os.environ.get("ASR_SECRET") or secrets.token_urlsafe(32))
+    secret_key: str = field(default_factory=lambda: os.environ.get("ASR_SECRET") or "")      # пусто: берётся из data_dir/secret.key (создаётся один раз, сессии и токены помощника переживают перезапуск)
     https_only: bool = field(default_factory=lambda: _bool("ASR_HTTPS_ONLY", False))     # на боевом сервере: 1
     base_url: str = field(default_factory=lambda: os.environ.get("ASR_BASE_URL", "http://127.0.0.1:8000"))
     payment_provider: str = field(default_factory=lambda: os.environ.get("ASR_PAYMENT_PROVIDER", "fake"))
@@ -34,6 +34,7 @@ class Settings:
     inline_jobs: bool = field(default_factory=lambda: _bool("ASR_INLINE_JOBS", False))   # тесты: считать в этом же процессе
     max_reg_per_ip: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_REG_PER_IP", "3")))     # регистраций с одного IP за сутки
     max_drafts_per_day: int = field(default_factory=lambda: int(os.environ.get("ASR_MAX_DRAFTS_PER_DAY", "30")))
+    public_url: str = field(default_factory=lambda: os.environ.get("ASR_PUBLIC_URL", ""))      # адрес сайта для помощника на компьютере заказчика (если за прокси)
     trust_proxy: bool = field(default_factory=lambda: _bool("ASR_TRUST_PROXY", False))          # IP клиента из X-Forwarded-For (за прокси)
     first_generation_free: bool = field(default_factory=lambda: _bool("ASR_FIRST_FREE", False))  # первая генерация на аккаунте бесплатна
     unlimited_emails: frozenset = field(default_factory=lambda: frozenset(
@@ -46,3 +47,10 @@ class Settings:
         if not self.db_url:
             self.db_url = f"sqlite:///{(self.data_dir / 'site.db').as_posix()}"
         (self.data_dir / "generations").mkdir(exist_ok=True)
+        if not self.secret_key:
+            kf = self.data_dir / "secret.key"
+            if kf.exists() and kf.read_text(encoding="utf-8").strip():
+                self.secret_key = kf.read_text(encoding="utf-8").strip()
+            else:
+                self.secret_key = secrets.token_urlsafe(32)
+                kf.write_text(self.secret_key, encoding="utf-8")

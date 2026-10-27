@@ -82,7 +82,8 @@ def test_loads_for_ansys_and_validation():
 def test_package_for_ansys(tmp_path):
     from ansys_report.loads.export import write_package, build_cases
     res = compute(DATA["input"])
-    pack = write_package(res, tmp_path)
+    assert [c["id"] for c in build_cases(res)] == ["op", "vacuum"]                      # по умолчанию - только случаи, входящие в отчёт
+    pack = write_package(res, tmp_path, all_cases=True)
     ns = {}
     exec((tmp_path / "loads_data.py").read_text(encoding="utf-8"), ns)               # файл данных исполняется как обычный Python (так читает скрипт в Mechanical)
     L = ns["LOADS"]
@@ -104,3 +105,68 @@ def test_package_for_ansys(tmp_path):
 def test_apply_loads_script_is_valid_python():
     import ast
     ast.parse((Path(__file__).parents[1] / "ansys_scripts" / "apply_loads.py").read_text(encoding="utf-8"))
+
+
+def _build_model_funcs(pkg, parts, nodes, wall_h):
+    """Функции apdl_* из ansys_scripts/build_model.py (IronPython) на синтетической сетке: ExtAPI подменён."""
+    import ast, io, math, os, types
+    src = (Path(__file__).parents[1] / "ansys_scripts" / "build_model.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    tree.body = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("_rd", "apdl_beams", "node_ranges", "apdl_band")]
+    nd = [types.SimpleNamespace(Id=i, X=x, Y=y, Z=z) for i, (x, y, z) in enumerate(nodes, 1)]
+    md = types.SimpleNamespace(Nodes=nd, NodeById=lambda i: nd[i - 1])
+    api = types.SimpleNamespace(DataModel=types.SimpleNamespace(MeshDataByName=lambda name: md))
+    g = {"os": os, "io": io, "math": math, "pkg": str(pkg), "parts": parts, "WALL_H": wall_h, "ExtAPI": api, "bsay": lambda t: None}
+    exec(compile(tree, "build_model.py", "exec"), g)
+    return g
+
+
+def test_roof_beams_rbe3_and_edge_rings_on_out_of_round_wall(tmp_path, monkeypatch):
+    import json, math
+    monkeypatch.setenv("ANSYS_REPORT_MESH_MM", "200")
+    R, H = 5000.0, 6000.0
+    nodes = []
+    for k in range(160):                                       # стенка: кромка z=H некруглая (+-60 мм), два ряда ниже
+        a = 2 * math.pi * k / 160
+        r = R + 60 * math.cos(3 * a)
+        for z in (H, H - 200, H - 400):
+            nodes.append((r * math.cos(a), r * math.sin(a), z))
+        for j in range(1, 20):                                 # крыша: кольца узлов внутрь от кромки
+            rr = r - 200 * j
+            nodes.append((rr * math.cos(a), rr * math.sin(a), H + 10 * j))
+    (tmp_path / "beams.json").write_text(json.dumps({
+        "wall_radius_mm": R, "central_radius_mm": 1200.0, "radial_count": 8, "first_angle_deg": 0.0,
+        "radial": {"A": 3765.6, "Iyy": 4.05e7, "Izz": 4.05e7, "J": 77454.0, "D": 250.0, "B": 125.0},
+        "edge": {"A": 3063.9, "Iyy": 1.58e7, "Izz": 1.58e7, "J": 72878.5, "D": 240.0, "B": 90.0},
+        "top_ring": {"A": 2000.0, "Iyy": 6.67e6, "Izz": 16666.7, "J": 66666.7, "D": 200.0, "B": 10.0}}), encoding="utf-8")
+    parts = {"roof_mm": 7.0, "band_width_mm": 1000.0, "band_mm": 10.0}
+    g = _build_model_funcs(tmp_path, parts, nodes, H)
+    t = g["apdl_beams"]().splitlines()
+    assert t[0] == "/PREP7" and t[-1] == "/SOLU"
+    assert sum(1 for s in t if s.startswith("N,nb0+")) == 8 and sum(1 for s in t if s.startswith("RBE3,nb0+") and s.endswith(",ALL,ALL")) == 8
+    assert sum(1 for s in t if s.startswith("E,") and "nb0+" in s) == 8       # последний элемент каждой радиальной балки - на отдельный узел
+    assert not any(s.startswith("CERIG") for s in t)
+    top = {i for i, (x, y, z) in enumerate(nodes, 1) if z == H}
+    e_ring = [s for s in t if s.startswith("E,") and "nb0" not in s and {int(v) for v in s[2:].split(",")} <= top]
+    assert len(e_ring) == 2 * 160                              # опорное и периферийное кольца замкнуты по всей кромке, а не по |r-R|<5
+    i_rbe = t.index("RBE3,nb0+1,ALL,ALL")                      # узлы связи: в радиусе 500 мм (половина опорной полосы), кромка стенки и крыша
+    sel = []
+    for s in t[max(i for i in range(i_rbe) if t[i] == "NSEL,NONE") + 1:i_rbe]:
+        a = [int(v) for v in s.split(",")[4:]]
+        sel += list(range(a[0], a[-1] + 1))
+    zs = {nodes[i - 1][2] for i in sel}
+    assert 5 < len(sel) < 40 and min(zs) == H and max(zs) > H
+    b = g["apdl_band"]().splitlines()
+    assert "SECDATA,10.0,matid,0,3" in b and "EMODIF,ALL,SECNUM,984" in b
+    assert g["node_ranges"]([5, 3, 4, 9]) == ["NSEL,A,NODE,,3,5", "NSEL,A,NODE,,9"]
+    parts["band_mm"] = 7.0                                     # полоса не толще настила - секция не нужна
+    assert g["apdl_band"]() == ""
+
+
+def test_wind_rings_snap_to_belt_boundaries():
+    from ansys_report.loads.beams import wind_rings, beams_package
+    p = {"heights": [0, 1.5, 3.0, 4.5, 6.0], "wind_rings": [{"h": 3.2, "flange": "100 × 10"}, {"h": 4.4}]}
+    r = wind_rings(p)
+    assert [x["z_m"] for x in r] == [3.0, 4.5]
+    assert r[0]["A"] == 1000.0 and abs(r[0]["Iyy"] - 10 * 100 ** 3 / 12) < 1
+    assert beams_package(p, 14000.0)["wind_rings"] == r          # без крыши - только кольца

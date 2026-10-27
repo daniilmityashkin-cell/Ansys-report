@@ -398,7 +398,7 @@ def test_structure_form_and_json_project(site):
             "s_bot_slope": "100", "s_bot_plate_t": "8", "s_bot_ann_t": "12", "s_roof_on": "1", "s_roof_shape": "Сферическая", "s_roof_sphere_r": "50",
             "s_roof_cone_rise": "2", "s_roof_central_r": "1.3", "s_roof_radial": "24", "s_roof_first": "7.5", "s_roof_rings": "10", "s_roof_deck_t": "7",
             "s_roof_band_w": "1000", "s_roof_band_t": "10", "s_roof_band_drop": "200", "s_roof_beam_drop": "20", "s_roof_deck_inset": "200",
-            "s_beam_radial": "Двутавр 25Б2", "s_beam_central": "Швеллер 24П", "s_beam_rings": "Уголок L90×90×6", "s_beam_edge": "Швеллер 24П"}
+            "s_beam_radial": "Двутавр 24", "s_beam_central": "Швеллер 24П", "s_beam_rings": "Уголок L90×90×6", "s_beam_edge": "Швеллер 24П"}
     r = c.post("/new/table", data=data, follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
     g = r.headers["location"]
@@ -430,3 +430,147 @@ def test_unlimited_account(tmp_path):
     register(other, email="x@example.com")
     g = new_generation(other).headers["location"]
     assert "безлимитный" not in other.get(g).text
+
+
+def test_agent_flow(site):
+    """Кнопка «Собрать отчёт в Ansys»: ссылка на помощника, скачивание пакета по токену, статус и загрузка отчёта обратно."""
+    import re as _re
+    c = TestClient(site)
+    register(c)
+    gen = new_generation(c).headers["location"]
+    pay = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False).headers["location"]
+    c.post(pay, data={"csrf": csrf_of(c, pay)}, follow_redirects=False)
+    page = c.get(gen).text
+    m = _re.search(r'href="(ansysreport://run\?server=([^&]+)&amp;g=(\d+)&amp;t=([0-9a-f]+))"', page)
+    assert m, "на странице нет ссылки помощника"
+    gid, tok = int(m.group(3)), m.group(4)
+    assert c.get(f"/agent/{gid}/package.zip?t=bad").status_code == 404                    # без верного токена пакет не отдаётся
+    assert c.post(f"/agent/{gid}/status?t=bad", json={"stage": "x"}).status_code == 403
+    assert c.post(f"/agent/{gid}/status?t={tok}", json={"stage": "solve", "message": "считаю"}).json() == {"ok": True}
+    up = c.post(f"/agent/{gid}/upload?t={tok}", files={"file": ("Report.docx", b"docx-bytes")})
+    assert up.status_code == 200
+    assert c.post(f"/agent/{gid}/upload?t={tok}", files={"file": ("evil.exe", b"x")}).status_code == 400
+    st = c.get(f"/g/{gid}/agent.json").json()
+    assert st["stage"] == "solve" and st["files"] == ["Report.docx"]
+    assert c.get(f"/g/{gid}/agent-files/Report.docx").content == b"docx-bytes"
+    assert TestClient(site).get(f"/g/{gid}/agent-files/Report.docx").status_code in (303, 404)   # чужой не скачает
+    assert "Помощник для Ansys" in c.get("/agent/setup").text
+
+
+def test_agent_link_parse():
+    from ansys_report.agent import parse_link
+    p = parse_link("ansysreport://run?server=https://x.example/&g=5&t=abc")
+    assert p == {"server": "https://x.example", "gid": 5, "token": "abc"}
+    assert parse_link("ansysreport://run/?server=http://127.0.0.1:8000&amp;g=8&amp;t=ab")["gid"] == 8        # экранированные амперсанды
+    with pytest.raises(ValueError):
+        parse_link("http://evil/?server=1&g=1&t=1")
+
+
+def test_studio_create_from_wizard(site):
+    from server.loadsinput import DEFAULTS as DEFAULTS_L
+    c = TestClient(site)
+    assert c.get("/studio", follow_redirects=False).status_code == 303          # без входа
+    register(c)
+    html = c.get("/studio").text
+    tok = re.search(r'data-csrf="([^"]+)"', html).group(1)
+    ng, nz = 12, 3
+    project = {"version": "1.0", "diameter": "20", "height": "9", "angles": [30.0 * i for i in range(ng)], "heights": [0, 3, 6, 9],
+               "values": [["0"] * ng] + [[str((i * 3 + j) % 7 - 3) for i in range(ng)] for j in range(nz)],
+               "bands": [["3", "10"]] * nz, "defects": [], "contour_threshold": "0.1", "wall_includes_defects": True}
+    body = {"csrf": tok, "title": "Тест", "project": project, "loads": {},
+            "structure": {"s_bot_on": "1", "s_bot_outside": "200", "s_bot_width": "1500", "s_bot_overlap": "100", "s_bot_slope": "100", "s_bot_plate_t": "8", "s_bot_ann_t": "12"}}
+    assert c.post("/studio/create", json={**body, "csrf": "bad"}).status_code == 400
+    r = c.post("/studio/create", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["url"].startswith("/g/")
+    page = c.get(r.json()["url"]).text
+    assert "Тест" in page and "Задать нагрузки" in page                         # нагрузки - после создания модели
+    gtok = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+    form = {**DEFAULTS_L, "l_fill": "5", "l_hydro": "5", "l_roof_rise": "1.5", "csrf": gtok}
+    assert c.post(r.json()["url"] + "/loads", data={**form, "l_fill": "50"}, follow_redirects=False).headers["location"].find("loads_error") > 0   # налив выше стенки
+    assert c.post(r.json()["url"] + "/loads", data=form, follow_redirects=False).status_code == 303
+    assert "Задать нагрузки" not in c.get(r.json()["url"]).text
+
+
+def test_studio_thicknesses_required_profiles_and_edit(site):
+    """Толщины обязательны; сечения балок - из каталога; «Изменить геометрию» возвращает данные генерации в студию."""
+    c = TestClient(site)
+    register(c)
+    tok = re.search(r'data-csrf="([^"]+)"', c.get("/studio").text).group(1)
+    ng, nz = 12, 3
+    project = {"version": "1.0", "diameter": "20", "height": "9", "angles": [30.0 * i for i in range(ng)], "heights": [0, 3, 6, 9],
+               "values": [["0"] * ng] + [[str((i * 3 + j) % 7 - 3) for i in range(ng)] for j in range(nz)],
+               "bands": [["3", "10"]] * nz, "defects": [], "contour_threshold": "0.1", "wall_includes_defects": True}
+    struct = {"s_bot_on": "1", "s_bot_outside": "200", "s_bot_width": "1500", "s_bot_overlap": "100", "s_bot_slope": "100", "s_bot_plate_t": "8", "s_bot_ann_t": "12"}
+    body = {"csrf": tok, "title": "Тест", "project": project, "loads": {}, "structure": struct}
+    for bad in ("", "0", None):                                                           # без толщины пояса модель не создаётся
+        p = {**project, "bands": [["3", "10"], ["3", bad], ["3", "10"]]}
+        r = c.post("/studio/create", json={**body, "project": p})
+        assert r.status_code == 400 and "толщины поясов: 2" in r.json()["error"], r.text
+    r = c.post("/studio/step", json={**body, "project": {**project, "bands": [["3", ""]] * 3}})
+    assert r.status_code == 400 and "толщины поясов" in r.json()["error"]
+    # каталог профилей
+    assert "Двутавр 24" in c.get("/studio/profiles.json").json()["names"]
+    ok = c.get("/studio/profile", params={"label": "Швеллер 24П"}).json()
+    assert ok["area_cm2"] == 30.6 and ok["Ix_cm4"] == 2900
+    assert c.get("/studio/profile", params={"label": "Двутавр 25Б2"}).status_code == 400
+    # сечения кровли: неизвестный профиль -> понятная ошибка, известные сохраняются со свойствами
+    roof = {**struct, "s_roof_on": "1", "s_roof_shape": "Сферическая", "s_roof_sphere_r": "50", "s_roof_cone_rise": "2", "s_roof_central_r": "1.3", "s_roof_radial": "24",
+            "s_roof_first": "7.5", "s_roof_rings": "10", "s_roof_deck_t": "7", "s_roof_band_w": "1000", "s_roof_band_t": "10", "s_roof_band_drop": "200", "s_roof_beam_drop": "20",
+            "s_roof_deck_inset": "200", "s_beam_radial": "Двутавр 25Б2", "s_beam_central": "Швеллер 24П", "s_beam_rings": "Уголок L90×90×6", "s_beam_edge": "Швеллер 24П"}
+    r = c.post("/studio/create", json={**body, "structure": roof})
+    assert r.status_code == 400 and "Радиальные балки" in r.json()["error"] and "25Б2" in r.json()["error"], r.text
+    roof["s_beam_radial"] = "Двутавр 24"
+    r = c.post("/studio/create", json={**body, "structure": roof})
+    assert r.status_code == 200, r.text
+    gid = int(r.json()["url"].rsplit("/", 1)[1])
+    page = c.get(r.json()["url"]).text
+    assert "Изменить геометрию" in page and f"/studio?edit={gid}" in page
+    # правка: те же данные возвращаются в студию, чужая генерация недоступна
+    d = c.get(f"/studio/edit/{gid}").json()
+    assert d["title"] == "Тест" and d["project"]["bands"][0][1] == "10"
+    assert d["structure"]["beam_sections"][0]["props"]["computed"]["area_cm2"] == 34.8 and d["structure"]["roof"]["radial_count"] == 24
+    other = TestClient(site)
+    register(other, "b@example.com")
+    assert other.get(f"/studio/edit/{gid}").status_code == 404
+    assert TestClient(site).get(f"/studio/edit/{gid}").status_code in (303, 404)
+
+
+def test_loads3d_endpoints(site):
+    """Показ нагрузок на модели: сохранённые и введённые прямо сейчас (без записи), чужому недоступно."""
+    c = TestClient(site)
+    register(c)
+    gen = new_generation(c).headers["location"]
+    gid = gen.rsplit("/", 1)[1]
+    d = c.get(f"/g/{gid}/loads3d.json").json()
+    assert d["cases"][0]["name"] == "Эксплуатация" and len(d["cases"][0]["wall"]["p_kpa"]) == 96 and d["belts_m"][0] == 0.0
+    tok = csrf_of(c, gen)
+    live = c.post(f"/g/{gid}/loads3d.json", data={"csrf": tok, "l_fill": "3", "l_vac": "500"}).json()
+    assert live["cases"][0]["free_surface_m"] == 3.0 and any(x["id"] == "vacuum" and x["uniform_kpa"] < 0 for x in live["cases"])
+    assert c.post(f"/g/{gid}/loads3d.json", data={"csrf": "bad", "l_fill": "3"}).status_code == 400
+    assert c.post(f"/g/{gid}/loads3d.json", data={"csrf": tok, "l_fill": "999"}).status_code == 400          # налив выше стенки - понятная ошибка
+    other = TestClient(site)
+    register(other, "b@example.com")
+    assert other.get(f"/g/{gid}/loads3d.json").status_code == 404
+
+
+def test_studio_thickness_recognition(site):
+    """Толщины из документа: фраза, таблица docx, вставленный текст; без входа и без толщин - понятный отказ."""
+    import io
+    import docx
+    c = TestClient(site)
+    assert c.post("/studio/thickness", data={"csrf": "x"}).status_code in (400, 401)
+    register(c)
+    tok = re.search(r'data-csrf="([^"]+)"', c.get("/studio").text).group(1)
+    phrase = "Номинальные толщины стенки по поясам: с первого по второй – 16,0 мм; с третьего по четвертый – 15,0 мм."
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4", "text": phrase})
+    assert r.status_code == 200 and r.json()["columns"][0]["values"] == [16, 16, 15, 15]
+    d = docx.Document(); d.add_paragraph(phrase); buf = io.BytesIO(); d.save(buf)
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("паспорт.docx", buf.getvalue())})
+    assert r.status_code == 200 and r.json()["columns"][0]["values"] == [16, 16, 15, 15]
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "6", "text": phrase})              # число поясов не совпадает с замерами
+    assert r.status_code == 400 and "в замерах 6" in r.json()["error"]
+    assert c.post("/studio/thickness", data={"csrf": tok, "nz": "4", "text": "ничего полезного"}).status_code == 400
+    assert c.post("/studio/thickness", data={"csrf": "bad", "nz": "4", "text": phrase}).status_code == 400
+    r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("scan.pdf", b"%PDF-1.4")})
+    assert r.status_code == 400 and "xlsx" in r.json()["error"]

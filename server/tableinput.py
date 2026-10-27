@@ -31,6 +31,20 @@ def parse_thicknesses(text: str) -> list[float]:
     return out
 
 
+def require_thicknesses(project: dict) -> None:
+    """Толщины поясов обязательны: молча подставленные значения дали бы неверные напряжения в отчёте."""
+    miss = []
+    for i, b in enumerate(project.get("bands") or [], 1):
+        try:
+            ok = float(str(b[1]).replace(",", ".").strip()) > 0
+        except (IndexError, ValueError, TypeError):
+            ok = False
+        if not ok:
+            miss.append(i)
+    if miss:
+        raise ValueError("Не заданы толщины поясов: " + ", ".join(map(str, miss)) + ". Введите толщину каждого пояса, мм (колонка «t, мм» на шаге 01): по паспорту резервуара или толщинометрии.")
+
+
 def build_project(diameter: str, height: str, table: str, thicknesses: str, rows_are: str = "gens") -> dict:
     """rows_are: 'gens' - строки таблицы = образующие, столбцы = пояса (как в таблицах заказчика);
     'belts' - строки = пояса, столбцы = образующие. Отклонения в мм: + наружу, − внутрь.

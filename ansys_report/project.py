@@ -118,7 +118,11 @@ def _apply_ansys(raw: dict, root: Path):
         if v is not None:
             t[key] = v
     xmax = (md.get("bbox") or {}).get("xmax")
-    if xmax:
+    hw = _wall_height_from_loads()          # габарит модели включает купол крыши, высоту стенки берём из данных нагрузок
+    if hw:
+        t["wall_height"] = round(hw)
+        t["belt_height"] = round(hw / len(belts))
+    elif xmax:
         t["wall_height"] = round(xmax * 1000)
         t["belt_height"] = round(xmax * 1000 / len(belts))
     t["diameter"] = a.get("nominal_diameter_mm") or round(2 * ai.mean_radius_m(md) * 100) * 10
@@ -140,6 +144,22 @@ def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
     марка и стандарт из анкеты имеют приоритет по названию. Нет файла - остаются значения анкеты."""
     f = root / "engineering_data.xml"
     m = raw.setdefault("material", {})
+    try:
+        _from_ansys(md, f, m, ai)
+    finally:
+        _apply_entered_steel(m)
+
+
+def _apply_entered_steel(m: dict) -> None:
+    """Предел текучести и прочность, введённые на сайте/в анкете, приоритетнее значений Ansys (допускаемые напряжения - по введённой стали)."""
+    for key, over in (("yield_mpa", "yield_override"), ("ultimate_mpa", "ultimate_override")):
+        v = m.pop(over, None)
+        if v not in (None, ""):
+            m[key] = int(float(v)) if float(v).is_integer() else float(v)
+            m["source_entered"] = True
+
+
+def _from_ansys(md: dict, f: Path, m: dict, ai) -> None:
     if not f.exists():
         return
     try:
@@ -149,6 +169,8 @@ def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
     belts = [b for b in md["bodies"] if re.match(md.get("belt_regex") or r"^p\s*(\d+)$", b["name"])]
     names = [b.get("material") for b in belts if b.get("material") in mats]
     name = names[0] if names else None
+    if name is None and mats:               # материал тел не выгружен (STEP без назначения) - стандартный Structural Steel из Ansys или единственный
+        name = "Structural Steel" if "Structural Steel" in mats else next(iter(mats))
     if name is None:
         return
     summ = ai.material_summary(mats[name])
@@ -157,6 +179,20 @@ def _apply_material(raw: dict, root: Path, md: dict, ai) -> None:
     m["source"] = "Ansys"
     if not (m.get("name") or "").strip():
         m["name"] = name
+
+
+def _wall_height_from_loads():
+    """Высота стенки (мм) из loads_data.py пакета сайта (путь в ANSYS_REPORT_LOADS); None, если файла нет."""
+    import os
+    lp = os.environ.get("ANSYS_REPORT_LOADS")
+    if not lp or not os.path.exists(lp):
+        return None
+    try:
+        ns: dict = {}
+        exec(Path(lp).read_text(encoding="utf-8"), ns)
+        return float(ns["LOADS"]["geometry"]["wall_height_mm"])
+    except Exception:       # noqa: BLE001
+        return None
 
 
 def _num(x) -> float:

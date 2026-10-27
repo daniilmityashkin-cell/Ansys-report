@@ -73,13 +73,29 @@ def analyze(project: dict) -> dict:
     }
 
 
-def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 0.1, log=lambda s: None) -> dict:
+def dent_zones(project: dict, margin_mm: float = 200.0) -> list[dict]:
+    """Зоны сгущения сетки Ansys у вмятин: центр измеренного участка (x, y, z в мм, полярный угол как в STEP) и радиус сферы,
+    охватывающей участок с переходной зоной (два шага сетки замеров) и запасом margin_mm."""
+    model = rc.TankModel(project)
+    out = []
+    for d in model.defects:
+        s = d.sc + (d.x[0] + d.x[-1]) / 2.0 - d.xp                 # середина участка по дуге, м
+        z = d.zc + (d.y[0] + d.y[-1]) / 2.0 - d.yp
+        hw = (d.xx[-1] - d.xx[0]) / 2.0                             # полуширина и полувысота с переходной зоной, м
+        hh = (d.yy[-1] - d.yy[0]) / 2.0
+        th = s / model.R
+        out.append({"name": d.name, "x_mm": round(model.R * np.cos(th) * 1000, 1), "y_mm": round(model.R * np.sin(th) * 1000, 1),
+                    "z_mm": round(z * 1000, 1), "radius_mm": round(float(np.hypot(hw, hh)) * 1000 + margin_mm, 1)})
+    return out
+
+
+def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 50.0, log=lambda s: None) -> dict:
     """Модель для расчётного пакета: STEP, где КАЖДЫЙ пояс - своя грань (общие рёбра), и thickness_zones.csv по поясам.
     Нужна, чтобы Ansys выдавал результаты по поясам стенки (в отличие от файла для заказчика, где пояса одной толщины объединены)."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     model = rc.TankModel(project)
-    poles, tu, tv, _ = rc.make_cad(model, tolerance_mm, log)
+    poles, tu, tv, _ = rc.make_cad(model, tolerance_mm, log, max_nt=int(model.C / 0.2) + 1, max_nz=int(model.H / 0.2) + 2)     # шаг CAD ~200 мм: для сетки КЭ 150 мм мельче не нужно, а STEP остаётся лёгким
     groups = [dict(index=b["number"], first_belt=b["number"], last_belt=b["number"], bottom_m=b["bottom_m"], top_m=b["top_m"],
                    thickness_mm=b["thickness_mm"]) for b in model.bands]
     step = out_dir / "model_belts.step"
@@ -90,12 +106,36 @@ def export_belt_model(project: dict, out_dir: Path, tolerance_mm: float = 0.1, l
     return {"step": step, "zones": zones, "belts": len(groups)}
 
 
+def make_cad_adaptive(model, tolerance_mm: float, log=lambda s: None):
+    """CAD-оболочка для крупного резервуара: если сетка по шагу замеров слишком большая, сначала растёт допуск, потом шаг CAD-сетки (50, 100, 200 мм)."""
+    last = None
+    steps = [(t, None) for t in (0.1, 0.5, 2.0, 10.0) if t >= tolerance_mm] + [(50.0, c) for c in (0.05, 0.1, 0.2)]
+    for tol, cell in steps:
+        try:
+            kw = {} if cell is None else {"max_nt": int(model.C / cell) + 1, "max_nz": int(model.H / cell) + 2}
+            return rc.make_cad(model, tol, log, **kw)
+        except ValueError as e:
+            if "слишком большая CAD" not in str(e):
+                raise
+            last = e
+    raise last
+
+
+def export_wall_belts(project: dict, out_step: Path, tolerance_mm: float = 0.5, log=lambda s: None) -> int:
+    """Стенка для заказчика: фактическая поверхность, каждый пояс - отдельная грань (с толщиной), мелкая CAD-сетка."""
+    model = rc.TankModel(project)
+    poles, tu, tv, _ = make_cad_adaptive(model, tolerance_mm, log)
+    groups = [dict(index=b["number"], first_belt=b["number"], last_belt=b["number"], bottom_m=b["bottom_m"], top_m=b["top_m"], thickness_mm=b["thickness_mm"]) for b in model.bands]
+    rc.step_write(Path(out_step), poles, tu, tv, groups)
+    return len(groups)
+
+
 def export_geometry(project: dict, out_dir: Path, tolerance_mm: float = 0.1, fmt: str = "STEP + IGES", log=print) -> dict:
     """Строит CAD-оболочку (STEP/IGES, мм, 1:1) и записывает вспомогательные файлы. Возвращает сведения о проверке."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     model = rc.TankModel(project)
-    poles, tu, tv, check = rc.make_cad(model, tolerance_mm, log)
+    poles, tu, tv, check = make_cad_adaptive(model, tolerance_mm, log)
     groups = rc.thickness_groups(model.bands)
     files = []
     if "STEP" in fmt:

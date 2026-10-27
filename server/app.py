@@ -208,13 +208,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             gens = db.scalars(select(Generation).where(Generation.user_id == u.id).order_by(Generation.id.desc())).all()
             return render(request, "cabinet.html", u, gens=gens, unlimited=is_unlimited(u))
 
-    @app.get("/new", response_class=HTMLResponse)
-    def new_form(request: Request):
-        with Session() as db:
-            u = current_user(request, db)
-            if not u:
-                return RedirectResponse("/login", status_code=303)
-            return render(request, "new.html", u)
+    @app.get("/new")
+    def new_form():
+        return RedirectResponse("/studio", status_code=303)             # единый вход: пошаговая студия геометрии
 
     @app.post("/new")
     async def new_submit(request: Request, title: str = Form(""), text: str = Form(""), csrf: str = Form(""),
@@ -269,13 +265,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runner.submit_preview(d)
         return g
 
-    @app.get("/new/table", response_class=HTMLResponse)
-    def new_table_form(request: Request):
-        with Session() as db:
-            u = current_user(request, db)
-            if not u:
-                return RedirectResponse("/login", status_code=303)
-            return render(request, "new_table.html", u, f={"rows_are": "gens", **DEFAULTS, **SDEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS, **SCTX)
+    @app.get("/new/table")
+    def new_table_form():
+        return RedirectResponse("/studio", status_code=303)
 
     @app.post("/new/table")
     async def new_table_submit(request: Request, title: str = Form(""), diameter: str = Form(""), height: str = Form(""),
@@ -343,6 +335,198 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return render(request, "new_table.html", u, error=str(e), f=form, snow=SNOW, wind=WIND, terrains=TERRAINS, nz_rows=nz_rows, **SCTX, status_code=400)
             return RedirectResponse(f"/g/{gid}", status_code=303)
 
+    # --- студия: пошаговый ввод геометрии (измерения -> геометрия -> конструкция -> нагрузки) ---
+    @app.get("/studio", response_class=HTMLResponse)
+    def studio_page(request: Request):
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return RedirectResponse("/login", status_code=303)
+            return render(request, "studio.html", u, f={**DEFAULTS, **SDEFAULTS}, snow=SNOW, wind=WIND, terrains=TERRAINS, **SCTX)
+
+    @app.get("/studio/profiles.json")
+    def studio_profiles():
+        from ansys_report.loads.profiles import catalog_names
+        return JSONResponse({"names": catalog_names()})
+
+    @app.get("/studio/profile")
+    def studio_profile(label: str = ""):
+        """Свойства сечения по подписи (подсказка под полем в студии)."""
+        from ansys_report.loads.profiles import parse_profile
+        try:
+            p = parse_profile(label[:80])
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse(p)
+
+    @app.get("/studio/edit/{gid}")
+    def studio_edit(request: Request, gid: int):
+        """Генерация для правки: замеры и конструкция возвращаются в студию (новая генерация создаётся при «Создать модель», старая остаётся)."""
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "Не найдено"}, status_code=404)
+            d = gen_dir(g.id)
+            try:
+                project = json.loads((d / "input.json").read_text(encoding="utf-8-sig"))
+            except Exception:   # noqa: BLE001
+                return JSONResponse({"error": "Файл замеров не найден."}, status_code=404)
+            sp = d / "structure.json"
+            return JSONResponse({"title": g.title, "project": project, "structure": json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None})
+
+    @app.post("/studio/thickness")
+    async def studio_thickness(request: Request, csrf: str = Form(""), nz: int = Form(0), text: str = Form(""), doc: UploadFile | None = File(None)):
+        """Толщины поясов из документа заказчика (xlsx / docx / txt) или вставленного текста. Только распознаёт: результат пользователь проверяет в таблице."""
+        bad = deny_csrf(request, csrf)
+        if bad:
+            return bad
+        with Session() as db:
+            if not current_user(request, db):
+                return JSONResponse({"error": "login"}, status_code=401)
+        try:
+            from .thickparse import parse_document, read_file
+            tables = []
+            if doc is not None and doc.filename:
+                raw = await doc.read(st.max_upload_bytes + 1)
+                if len(raw) > st.max_upload_bytes:
+                    return JSONResponse({"error": "Файл слишком большой."}, status_code=400)
+                text, tables = read_file(doc.filename, raw)
+            return JSONResponse(parse_document(text[:200000], tables, nz or None))
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": "Не удалось прочитать документ: " + str(e)[:150]}, status_code=400)
+
+    @app.post("/studio/xlsx")
+    async def studio_xlsx(request: Request, xlsx: UploadFile = File(...), sheet: str = Form(""), csrf: str = Form("")):
+        bad = deny_csrf(request, csrf)
+        if bad:
+            return bad
+        with Session() as db:
+            if not current_user(request, db):
+                return JSONResponse({"error": "login"}, status_code=401)
+        raw = await xlsx.read(st.max_upload_bytes + 1)
+        if len(raw) > st.max_upload_bytes:
+            return JSONResponse({"error": "Файл слишком большой."}, status_code=400)
+        from .tableinput import build_project, table_from_xlsx, survey_from_xlsx
+        try:
+            try:
+                meta = survey_from_xlsx(raw, sheet)
+                table, dia, hei = meta["table"], f"{meta['diameter_m']:g}", f"{meta['height_m']:g}"
+            except ValueError as e:
+                msg = str(e)
+                if msg.startswith("В файле несколько листов со съёмкой:"):          # выбор листа делает страница: по умолчанию «пустой»
+                    names = [x.strip() for x in msg.split(":", 1)[1].split(". Впишите")[0].split(",")]
+                    return JSONResponse({"sheets": names})
+                if msg != "survey:none":
+                    raise
+                table, dia, hei = table_from_xlsx(raw), "", ""
+            from .tableinput import _cells
+            rows = _cells(table)
+            n_belts = len(rows[0]) if rows else 0
+            proj = build_project(dia or "30", hei or "18", table, " ".join(["10"] * n_belts), "gens") if n_belts else None
+            for b in (proj or {}).get("bands", []):
+                b[1] = ""                                             # толщин в геодезии нет: их вводит пользователь, подставлять нельзя
+            return JSONResponse({"project": proj, "diameter": dia, "height": hei, "need_dims": not dia, "need_thickness": True})
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    @app.post("/studio/create")
+    async def studio_create(request: Request):
+        try:
+            body = await request.json()
+        except Exception:   # noqa: BLE001
+            return JSONResponse({"error": "Некорректный запрос."}, status_code=400)
+        if not csrf_ok(request.session, body.get("csrf")):
+            return JSONResponse({"error": "Сессия устарела. Обновите страницу."}, status_code=400)
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return JSONResponse({"error": "login"}, status_code=401)
+            try:
+                project = body["project"]
+                from .tableinput import require_thicknesses
+                require_thicknesses(project)
+                summary = _preview(project)
+                from .structinput import build_structure, structure_from_project
+                D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
+                if body.get("struct_source") == "project":
+                    structure = structure_from_project(project)
+                else:
+                    structure = build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H, project)
+                lform = {k: str(v) for k, v in (body.get("loads") or {}).items() if k.startswith("l_")}
+                from .loadsinput import build_loads_input
+                loads_in = build_loads_input(lform, project) if lform.get("l_on") else None
+                gid = _create_generation(db, u, str(body.get("title") or ""), project, summary, loads_in, structure).id
+            except Exception as e:  # noqa: BLE001
+                return JSONResponse({"error": str(e)}, status_code=400)
+            return JSONResponse({"url": f"/g/{gid}"})
+
+    step_jobs: dict = {}                                           # token -> {"uid", "future", "dir"}
+
+    def _step_struct(body: dict, project: dict):
+        from .structinput import build_structure
+        D, H = float(str(project["diameter"]).replace(",", ".")), float(str(project["height"]).replace(",", "."))
+        return build_structure({k: [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in (body.get("structure") or {}).items()}, D, H, project)
+
+    @app.post("/studio/step")
+    async def studio_step(request: Request):
+        try:
+            body = await request.json()
+        except Exception:   # noqa: BLE001
+            return JSONResponse({"error": "Некорректный запрос."}, status_code=400)
+        if not csrf_ok(request.session, body.get("csrf")):
+            return JSONResponse({"error": "Сессия устарела. Обновите страницу."}, status_code=400)
+        with Session() as db:
+            u = current_user(request, db)
+            if not u:
+                return JSONResponse({"error": "login"}, status_code=401)
+            uid = u.id
+        if any(j["uid"] == uid and not j["future"].done() for j in step_jobs.values()):
+            return JSONResponse({"error": "Предыдущая модель ещё строится. Подождите минуту."}, status_code=429)
+        try:
+            project = body["project"]
+            from .tableinput import require_thicknesses
+            require_thicknesses(project)
+            _preview(project)
+            structure = _step_struct(body, project)
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": str(e)}, status_code=400)
+        import secrets, shutil
+        root = st.data_dir / "studio"
+        for old in (root.glob("*/*") if root.exists() else []):                 # чистим то, что старше суток
+            if old.is_dir() and time.time() - old.stat().st_mtime > 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        tok = secrets.token_urlsafe(12)
+        d = root / str(uid) / tok
+        d.mkdir(parents=True, exist_ok=True)
+        from .jobs import compute_step
+        step_jobs[tok] = {"uid": uid, "dir": d, "future": app.state.runner.submit_fn(compute_step, str(d), project, structure)}
+        return JSONResponse({"token": tok})
+
+    @app.get("/studio/step/{tok}")
+    def studio_step_status(request: Request, tok: str):
+        with Session() as db:
+            u = current_user(request, db)
+        j = step_jobs.get(tok)
+        if not u or not j or j["uid"] != u.id:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        f = j["future"]
+        if not f.done():
+            return JSONResponse({"state": "running"})
+        if f.exception():
+            return JSONResponse({"state": "error", "error": f"{type(f.exception()).__name__}: {f.exception()}"[:300]})
+        return JSONResponse({"state": "done", "files": [{"name": n, "mb": round((j["dir"] / n).stat().st_size / 1e6, 1)} for n in f.result()]})
+
+    @app.get("/studio/step/{tok}/file/{name}")
+    def studio_step_file(request: Request, tok: str, name: str):
+        with Session() as db:
+            u = current_user(request, db)
+        j = step_jobs.get(tok)
+        if not u or not j or j["uid"] != u.id or not j["future"].done() or j["future"].exception() or name not in j["future"].result() or not (j["dir"] / name).exists():
+            return HTMLResponse("Не найдено", status_code=404)
+        return FileResponse(j["dir"] / name, filename=name, media_type="application/step")
+
     def _owned(db, request: Request, gid: int):
         u = current_user(request, db)
         if not u:
@@ -382,8 +566,91 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             structure = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else None
             mode, why = pay_mode(db, u, g) if g.status == "draft" else ("", "")
             return render(request, "generation.html", u, g=g, summary=json.loads(g.summary or "{}"), mode=mode, why=why, loads_view=loads_view, structure=structure,
+                          has_loads=lp.exists(), lf=DEFAULTS, snow=SNOW, wind=WIND, terrains=TERRAINS, loads_error=request.query_params.get("loads_error", "")[:300],
                           has_preview=preview_ready(g.id),
-                          files=_files(g.id) if g.status == "done" else [])
+                          files=_files(g.id) if g.status == "done" else [],
+                          agent_url=(f"ansysreport://run?server={(st.public_url or str(request.base_url)).rstrip('/')}&g={g.id}&t={agent_token(g.id)}"
+                                     if g.status == "done" else ""),
+                          agent=agent_state(g.id) if g.status == "done" else None)
+
+    @app.post("/g/{gid}/loads")
+    async def set_loads(request: Request, gid: int):
+        raw_form = await request.form()
+        bad = deny_csrf(request, str(raw_form.get("csrf", "")))
+        if bad:
+            return bad
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return HTMLResponse("Не найдено", status_code=404)
+            if g.status != "draft":
+                return RedirectResponse(f"/g/{gid}", status_code=303)
+            try:
+                from .loadsinput import build_loads_input
+                lform = {k: str(v) for k, v in raw_form.items() if k.startswith("l_")}
+                lform["l_on"] = "1"
+                project = json.loads((gen_dir(g.id) / "input.json").read_text(encoding="utf-8-sig"))
+                loads_in = build_loads_input(lform, project)
+                (gen_dir(g.id) / "loads_input.json").write_text(json.dumps(loads_in, ensure_ascii=False), encoding="utf-8")
+            except Exception as e:  # noqa: BLE001
+                from urllib.parse import quote
+                return RedirectResponse(f"/g/{gid}?loads_error={quote(str(e)[:250])}#loads", status_code=303)
+            return RedirectResponse(f"/g/{gid}#loads", status_code=303)
+
+    def _loads3d(g, lform: dict | None) -> dict:
+        """Нагрузки расчётных случаев отчёта в виде для 3D-показа: сохранённые (или введённые в форме прямо сейчас - без записи на диск)."""
+        from ansys_report.loads.export import build_cases, pressure_view, report_fill_levels
+        from ansys_report.loads.rvs_loads import compute as compute_loads
+        d = gen_dir(g.id)
+        project = json.loads((d / "input.json").read_text(encoding="utf-8-sig"))
+        if lform is not None:
+            from .loadsinput import build_loads_input
+            inp = build_loads_input({**lform, "l_on": "1"}, project)
+        elif (d / "loads_input.json").exists():
+            inp = json.loads((d / "loads_input.json").read_text(encoding="utf-8"))
+        else:
+            from .loadsinput import build_loads_input
+            inp = build_loads_input({"l_on": "1"}, project)
+        res = compute_loads(inp)
+        cases = build_cases(res, True, report_fill_levels(res))
+        H = float(res["inputs"]["H"])
+        sp = d / "structure.json"
+        roof = (json.loads(sp.read_text(encoding="utf-8")).get("roof") or {}) if sp.exists() else {}
+        bands = [float(str(b[0]).replace(",", ".")) for b in project["bands"]]
+        z, edges = 0.0, [0.0]
+        for h in bands:
+            z += h
+            edges.append(round(z, 4))
+        return {"D": res["inputs"]["D"], "H": H, "rise_m": float(roof.get("rise_m") or inp.get("roof_rise_m") or 0.0), "belts_m": edges,
+                "saved": lform is None and (d / "loads_input.json").exists(),
+                "cases": [pressure_view(c, H * 1000.0) for c in cases], "notes": ["Ветер задан давлением по поясам и распределён равномерно по окружности (распределение по окружности уточняется)."]}
+
+    @app.get("/g/{gid}/loads3d.json")
+    def loads3d_get(request: Request, gid: int):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "Не найдено"}, status_code=404)
+            try:
+                return JSONResponse(_loads3d(g, None))
+            except Exception as e:  # noqa: BLE001
+                return JSONResponse({"error": str(e)[:300]}, status_code=400)
+
+    @app.post("/g/{gid}/loads3d.json")
+    async def loads3d_post(request: Request, gid: int):
+        """Нагрузки «как в форме сейчас»: показ обновляется по мере ввода, ничего не сохраняется."""
+        form = await request.form()
+        bad = deny_csrf(request, str(form.get("csrf", "")))
+        if bad:
+            return bad
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "Не найдено"}, status_code=404)
+            try:
+                return JSONResponse(_loads3d(g, {k: str(v) for k, v in form.items() if k.startswith("l_")}))
+            except Exception as e:  # noqa: BLE001
+                return JSONResponse({"error": str(e)[:300]}, status_code=400)
 
     @app.post("/g/{gid}/pay")
     def pay_generation(request: Request, gid: int, csrf: str = Form("")):
@@ -480,6 +747,94 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     z.write(gen_dir(g.id) / "result" / n, n)
             return Response(buf.getvalue(), media_type="application/zip",
                             headers={"Content-Disposition": f'attachment; filename="geometry_{g.id}.zip"'})
+
+    # --- помощник на компьютере заказчика: кнопка на сайте -> Ansys считает у него -> отчёт возвращается на сайт ---
+    import hmac
+    import hashlib
+
+    def agent_token(gid: int) -> str:
+        return hmac.new(st.secret_key.encode(), f"agent:{gid}".encode(), hashlib.sha256).hexdigest()[:40]
+
+    def agent_ok(gid: int, t: str) -> Generation | None:
+        if not t or not hmac.compare_digest(t, agent_token(gid)):
+            return None
+        with Session() as db:
+            g = db.get(Generation, gid)
+            return g if g and g.status == "done" else None
+
+    def agent_dir(gid: int) -> Path:
+        d = gen_dir(gid) / "agent"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def agent_state(gid: int) -> dict:
+        f = gen_dir(gid) / "agent" / "status.json"
+        state = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"stage": "idle", "message": ""}
+        fd = gen_dir(gid) / "agent" / "files"
+        state["files"] = sorted(x.name for x in fd.iterdir()) if fd.exists() else []
+        return state
+
+    @app.get("/agent/{gid}/package.zip")
+    def agent_package(gid: int, t: str = ""):
+        if not agent_ok(gid, t):
+            return HTMLResponse("Недоступно", status_code=404)
+        root = gen_dir(gid) / "result" / "ansys_model"
+        if not root.exists():
+            return HTMLResponse("Пакета нет", status_code=404)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in sorted(root.rglob("*")):
+                if f.is_file():
+                    z.write(f, f.relative_to(root).as_posix())
+        return Response(buf.getvalue(), media_type="application/zip")
+
+    @app.post("/agent/{gid}/status")
+    async def agent_status_set(request: Request, gid: int, t: str = ""):
+        if not agent_ok(gid, t):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        body = await request.json()
+        rec = {"stage": str(body.get("stage", ""))[:30], "message": str(body.get("message", ""))[:500], "updated": time.time()}
+        (agent_dir(gid) / "status.json").write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
+        return JSONResponse({"ok": True})
+
+    @app.post("/agent/{gid}/upload")
+    async def agent_upload(gid: int, t: str = "", file: UploadFile = File(...)):
+        if not agent_ok(gid, t):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        name = Path(file.filename or "file").name
+        if Path(name).suffix.lower() not in {".docx", ".xlsx", ".txt", ".csv", ".json", ".png"}:
+            return JSONResponse({"error": "тип файла не разрешён"}, status_code=400)
+        data = await file.read(100 * 1024 * 1024 + 1)
+        if len(data) > 100 * 1024 * 1024:
+            return JSONResponse({"error": "файл слишком большой"}, status_code=400)
+        fd = agent_dir(gid) / "files"
+        fd.mkdir(exist_ok=True)
+        (fd / name).write_bytes(data)
+        return JSONResponse({"ok": True})
+
+    @app.get("/g/{gid}/agent.json")
+    def agent_state_json(request: Request, gid: int):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(agent_state(gid))
+
+    @app.get("/g/{gid}/agent-files/{name}")
+    def agent_file(request: Request, gid: int, name: str):
+        with Session() as db:
+            u, g = _owned(db, request, gid)
+            if not u or not g:
+                return HTMLResponse("Не найдено", status_code=404)
+        f = gen_dir(gid) / "agent" / "files" / Path(name).name
+        if not f.exists():
+            return HTMLResponse("Не найдено", status_code=404)
+        return FileResponse(f, filename=f.name)
+
+    @app.get("/agent/setup", response_class=HTMLResponse)
+    def agent_setup(request: Request):
+        with Session() as db:
+            return render(request, "agent_setup.html", current_user(request, db))
 
     # --- оплата ---
     @app.get("/pay/fake/{pid}", response_class=HTMLResponse)
