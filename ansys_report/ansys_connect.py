@@ -31,6 +31,14 @@ def find_ansys() -> dict[int, Path]:
     return dict(sorted(found.items(), reverse=True))
 
 
+def pick_version(installs: dict, version: int | None = None) -> int:
+    """Версия Ansys для работы: заданная явно, затем переменная ANSYS_REPORT_VERSION (например 242), иначе самая новая из установленных."""
+    want = version or (int(os.environ["ANSYS_REPORT_VERSION"]) if os.environ.get("ANSYS_REPORT_VERSION", "").isdigit() else None)
+    if want and want not in installs:
+        raise ConnectError(f"Ansys версии {want} не найден. Установлены: {', '.join(map(str, installs)) or 'нет'}.")
+    return want or next(iter(installs))
+
+
 def find_mechdb(project: str | Path, work: Path) -> Path:
     """Файл Mechanical (.mechdb) по файлу проекта Workbench (.wbpj / .wbpz) или сам .mechdb."""
     project = Path(project)
@@ -280,7 +288,7 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
     installs = find_ansys()
     if not installs:
         raise ConnectError("Ansys не найден на этом компьютере (нет переменной AWP_ROOT###). Установите Ansys Mechanical.")
-    ver = version or next(iter(installs))
+    ver = pick_version(installs, version)
     log(f"Найден Ansys версии {ver}")
     work = Path(tempfile.mkdtemp(prefix="ansys_report_"))
     try:
@@ -488,7 +496,7 @@ def apply_loads_to_project(project: str | Path, loads_data: str | Path, out_dir:
     installs = find_ansys()
     if not installs:
         raise ConnectError("Ansys не найден (нет переменной AWP_ROOT###).")
-    ver = version or next(iter(installs))
+    ver = pick_version(installs, version)
     work = Path(tempfile.mkdtemp(prefix="ansys_report_loads_"))
     try:
         wbpj = project

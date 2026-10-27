@@ -517,3 +517,16 @@ def test_pressure_view_matches_apply_loads_formula():
         assert (v["bottom_kpa"] is None) == (hy is None)
     names = [pressure_view(c, H)["name"] for c in cases]
     assert names[0] == "Эксплуатация" and any(n.startswith("Налив") for n in names)
+
+
+def test_pick_ansys_version(monkeypatch):
+    import pytest
+    from ansys_report.ansys_connect import ConnectError, pick_version
+    inst = {261: "a", 242: "b"}
+    monkeypatch.delenv("ANSYS_REPORT_VERSION", raising=False)
+    assert pick_version(inst) == 261 and pick_version(inst, 242) == 242
+    monkeypatch.setenv("ANSYS_REPORT_VERSION", "242")
+    assert pick_version(inst) == 242
+    monkeypatch.setenv("ANSYS_REPORT_VERSION", "251")
+    with pytest.raises(ConnectError):
+        pick_version(inst)
