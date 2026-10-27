@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "ansys_scripts"
-SCRIPT_ORDER = ["export_model_data.py", "export_results.py", "export_model_images.py"]
+SCRIPT_ORDER = ["export_model_data.py", "export_results.py", "export_model_images.py", "export_figures.py"]   # figures/fig01..: рисунки как в эталоне
 TEMPLATE_YAML = Path(__file__).resolve().parent / "templates" / "project_template.yaml"
 
 
@@ -375,6 +375,32 @@ def _report_problems(out: Path, log):
 _CROPS = {"fig02_mesh_wall_bottom": (0.12, 0.45, 0.52, 0.77), "fig03_mesh_wall_roof": (0.22, 0.10, 0.62, 0.42)}
 
 
+def overlay_roof_frame(fig_dir: Path, color=(46, 94, 46), log=print) -> bool:
+    """Рис. 1: каркас крыши на снимок высокого разрешения. Mechanical рисует линии Draw3D только в окне (в пакетном режиме ~840 px),
+    а снимок высокого разрешения делает отдельно и без них; export_figures.py сохраняет каркас в пикселях окна (fig01_frame.json),
+    снимок fig01.png - ровно в k раз больше окна (fig01_window.png) с тем же ракурсом. Нужен Pillow."""
+    fig_dir = Path(fig_dir)
+    src, win, js = fig_dir / "fig01.png", fig_dir / "fig01_window.png", fig_dir / "fig01_frame.json"
+    if not (src.exists() and win.exists() and js.exists()):
+        return False
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        log("  ! Нет пакета Pillow: каркас крыши на рис. 1 не нанесён")
+        return False
+    with Image.open(win) as w:
+        ww = w.size[0]
+    im = Image.open(src).convert("RGB")
+    k = im.size[0] / float(ww)
+    dr = ImageDraw.Draw(im)
+    for row in json.loads(js.read_text(encoding="utf-8"))["polylines"]:
+        if len(row) >= 2:
+            dr.line([(x * k, y * k) for x, y in row], fill=color, width=max(2, int(round(2 * k))), joint="curve")
+    im.save(src)
+    win.unlink()
+    return True
+
+
 def crop_mesh_views(img_dir: Path, log=print) -> None:
     """Из крупных снимков сетки вырезает фрагменты (стенка+днище, стенка+кровля). Нужен Pillow."""
     try:
@@ -468,6 +494,7 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
         shutil.move(str(f), img / f.name)
     if (d / "model_data.json").exists() and _has_belts(d):
         crop_mesh_views(img)
+    overlay_roof_frame(d / "figures")
     text = TEMPLATE_YAML.read_text(encoding="utf-8")
     values = {"elongation_pct": 21, "roof_radius": 0}       # запасные значения полей, без которых расчёт невозможен
     values.update({k: v for k, v in (anketa or {}).items() if str(v).strip() != ""})
