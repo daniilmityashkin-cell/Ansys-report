@@ -136,6 +136,13 @@ class Report:
         self.caption(f"Рисунок {self.fig}. {caption}")
 
     def _find_image(self, key):
+        # рисунки как в эталоне из export_figures.py: figures/fig01.png … (fig_stabN -> fig14…) - приоритетнее старых снимков
+        m = re.match(r"fig_stab(\d+)$", key)
+        short = f"fig{13 + int(m.group(1)):02d}" if m else key.split("_")[0]
+        for ext in (".png", ".jpg", ".jpeg"):
+            f = self.p.root / "figures" / f"{short}{ext}"
+            if f.exists():
+                return f
         folder = self.p.root / self.p.raw.get("images_dir", "images")
         mapped = (self.p.raw.get("images") or {}).get(key)   # явное соответствие рисунок -> файл из Ansys
         if mapped and (folder / mapped).exists():

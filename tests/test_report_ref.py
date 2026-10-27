@@ -93,3 +93,20 @@ def test_report_tables_and_formulas_like_reference(tmp_path):
 
 def test_g3_numbers_like_reference():
     assert [g3(x) for x in (7.45, 14.9, 89.4, 0.95, 1.05, 64156, 1571.8, 0.3, 216.66)] == ["7,45", "14,9", "89,4", "0,95", "1,05", "64156", "1571,8", "0,3", "216,7"]
+
+
+def test_reference_figures_folder_has_priority(tmp_path):
+    """Рисунки export_figures.py (figures/fig01.png …, устойчивость fig14…) берутся в отчёт вместо старых снимков images/."""
+    import shutil
+    from PIL import Image
+    root = tmp_path / "proj"
+    shutil.copytree(YAML.parent, root)
+    (root / "figures").mkdir(exist_ok=True)
+    for name in ("fig01", "fig04", "fig14"):
+        Image.new("RGB", (40, 30), (10, 120, 10)).save(root / "figures" / f"{name}.png")
+    from ansys_report.word_gen import Report
+    rep = Report(load_project(root / "project.yaml"))
+    assert rep._find_image("fig01_general") == root / "figures" / "fig01.png"
+    assert rep._find_image("fig04_loads") == root / "figures" / "fig04.png"
+    assert rep._find_image("fig_stab1") == root / "figures" / "fig14.png"
+    assert rep._find_image("fig05_hydrostatic") != root / "figures" / "fig05.png"
