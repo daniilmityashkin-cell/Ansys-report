@@ -98,10 +98,13 @@ def compute(inp: dict) -> dict:
     if abs(Hw - hb * n) > 1e-6:
         notes.append(f"Высота стенки {Hw} м не равна числу поясов × высота пояса ({n} × {hb} м).")
     snow_d, wind_d, terrain = str(inp.get("snow_district", "")), str(inp.get("wind_district", "")), str(inp.get("terrain", "A")).upper()
-    if snow_d not in SNOW_SG_KPA: raise ValueError("Снеговой район: I…VIII")
-    if wind_d not in WIND_W0_KPA: raise ValueError("Ветровой район: Ia, I…VII")
+    if inp.get("snow_kpa") is None and snow_d not in SNOW_SG_KPA: raise ValueError("Снеговой район: I…VIII")
+    if inp.get("wind_kpa") is None and wind_d not in WIND_W0_KPA: raise ValueError("Ветровой район: Ia, I…VII")
     if terrain not in TERRAIN: raise ValueError("Тип местности: A, B или C")
-    Sg, w0 = SNOW_SG_KPA[snow_d], WIND_W0_KPA[wind_d]
+    # снег и ветер числом (кПа, как в исходных данных заказчика) приоритетнее района
+    Sg = float(inp["snow_kpa"]) if inp.get("snow_kpa") is not None else SNOW_SG_KPA[snow_d]
+    w0 = float(inp["wind_kpa"]) if inp.get("wind_kpa") is not None else WIND_W0_KPA[wind_d]
+    gf_snow = float(inp.get("snow_gf") or 1.4)
 
     # --- расчётные сопротивления [C29:C34]
     R_op = [ryn * inp_g / gm / gn for inp_g in (_num(inp, "gamma_c1", 0.7), _num(inp, "gamma_c2", 0.8), _num(inp, "gamma_c_rest", 0.8))]
@@ -136,12 +139,12 @@ def compute(inp: dict) -> dict:
     Aroof = 2 * math.pi * Rroof * hk
     deck_mass = Aroof * _num(inp, "roof_deck_thickness_m") * rho_s
     ins_t, ins_rho = _num(inp, "insulation_thickness_m", 0), _num(inp, "insulation_density_kg_m3", 0)
-    roof_ins_mass = Aroof * ins_t * ins_rho
+    roof_ins_mass = float(inp["roof_insulation_kg"]) if inp.get("roof_insulation_kg") is not None else Aroof * ins_t * ins_rho
     ring_mass = 3.14 * D * _num(inp, "roof_support_ring_kg_m", 0)         # Excel: π принято равным 3,14
     beams_mass = (_num(inp, "roof_radial_beam_kg_m", 0) * _num(inp, "roof_radial_beam_length_m", 0) * _num(inp, "roof_radial_beams_count", 0)
                   + _num(inp, "roof_ring_beam_kg_m", 0) * _num(inp, "roof_ring_beams_length_m", 0))
     roof_metal = deck_mass + beams_mass + ring_mass
-    wall_ins_mass = math.pi * D * Hw * ins_t * ins_rho
+    wall_ins_mass = float(inp["wall_insulation_kg"]) if inp.get("wall_insulation_kg") is not None else math.pi * D * Hw * ins_t * ins_rho
     belt_mass = [rho_s * hb * math.pi / 4 * ((D + nominal[i] / 1000) ** 2 - D ** 2) for i in range(n)]
 
     # --- распределение масс по поясам и крыше (колонки: пояса 0..n-1 и крыша n) [A55:Z87]
@@ -171,7 +174,7 @@ def compute(inp: dict) -> dict:
     Gt = [m * g * 1e-6 for m in above["insulation"]]
 
     # --- прочность стенки [A99:J106]
-    snow_design = 1.4 * PSI["t1"] * CE * Sg / 1000          # МПа
+    snow_design = gf_snow * PSI["t1"] * CE * Sg / 1000      # МПа
     snow_char = CE * Sg / 1000
     strength = []
     for i in range(n):

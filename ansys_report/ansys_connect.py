@@ -480,8 +480,10 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
     values = {"elongation_pct": 21, "roof_radius": 0}       # запасные значения полей, без которых расчёт невозможен
     values.update({k: v for k, v in (anketa or {}).items() if str(v).strip() != ""})
     values.update(_blocks(d, settings or ModelSettings()))
+    raw_keys = {"report_data", "results_block", "images_block"}            # вставляются как есть (YAML/JSON), остальное - внутри "…"
     for key, val in values.items():
-        text = text.replace("{{" + key + "}}", str(val))
+        v = str(val) if key in raw_keys else str(val).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        text = text.replace("{{" + key + "}}", v)
     text = re.sub(r"\{\{\w+\}\}", "", text)
     (d / "project.yaml").write_text(text, encoding="utf-8")
     return d / "project.yaml"

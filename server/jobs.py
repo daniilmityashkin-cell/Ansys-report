@@ -53,8 +53,12 @@ def _ansys_pack(gen: Path, project: dict, belts_dir: Path, dest: Path, title: st
     if not (step.exists() and zones.exists()):
         return None
     from ansys_report.loads.launcher import write_open_package
-    md = write_open_package(dest, step, zones, loads_data,
-                            anketa={"tag": title, "tank_name": title, "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}, parts=parts)
+    anketa = {"tag": title, "tank_name": title, "steel_yield_mpa": json.loads(lp.read_text(encoding="utf-8")).get("ryn_mpa", "")}
+    rp = gen / "report_input.json"
+    if rp.exists():                                                # данные для отчёта от заказчика: реквизиты, сталь, нагрузки таблицы 1 и раздела 4
+        from ansys_report import report_input as RI
+        anketa.update({k: v for k, v in RI.anketa(json.loads(rp.read_text(encoding="utf-8")), json.loads(lp.read_text(encoding="utf-8"))).items() if str(v).strip()})
+    md = write_open_package(dest, step, zones, loads_data, anketa=anketa, parts=parts)
     try:                                                           # вмятины: зоны сгущения сетки в Ansys (сфера влияния 100 мм)
         dz = gcheck.dent_zones(project)
         if dz:
