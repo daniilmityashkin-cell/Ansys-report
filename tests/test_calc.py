@@ -530,3 +530,19 @@ def test_pick_ansys_version(monkeypatch):
     monkeypatch.setenv("ANSYS_REPORT_VERSION", "251")
     with pytest.raises(ConnectError):
         pick_version(inst)
+
+
+def test_check_ansys_journal_and_missing_install(monkeypatch, tmp_path):
+    """check-ansys: журнал формируется без ошибок подстановки; без установленного Ansys - понятное сообщение."""
+    import pytest
+    from ansys_report import compat
+    from ansys_report.ansys_connect import ConnectError
+    j = compat.JOURNAL.format(status=r"C:\t\wb_status.txt", probe=r"C:\x\ansys_scripts\probe_api.py")
+    compile(j, "probe.wbjn", "exec")                                   # журнал Workbench - корректный Python
+    assert "probe_api.py" in j and compat.version_name(221) == "2022 R1" and compat.version_name(261) == "2026 R1"
+    for k in list(__import__("os").environ):
+        if k.startswith("AWP_ROOT"):
+            monkeypatch.delenv(k)
+    with pytest.raises(ConnectError, match="AWP_ROOT"):
+        compat.check_ansys()
+    compile(open(compat.SCRIPTS / "probe_api.py", encoding="utf-8").read(), "probe_api.py", "exec")
