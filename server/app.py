@@ -111,7 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return None if csrf_ok(request.session, token) else HTMLResponse("Сессия устарела. Обновите страницу.", status_code=400)
 
     # --- общие страницы ---
-    @app.get("/health")
+    @app.api_route("/health", methods=["GET", "HEAD"])          # HEAD: так стучатся бесплатные мониторы (UptimeRobot)
     def health():
         """Для мониторинга доступности (UptimeRobot и т. п.): отвечает 200 только если база читается."""
         try:

@@ -574,3 +574,10 @@ def test_studio_thickness_recognition(site):
     assert c.post("/studio/thickness", data={"csrf": "bad", "nz": "4", "text": phrase}).status_code == 400
     r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("scan.pdf", b"%PDF-1.4")})
     assert r.status_code == 400 and "xlsx" in r.json()["error"]
+
+
+def test_health_accepts_get_and_head(site):
+    """Мониторы доступности (UptimeRobot и т. п.) стучатся и GET, и HEAD: оба должны отвечать 200."""
+    c = TestClient(site)
+    assert c.get("/health").json() == {"ok": True}
+    assert c.head("/health").status_code == 200
