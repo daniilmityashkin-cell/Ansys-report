@@ -38,10 +38,6 @@ python -m ansys_report wizard        # или двойной щелчок по r
 * `tests/` — автотесты (`python -m pytest`).
 * `docs/` — инструкция пользователя.
 
-## Допущения
-* Формулы по ГОСТ 31385 / СП 16.13330: R=σт·γc/(γm·γn) с γc=0,7/0,8/1,2, γm=γn=1,05; [σ]=σ0,2/1,5; допуск отклонения пояса k·h/200.
-* Свойства стали берутся из Engineering Data проекта Ansys; марка, стандарт и удлинение — из сведений для отчёта.
-
 ## Установщик для пользователей
 `installer\build_installer.bat` собирает `dist\AnsysReport\AnsysReport.exe` (PyInstaller) и, если установлен Inno Setup 6,
 `installer\Output\AnsysReport_Setup.exe`. Пользователю Python не нужен. Исправления выпускаются новой сборкой того же скрипта.

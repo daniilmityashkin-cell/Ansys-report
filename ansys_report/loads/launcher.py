@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "ansys_scripts"
-VERSIONS = [261, 252, 251, 242, 241, 232, 231]
+VERSIONS = [261, 252, 251, 242, 241, 232, 231, 222, 221]
 
 JOURNAL = '''# -*- coding: utf-8 -*-
 # Журнал Workbench: проект Static Structural из STEP, сетка, нагрузки. Запуск: RunWB2.exe -R build_model.wbjn (переменная AR_PKG - папка пакета).

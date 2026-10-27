@@ -256,9 +256,9 @@ def test_material_from_ansys_engineering_data(tmp_path):
     assert p2.material["name"] == "09Г2С"
     c = calc_all(p)
     assert abs(c["allow"] - 250 / 1.5) < 0.01
-    # ГОСТ Р 58622-2019, табл. 13: для листов стенки критерий - мембранные напряжения <= 1,5[σ] (= σ0,2)
     assert abs(c["allow15"] - 250) < 0.01
-    assert c["strength_ok"] == all(b["ok_mem"] for b in c["belts"])
+    assert c["strength_ok"] == all(b["ok_mem"] and b["ok_fiber"] and b["ok_eq"] for b in c["belts"])
+    assert all(b["ok_mem"] == (b["membrane"] <= c["allow"]) for b in c["belts"])         # мембранные: [σ], как в эталоне ТО-019-26
     assert len(c["dev_check"]) == len(c["belts"]) and c["dev_check"][0]["lim2"] == c["dev_check"][0]["lim1"] + 30
 
 
@@ -367,6 +367,20 @@ def test_agent_lock_blocks_second_run(tmp_path, monkeypatch):
     assert agent._take_lock() is not None
 
 
+def test_overlay_roof_frame(tmp_path):
+    """Каркас крыши из пикселей окна (fig01_frame.json) наносится на снимок высокого разрешения с коэффициентом k."""
+    import json
+    from PIL import Image
+    from ansys_report.ansys_connect import overlay_roof_frame
+    Image.new("RGB", (100, 50), "white").save(tmp_path / "fig01_window.png")
+    Image.new("RGB", (300, 150), "white").save(tmp_path / "fig01.png")
+    (tmp_path / "fig01_frame.json").write_text(json.dumps({"polylines": [[[10, 25], [90, 25]]]}), encoding="utf-8")
+    assert overlay_roof_frame(tmp_path, log=lambda s: None)
+    im = Image.open(tmp_path / "fig01.png")
+    assert im.getpixel((150, 75)) == (46, 94, 46) and im.getpixel((150, 10)) == (255, 255, 255)   # линия на y = 25 * 3
+    assert not (tmp_path / "fig01_window.png").exists()
+
+
 def test_timing_table(tmp_path):
     from ansys_report.timing import read, table_md
     f = tmp_path / "timing.log"
@@ -413,7 +427,7 @@ def test_report_with_ideal_tank(tmp_path):
 
 
 def test_report_with_fill_series(tmp_path):
-    """Допустимая высота налива по серии уровней: таблица 5.3 и вывод."""
+    """Допустимая высота налива по серии уровней (критерий σм ≤ [σ]) - в выводах; отдельной таблицы, как и в эталоне, нет."""
     import docx
     p = load_project(YAML)
     p.raw["results"]["fill_series"] = [{"level_m": 7.2, "membrane": 100.0, "fiber": 150.0, "equivalent": 160.0},
@@ -421,7 +435,8 @@ def test_report_with_fill_series(tmp_path):
                                        {"level_m": 17.1, "membrane": 900.0, "fiber": 950.0, "equivalent": 960.0}]
     path, _ = build_report(p, tmp_path / "f.docx")
     text = "\n".join(x.text for x in docx.Document(path).paragraphs)
-    assert "5.3 Допустимая высота налива" in text and "Допустимая высота налива продукта по условию прочности" in text
+    assert "5.3 Допустимая высота налива" not in text and "Допустимый уровень налива продукта по условию прочности составил" in text
+    assert "Максимальные напряжения в стенке по уровням налива" not in text
 
 
 def test_loads_cases_with_fill_levels():
@@ -450,7 +465,7 @@ def test_stability_ring_limit_matches_excel():
 
 
 def test_report_with_analytic_stability(tmp_path):
-    """Аналитическая проверка устойчивости (Excel ГОСТ 31385) попадает в раздел 6.2 отчёта."""
+    """Аналитическая проверка устойчивости (Excel ГОСТ 31385) в отчёт не выводится: в эталоне ТО-019-26 раздела 6.2 нет."""
     import json
     import docx
     from pathlib import Path
@@ -465,7 +480,7 @@ def test_report_with_analytic_stability(tmp_path):
     path, _ = build_report(p, tmp_path / "a.docx")
     d = docx.Document(path)
     text = "\n".join(x.text for x in d.paragraphs)
-    assert "6.2 Проверка устойчивости стенки по аналитической методике" in text and "кольцо жесткости" in text
+    assert "6.2 Проверка устойчивости стенки по аналитической методике" not in text and len(d.tables) <= 9
 
 
 def test_cad_fine_defect_large_tank_falls_back(tmp_path):
@@ -517,3 +532,51 @@ def test_pressure_view_matches_apply_loads_formula():
         assert (v["bottom_kpa"] is None) == (hy is None)
     names = [pressure_view(c, H)["name"] for c in cases]
     assert names[0] == "Эксплуатация" and any(n.startswith("Налив") for n in names)
+
+
+def test_pick_ansys_version(monkeypatch):
+    import pytest
+    from ansys_report.ansys_connect import ConnectError, pick_version
+    inst = {261: "a", 242: "b"}
+    monkeypatch.delenv("ANSYS_REPORT_VERSION", raising=False)
+    assert pick_version(inst) == 261 and pick_version(inst, 242) == 242
+    monkeypatch.setenv("ANSYS_REPORT_VERSION", "242")
+    assert pick_version(inst) == 242
+    monkeypatch.setenv("ANSYS_REPORT_VERSION", "251")
+    with pytest.raises(ConnectError):
+        pick_version(inst)
+
+
+def test_check_ansys_journal_and_missing_install(monkeypatch, tmp_path):
+    """check-ansys: журнал формируется без ошибок подстановки; без установленного Ansys - понятное сообщение."""
+    import pytest
+    from ansys_report import compat
+    from ansys_report.ansys_connect import ConnectError
+    from pathlib import PureWindowsPath
+    j = compat.journal_text(PureWindowsPath(r"C:\ansys_report_work\out\wb_status.txt"), PureWindowsPath(r"C:\Ansys-report\ansys_scripts\probe_api.py"))
+    compile(j, "probe.wbjn", "exec")                                   # журнал Workbench - корректный Python (\a, \x в путях Windows не портят строку)
+    ns = {}
+    cmd = next(l for l in j.splitlines() if "SendCommand" in l).split("Command=", 1)[1].rstrip(")")
+    import re
+    code = eval(cmd)                                                      # то, что выполнит Mechanical
+    assert eval(re.search(r"io\.open\((.*), encoding", code).group(1)) == r"C:\Ansys-report\ansys_scripts\probe_api.py"      # путь доходит без искажений
+    assert "probe_api.py" in j and compat.version_name(221) == "2022 R1" and compat.version_name(261) == "2026 R1"
+    for k in list(__import__("os").environ):
+        if k.startswith("AWP_ROOT"):
+            monkeypatch.delenv(k)
+    with pytest.raises(ConnectError, match="AWP_ROOT"):
+        compat.check_ansys()
+    compile(open(compat.SCRIPTS / "probe_api.py", encoding="utf-8").read(), "probe_api.py", "exec")
+
+
+def test_load_figures_use_mpa(tmp_path):
+    """Рисунки нагрузок в отчёте подписаны в МПа (как в эталонных отчётах), малые значения не округляются до нуля."""
+    from ansys_report.loads.export import write_package
+    from ansys_report.loads.figures import make_load_figures, mpa
+    from ansys_report.loads.rvs_loads import compute
+    assert mpa(0.168) == "0,168" and mpa(0.00238) == "0,00238" and mpa(0.000291) == "0,000291" and mpa(0) == "0" and mpa(-0.0017) == "0,00170"
+    res = compute(json.loads((Path(__file__).parent.parent / "examples/loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    pack = write_package(res, tmp_path / "pk", all_cases=True)
+    figs = make_load_figures(pack["data"], tmp_path / "img")
+    assert [f.name for f in figs] == ["fig05_hydrostatic.png", "fig04_loads.png"] and all(f.stat().st_size > 10000 for f in figs)
+    assert "кПа" not in (Path(__file__).parent.parent / "ansys_report/loads/figures.py").read_text(encoding="utf-8")

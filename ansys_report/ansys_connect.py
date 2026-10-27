@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "ansys_scripts"
-SCRIPT_ORDER = ["export_model_data.py", "export_results.py", "export_model_images.py"]
+SCRIPT_ORDER = ["export_model_data.py", "export_results.py", "export_model_images.py", "export_figures.py"]   # figures/fig01..: рисунки как в эталоне
 TEMPLATE_YAML = Path(__file__).resolve().parent / "templates" / "project_template.yaml"
 
 
@@ -29,6 +29,14 @@ def find_ansys() -> dict[int, Path]:
         if m and Path(v).exists():
             found[int(m.group(1))] = Path(v)
     return dict(sorted(found.items(), reverse=True))
+
+
+def pick_version(installs: dict, version: int | None = None) -> int:
+    """Версия Ansys для работы: заданная явно, затем переменная ANSYS_REPORT_VERSION (например 242), иначе самая новая из установленных."""
+    want = version or (int(os.environ["ANSYS_REPORT_VERSION"]) if os.environ.get("ANSYS_REPORT_VERSION", "").isdigit() else None)
+    if want and want not in installs:
+        raise ConnectError(f"Ansys версии {want} не найден. Установлены: {', '.join(map(str, installs)) or 'нет'}.")
+    return want or next(iter(installs))
 
 
 def find_mechdb(project: str | Path, work: Path) -> Path:
@@ -280,7 +288,7 @@ def extract(project: str | Path, out_dir: str | Path, log=print, version: int | 
     installs = find_ansys()
     if not installs:
         raise ConnectError("Ansys не найден на этом компьютере (нет переменной AWP_ROOT###). Установите Ansys Mechanical.")
-    ver = version or next(iter(installs))
+    ver = pick_version(installs, version)
     log(f"Найден Ansys версии {ver}")
     work = Path(tempfile.mkdtemp(prefix="ansys_report_"))
     try:
@@ -373,6 +381,32 @@ def _report_problems(out: Path, log):
 
 # доли кадра (x0, y0, x1, y1): где в общем виде резервуара (камера: X вверх, вид сбоку сверху) нижний и верхний край стенки
 _CROPS = {"fig02_mesh_wall_bottom": (0.12, 0.45, 0.52, 0.77), "fig03_mesh_wall_roof": (0.22, 0.10, 0.62, 0.42)}
+
+
+def overlay_roof_frame(fig_dir: Path, color=(46, 94, 46), log=print) -> bool:
+    """Рис. 1: каркас крыши на снимок высокого разрешения. Mechanical рисует линии Draw3D только в окне (в пакетном режиме ~840 px),
+    а снимок высокого разрешения делает отдельно и без них; export_figures.py сохраняет каркас в пикселях окна (fig01_frame.json),
+    снимок fig01.png - ровно в k раз больше окна (fig01_window.png) с тем же ракурсом. Нужен Pillow."""
+    fig_dir = Path(fig_dir)
+    src, win, js = fig_dir / "fig01.png", fig_dir / "fig01_window.png", fig_dir / "fig01_frame.json"
+    if not (src.exists() and win.exists() and js.exists()):
+        return False
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        log("  ! Нет пакета Pillow: каркас крыши на рис. 1 не нанесён")
+        return False
+    with Image.open(win) as w:
+        ww = w.size[0]
+    im = Image.open(src).convert("RGB")
+    k = im.size[0] / float(ww)
+    dr = ImageDraw.Draw(im)
+    for row in json.loads(js.read_text(encoding="utf-8"))["polylines"]:
+        if len(row) >= 2:
+            dr.line([(x * k, y * k) for x, y in row], fill=color, width=max(2, int(round(2 * k))), joint="curve")
+    im.save(src)
+    win.unlink()
+    return True
 
 
 def crop_mesh_views(img_dir: Path, log=print) -> None:
@@ -468,12 +502,15 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
         shutil.move(str(f), img / f.name)
     if (d / "model_data.json").exists() and _has_belts(d):
         crop_mesh_views(img)
+    overlay_roof_frame(d / "figures")
     text = TEMPLATE_YAML.read_text(encoding="utf-8")
     values = {"elongation_pct": 21, "roof_radius": 0}       # запасные значения полей, без которых расчёт невозможен
     values.update({k: v for k, v in (anketa or {}).items() if str(v).strip() != ""})
     values.update(_blocks(d, settings or ModelSettings()))
+    raw_keys = {"report_data", "results_block", "images_block"}            # вставляются как есть (YAML/JSON), остальное - внутри "…"
     for key, val in values.items():
-        text = text.replace("{{" + key + "}}", str(val))
+        v = str(val) if key in raw_keys else str(val).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        text = text.replace("{{" + key + "}}", v)
     text = re.sub(r"\{\{\w+\}\}", "", text)
     (d / "project.yaml").write_text(text, encoding="utf-8")
     return d / "project.yaml"
@@ -488,7 +525,7 @@ def apply_loads_to_project(project: str | Path, loads_data: str | Path, out_dir:
     installs = find_ansys()
     if not installs:
         raise ConnectError("Ansys не найден (нет переменной AWP_ROOT###).")
-    ver = version or next(iter(installs))
+    ver = pick_version(installs, version)
     work = Path(tempfile.mkdtemp(prefix="ansys_report_loads_"))
     try:
         wbpj = project

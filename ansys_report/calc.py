@@ -51,11 +51,11 @@ def calc_all(p: Project) -> dict:
         return [{
             "belt": r["belt"], "thickness": t["belts_thickness"][r["belt"] - 1],
             "fiber": r["fiber"], "equivalent": r["equivalent"], "membrane": r["membrane"],
-            # ГОСТ Р 58622-2019, табл. 13: для листов стенки критерий только мембранный σм <= 1,5[σ];
-            # σф <= 3[σ] и σэ <= 3[σ] относятся к опорному кольцу, рёбрам жёсткости и ПРП (здесь - справочно)
+            # критерии как в эталоне ТО-019-26 (п. 5.1): σм <= [σ], σф <= 3[σ], σэ <= 3[σ]; предел для мембранных строже
+            # табл. 13 ГОСТ Р 58622-2019 (σм <= 1,5[σ]) - вывод о прочности идёт в запас
             "ok_fiber": r["fiber"] <= 3 * allow,
             "ok_eq": r["equivalent"] <= 3 * allow,
-            "ok_mem": r["membrane"] <= 1.5 * allow,
+            "ok_mem": r["membrane"] <= allow,
         } for r in results]
     belts = evaluate(p.results)
     belts_empty = evaluate(p.results_empty) if p.results_empty else None
@@ -75,7 +75,7 @@ def calc_all(p: Project) -> dict:
         "limits_dev": [step * k / 200 for k in range(1, len(belts) + 1)],
         "heights": [step * k for k in range(1, len(belts) + 1)],
         "belts": belts, "belts_empty": belts_empty,
-        "strength_ok": all(b["ok_mem"] for b in belts),
+        "strength_ok": all(b["ok_mem"] and b["ok_fiber"] and b["ok_eq"] for b in belts),
         "kmin": kmin, "stability_missing": missing,
         "stability_ok": kmin is not None and kmin >= p.raw["results"]["required_k"],
         "stability": stab,

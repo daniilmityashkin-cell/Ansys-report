@@ -193,7 +193,24 @@ def test_table_from_excel(site):
     assert bad.status_code == 400 and "Excel" in bad.text
 
 
+# данные для отчёта как в эталоне ТО-019-26 (Т-001)
+REPORT_T001 = {"number": "ТО-019-26", "year": "2026", "executor_name": "Иванов И. И.", "tank_name": "РВС-9985", "tag": "Т-001",
+               "site": "Иркутский завод полимеров", "purpose": "хранения технологической воды", "product": "Техническая вода", "hazard_class": "КС-2а",
+               "roof_radius": "34200", "steel_name": "09Г2С", "steel_standard": "ГОСТ 19281-2014", "steel_density": "7850", "steel_e_mpa": "206000",
+               "steel_poisson": "0,3", "steel_ultimate_mpa": "480", "steel_yield_mpa": "325", "elongation_pct": "21", "steel_thickness_range": "9,01-25",
+               "roof_mass_kg": "64156", "roof_equipment_kg": "819,5; 5151; 1571,8", "psi": "0,95", "roof_gf": "1,05", "load_factor": "1,3", "overp_gf": "1,2",
+               "roof_ins_kg": "2080", "wall_ins_kg": "4335", "ins_thickness_mm": "100", "snow_kpa": "1,8", "snow_gf": "1,4", "snow_blowoff": "Не учитывается",
+               "wind_kpa": "0,3"}
+
+
+def _report_data(c, gen, **over):
+    data = {"r_" + k: v for k, v in {**REPORT_T001, **over}.items()}
+    return c.post(gen + "/report-data", data={"csrf": csrf_of(c, gen), **data}, follow_redirects=False)
+
+
 def _pay_fake(c, gen):
+    if 'id="report-form"' in c.get(gen).text:                   # с нагрузками отчёт собирается только после «Данных для отчёта»
+        _report_data(c, gen)
     r = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False)
     if r.headers["location"].startswith("/pay/fake/"):
         c.post(r.headers["location"], data={"csrf": csrf_of(c, r.headers["location"])})
@@ -305,6 +322,42 @@ def test_loads_in_table_form_and_package(site):
     assert c.post("/new/table", data=bad).status_code == 400
     bad = dict(data, l_equipment="только название", csrf=csrf_of(c, "/new/table"))
     assert "Оборудование" in c.post("/new/table", data=bad).text
+
+
+def test_report_data_required_and_passed_to_package(site):
+    """«Данные для отчёта»: без них отчёт не собирается; снег, ветер, изоляция и сталь идут в расчёт нагрузок, всё - в anketa.json пакета Ansys."""
+    c = TestClient(site)
+    register(c)
+    tok = csrf_of(c, "/new/table")
+    data = {"csrf": tok, "title": "РВС-9985", "diameter": "28.5", "height": "18", "thicknesses": "13 12 11", "rows_are": "gens",
+            "table": "-10\t-9\t-6\n-12\t-23\t-27\n1\t-5\t-20\n60\t60\t52\n53\t64\t73",
+            "l_on": "1", "l_density": "1", "l_fill": "17.2", "l_hydro": "17.2", "l_overp": "0", "l_vac": "0", "l_snow": "IV", "l_wind": "II",
+            "l_terrain": "A", "l_roof_rise": "3.11", "l_deck": "4", "l_ryn": "420", "l_ins_t": "0", "l_ins_rho": "140", "l_equipment": ""}
+    gen = c.post("/new/table", data=data, follow_redirects=False).headers["location"]
+    page = c.get(gen).text
+    assert 'id="report-form"' in page and "Шаг 3: данные для отчёта" in page and 'name="r_roof_radius" value="3420' in page    # радиус крыши из подъёма
+    r = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False)
+    assert r.headers["location"].endswith("#report") and "проверка пройдена" in c.get(gen).text           # без данных не запускается
+    r = _report_data(c, gen, steel_yield_mpa="abc")
+    assert "report_error=" in r.headers["location"]
+    r = _report_data(c, gen, steel_yield_mpa="500", steel_ultimate_mpa="480")
+    assert "report_error=" in r.headers["location"]                                                       # текучесть выше прочности
+    _report_data(c, gen, executor_name="")
+    assert "Не заполнено: Исполнитель" in c.get(gen).text
+    _report_data(c, gen)
+    page = c.get(gen).text
+    assert "Шаг 3" not in page and "заполнены" in page and 'value="ТО-019-26"' in page
+    gid = gen.rsplit("/", 1)[1]
+    gd = site.state.settings.data_dir / "generations" / gid
+    li = json.loads((gd / "loads_input.json").read_text(encoding="utf-8"))
+    assert li["snow_kpa"] == 1.8 and li["wind_kpa"] == 0.3 and li["ryn_mpa"] == 325 and li["wall_insulation_kg"] == 4335
+    c.post(gen + "/loads", data={**{k: v for k, v in data.items() if k.startswith("l_")}, "csrf": csrf_of(c, gen)})
+    assert json.loads((gd / "loads_input.json").read_text(encoding="utf-8"))["snow_kpa"] == 1.8                # пересохранение нагрузок не теряет данные отчёта
+    _pay_fake(c, gen)
+    an = json.loads((gd / "result" / "ansys_model" / "anketa.json").read_text(encoding="utf-8"))
+    assert an["number"] == "ТО-019-26" and an["title"] == "Резервуара РВС-9985 №Т-001 на прочность и устойчивость" and an["steel_yield_mpa"] == "325"
+    rd = json.loads(an["report_data"])
+    assert rd["roof_equipment_kg"] == [819.5, 5151.0, 1571.8] and rd["steel"]["young_modulus_mpa"] == 206000 and rd["fill_level_mm"] == 17200
 
 
 def test_open_in_ansys_package_in_paid_files(site):
@@ -574,3 +627,29 @@ def test_studio_thickness_recognition(site):
     assert c.post("/studio/thickness", data={"csrf": "bad", "nz": "4", "text": phrase}).status_code == 400
     r = c.post("/studio/thickness", data={"csrf": tok, "nz": "4"}, files={"doc": ("scan.pdf", b"%PDF-1.4")})
     assert r.status_code == 400 and "xlsx" in r.json()["error"]
+
+
+def test_health_accepts_get_and_head(site):
+    """Мониторы доступности (UptimeRobot и т. п.) стучатся и GET, и HEAD: оба должны отвечать 200."""
+    c = TestClient(site)
+    assert c.get("/health").json() == {"ok": True}
+    assert c.head("/health").status_code == 200
+
+
+def test_demo_mode_blocks_report_build(tmp_path, monkeypatch):
+    """ASR_DEMO=1: на странице расчёта вместо кнопки «Собрать отчёт» - пометка о демо, запуск расчёта блокируется."""
+    monkeypatch.setenv("ASR_DEMO", "1")
+    monkeypatch.setenv("ASR_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ASR_INLINE_JOBS", "1")
+    monkeypatch.setenv("ASR_SECRET", "x" * 40)
+    monkeypatch.setenv("ASR_MAX_REG_PER_IP", "100")
+    c = TestClient(create_app())
+    register(c)
+    gen = new_generation(c).headers["location"]
+    tok = csrf_of(c, gen)
+    assert c.post(gen + "/loads", data={"csrf": tok}, follow_redirects=False).status_code == 303          # нагрузки по умолчанию
+    page = c.get(gen).text
+    assert "Демо-версия" in page and "Собрать отчёт" not in page
+    r = c.post(gen + "/pay", data={"csrf": tok}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == gen
+    assert "считается" not in c.get(gen).text and "оплачено" not in c.get(gen).text

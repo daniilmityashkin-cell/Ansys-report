@@ -10,11 +10,12 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package", "agent", "extract-ideal"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package", "agent", "extract-ideal", "check-ansys"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     ap.add_argument("--loads", help="apply-loads: файл loads_data.py из пакета нагрузок")
     ap.add_argument("--anketa", help="report-from-ansys: файл anketa.json (поля отчёта: номер, позиция, исполнитель и т. д.)")
+    ap.add_argument("--version", type=int, help="check-ansys: версия Ansys (221 = 2022 R1, 222, 231, 232, 241, 242, 251, 252, 261 = 2026 R1); по умолчанию самая новая")
     ap.add_argument("--install", action="store_true", help="agent: зарегистрировать ссылки ansysreport:// в Windows")
     ap.add_argument("--ideal", help="report-from-ansys: ideal.json с результатами идеального РВС (без отклонений)")
     ap.add_argument("--no-solve", action="store_true", help="report-from-ansys: не запускать расчёт, взять готовые результаты проекта")
@@ -45,6 +46,14 @@ def main(argv=None) -> int:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
         print("Идеальный РВС:", res)
+        return 0
+    if a.command == "check-ansys":
+        from . import compat
+        try:
+            compat.check_ansys(a.version)
+        except Exception as e:      # noqa: BLE001
+            print("Ошибка:", e)
+            return 1
         return 0
     if a.command == "agent":
         from . import agent
