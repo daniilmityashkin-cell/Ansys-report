@@ -367,6 +367,20 @@ def test_agent_lock_blocks_second_run(tmp_path, monkeypatch):
     assert agent._take_lock() is not None
 
 
+def test_overlay_roof_frame(tmp_path):
+    """Каркас крыши из пикселей окна (fig01_frame.json) наносится на снимок высокого разрешения с коэффициентом k."""
+    import json
+    from PIL import Image
+    from ansys_report.ansys_connect import overlay_roof_frame
+    Image.new("RGB", (100, 50), "white").save(tmp_path / "fig01_window.png")
+    Image.new("RGB", (300, 150), "white").save(tmp_path / "fig01.png")
+    (tmp_path / "fig01_frame.json").write_text(json.dumps({"polylines": [[[10, 25], [90, 25]]]}), encoding="utf-8")
+    assert overlay_roof_frame(tmp_path, log=lambda s: None)
+    im = Image.open(tmp_path / "fig01.png")
+    assert im.getpixel((150, 75)) == (46, 94, 46) and im.getpixel((150, 10)) == (255, 255, 255)   # линия на y = 25 * 3
+    assert not (tmp_path / "fig01_window.png").exists()
+
+
 def test_timing_table(tmp_path):
     from ansys_report.timing import read, table_md
     f = tmp_path / "timing.log"
