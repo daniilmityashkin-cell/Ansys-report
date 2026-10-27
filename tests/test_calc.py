@@ -256,9 +256,9 @@ def test_material_from_ansys_engineering_data(tmp_path):
     assert p2.material["name"] == "09Г2С"
     c = calc_all(p)
     assert abs(c["allow"] - 250 / 1.5) < 0.01
-    # ГОСТ Р 58622-2019, табл. 13: для листов стенки критерий - мембранные напряжения <= 1,5[σ] (= σ0,2)
     assert abs(c["allow15"] - 250) < 0.01
-    assert c["strength_ok"] == all(b["ok_mem"] for b in c["belts"])
+    assert c["strength_ok"] == all(b["ok_mem"] and b["ok_fiber"] and b["ok_eq"] for b in c["belts"])
+    assert all(b["ok_mem"] == (b["membrane"] <= c["allow"]) for b in c["belts"])         # мембранные: [σ], как в эталоне ТО-019-26
     assert len(c["dev_check"]) == len(c["belts"]) and c["dev_check"][0]["lim2"] == c["dev_check"][0]["lim1"] + 30
 
 
@@ -413,7 +413,7 @@ def test_report_with_ideal_tank(tmp_path):
 
 
 def test_report_with_fill_series(tmp_path):
-    """Допустимая высота налива по серии уровней: таблица 5.3 и вывод."""
+    """Допустимая высота налива по серии уровней (критерий σм ≤ [σ]) - в выводах; отдельной таблицы, как и в эталоне, нет."""
     import docx
     p = load_project(YAML)
     p.raw["results"]["fill_series"] = [{"level_m": 7.2, "membrane": 100.0, "fiber": 150.0, "equivalent": 160.0},
@@ -421,7 +421,8 @@ def test_report_with_fill_series(tmp_path):
                                        {"level_m": 17.1, "membrane": 900.0, "fiber": 950.0, "equivalent": 960.0}]
     path, _ = build_report(p, tmp_path / "f.docx")
     text = "\n".join(x.text for x in docx.Document(path).paragraphs)
-    assert "5.3 Допустимая высота налива" in text and "Допустимая высота налива продукта по условию прочности" in text
+    assert "5.3 Допустимая высота налива" not in text and "Допустимый уровень налива продукта по условию прочности составил" in text
+    assert "Максимальные напряжения в стенке по уровням налива" not in text
 
 
 def test_loads_cases_with_fill_levels():
@@ -450,7 +451,7 @@ def test_stability_ring_limit_matches_excel():
 
 
 def test_report_with_analytic_stability(tmp_path):
-    """Аналитическая проверка устойчивости (Excel ГОСТ 31385) попадает в раздел 6.2 отчёта."""
+    """Аналитическая проверка устойчивости (Excel ГОСТ 31385) в отчёт не выводится: в эталоне ТО-019-26 раздела 6.2 нет."""
     import json
     import docx
     from pathlib import Path
@@ -465,7 +466,7 @@ def test_report_with_analytic_stability(tmp_path):
     path, _ = build_report(p, tmp_path / "a.docx")
     d = docx.Document(path)
     text = "\n".join(x.text for x in d.paragraphs)
-    assert "6.2 Проверка устойчивости стенки по аналитической методике" in text and "кольцо жесткости" in text
+    assert "6.2 Проверка устойчивости стенки по аналитической методике" not in text and len(d.tables) <= 9
 
 
 def test_cad_fine_defect_large_tank_falls_back(tmp_path):

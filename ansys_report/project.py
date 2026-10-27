@@ -76,6 +76,7 @@ def load_project(yaml_path: str | Path) -> Project:
         if sec not in raw:
             raise ProjectError(f"В project.yaml нет раздела '{sec}'")
     md = _apply_ansys(raw, root)
+    _apply_report_steel(raw)
     t = raw["tank"]
     n = len(t["belts_thickness"])
     if abs(n * t["belt_height"] - t["wall_height"]) > 1:
@@ -99,6 +100,17 @@ def load_project(yaml_path: str | Path) -> Project:
     res = _load_belts(root / rr["full"], n) if rr.get("full") and (root / rr["full"]).exists() else []
     res_empty = _load_belts(root / rr["empty"], n) if rr.get("empty") and (root / rr["empty"]).exists() else None
     return Project(root, raw, full, empty, res, res_empty, _load_stability(root, rr) if res else [])
+
+
+def _apply_report_steel(raw: dict) -> None:
+    """Сталь, введённая заказчиком в «Данных для отчёта» (report_data.steel), приоритетнее Engineering Data и запасных значений."""
+    st = (raw.get("report_data") or {}).get("steel") or {}
+    m = raw.setdefault("material", {})
+    for k in ("name", "standard", "density", "young_modulus_mpa", "poisson", "ultimate_mpa", "yield_mpa", "elongation_pct", "thickness_range"):
+        v = st.get(k)
+        if v not in (None, ""):
+            m[k] = int(v) if isinstance(v, float) and v.is_integer() else v
+            m["source_entered"] = True
 
 
 def _apply_ansys(raw: dict, root: Path):
@@ -134,7 +146,7 @@ def _apply_ansys(raw: dict, root: Path):
         t["product_density"] = hydro["density"]
     _apply_material(raw, root, md, ai)
     mi = ai.mesh_info(md)
-    raw["mesh"] = {"nodes": mi["nodes"], "elements": mi["elements"], "element_size_mm": mi["element_size_mm"],
+    raw["mesh"] = {"nodes": mi["nodes"], "elements": mi["elements"], "element_size_mm": mi["element_size_mm"], "beams": md.get("beam_count") or 0,
                    "element_type": a.get("element_type") or ("SHELL181" if mi["order"] == "Linear" else "SHELL281")}
     return md
 
