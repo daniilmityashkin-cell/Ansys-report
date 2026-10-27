@@ -46,7 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def preview_ready(gid: int) -> bool:
         pv = gen_dir(gid) / "preview"
-        if (pv / "ready").exists():
+        if (pv / "ready").exists() or (pv / "viewer.json").exists():      # 3D-данные пишутся первыми: страница показывает их сразу, картинки догружаются сами
             return True
         u = pv / "prev_unfold.png"          # генерации, созданные до появления признака готовности
         return u.exists() and time.time() - u.stat().st_mtime > 120
