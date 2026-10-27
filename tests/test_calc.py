@@ -552,3 +552,16 @@ def test_check_ansys_journal_and_missing_install(monkeypatch, tmp_path):
     with pytest.raises(ConnectError, match="AWP_ROOT"):
         compat.check_ansys()
     compile(open(compat.SCRIPTS / "probe_api.py", encoding="utf-8").read(), "probe_api.py", "exec")
+
+
+def test_load_figures_use_mpa(tmp_path):
+    """Рисунки нагрузок в отчёте подписаны в МПа (как в эталонных отчётах), малые значения не округляются до нуля."""
+    from ansys_report.loads.export import write_package
+    from ansys_report.loads.figures import make_load_figures, mpa
+    from ansys_report.loads.rvs_loads import compute
+    assert mpa(0.168) == "0,168" and mpa(0.00238) == "0,00238" and mpa(0.000291) == "0,000291" and mpa(0) == "0" and mpa(-0.0017) == "0,00170"
+    res = compute(json.loads((Path(__file__).parent.parent / "examples/loads_input_RVSP10000.json").read_text(encoding="utf-8")))
+    pack = write_package(res, tmp_path / "pk", all_cases=True)
+    figs = make_load_figures(pack["data"], tmp_path / "img")
+    assert [f.name for f in figs] == ["fig05_hydrostatic.png", "fig04_loads.png"] and all(f.stat().st_size > 10000 for f in figs)
+    assert "кПа" not in (Path(__file__).parent.parent / "ansys_report/loads/figures.py").read_text(encoding="utf-8")
