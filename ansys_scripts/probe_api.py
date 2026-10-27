@@ -42,7 +42,7 @@ M = chk(u"ExtAPI.DataModel.Project.Model", "ExtAPI.DataModel.Project.Model", ns)
 ns["M"] = M
 if M is not None:
     for label, expr in ((u"Model.AddStaticStructuralAnalysis", "M.AddStaticStructuralAnalysis"), (u"Model.AddEigenvalueBucklingAnalysis", "M.AddEigenvalueBucklingAnalysis"),
-                        (u"Model.AddNamedSelection", "M.AddNamedSelection"), (u"Model.AddCoordinateSystem", "M.AddCoordinateSystem"), (u"Model.Mesh", "M.Mesh"),
+                        (u"Model.AddNamedSelection", "M.AddNamedSelection"), (u"Model.CoordinateSystems.AddCoordinateSystem", "M.CoordinateSystems.AddCoordinateSystem"), (u"Model.Mesh", "M.Mesh"),
                         (u"Mesh.AddSizing", "M.Mesh.AddSizing"), (u"Mesh.AddFaceMeshing", "M.Mesh.AddFaceMeshing"), (u"Mesh.GenerateMesh", "M.Mesh.GenerateMesh"),
                         (u"Mesh.ElementSize", "M.Mesh.ElementSize"), (u"Model.Geometry", "M.Geometry")):
         chk(label, expr, ns)
@@ -81,16 +81,19 @@ if bk is not None:
     ns["bk"] = bk
     for label, expr in ((u"Buckling.AnalysisSettings.MaximumModesToFind", "bk.AnalysisSettings.MaximumModesToFind"), (u"Buckling.Solution", "bk.Solution")):
         chk(label, expr, ns)
-    for attr in (u"PreStressICEnvironment", u"PreStressEnvironment"):
-        try:
-            icd = getattr(bk, "InitialConditions", None)
-            found = False
-            for src in (bk, getattr(bk, "InitialCondition", None), icd):
-                if src is not None and hasattr(src, attr):
-                    found = True
-            say(u"%s  привязка предварительного нагружения: %s" % (u"OK  " if found else u"НЕТ ", attr))
-        except Exception as e:
-            say(u"НЕТ  %s: %s" % (attr, str(e)[:80]))
+    # привязка предварительного нагружения: как в apply_loads.py - свойство у самого анализа или у его дочерних объектов
+    cands = [bk]
+    try:
+        for ch in bk.Children:
+            cands.append(ch)
+    except Exception:
+        pass
+    found = []
+    for obj in cands:
+        for attr in (u"PreStressICEnvironment", u"PreStressEnvironment"):
+            if hasattr(obj, attr):
+                found.append(u"%s.%s" % (obj.GetType().Name, attr))
+    say(u"%s  привязка предварительного нагружения (Buckling и его дочерние объекты): %s" % (u"OK  " if found else u"НЕТ ", u", ".join(found) or u"не найдено"))
     for attr in (u"IncludeNegativeLoadMultiplier",):
         try:
             say(u"%s  Buckling.AnalysisSettings.%s" % (u"OK  " if hasattr(bk.AnalysisSettings, attr) else u"НЕТ ", attr))
@@ -104,7 +107,7 @@ for label, expr in ((u"Graphics.ExportImage", "Graphics.ExportImage"), (u"Graphi
                     (u"Ansys.Mechanical.Graphics.GraphicsImageExportSettings", "Ansys.Mechanical.Graphics.GraphicsImageExportSettings"),
                     (u"Graphics.ViewOptions.ShowMesh", "Graphics.ViewOptions.ShowMesh"), (u"ViewOptions.ResultPreference.ExtraModelDisplay", "Graphics.ViewOptions.ResultPreference.ExtraModelDisplay"),
                     (u"ViewOptions.ResultPreference.DeformationScaling", "Graphics.ViewOptions.ResultPreference.DeformationScaling"),
-                    (u"Enums.ExtraModelDisplay.NoWireframe", "Ansys.Mechanical.DataModel.Enums.ExtraModelDisplay.NoWireframe")):
+                    (u"ExtraModelDisplay.NoWireframe (через тип текущего значения)", "getattr(type(Graphics.ViewOptions.ResultPreference.ExtraModelDisplay), \"NoWireframe\")")):
     chk(label, expr, ns)
 
 missing = [l for l in lines if l.startswith(u"НЕТ")]
