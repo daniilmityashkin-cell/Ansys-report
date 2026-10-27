@@ -43,12 +43,18 @@ try:
     model1 = system1.GetContainer(ComponentName="Model")
     model1.Edit()
     st("MECHANICAL OPEN")
-    model1.SendCommand(Language="Python", Command="import io\\nexec(io.open(r'{probe}', encoding='utf-8').read())")
+    model1.SendCommand(Language="Python", Command={command})
     st("PROBE DONE")
     model1.Exit()
 except:
     st("ERROR " + traceback.format_exc().replace("\\n", " | "))
 '''
+
+
+def journal_text(status: Path, probe: Path) -> str:
+    """Журнал Workbench. Пути Windows (C:\\Ansys-report\\ansys_scripts...) подставляются через repr: иначе \\a, \\x и т. п. портят строку."""
+    command = repr("import io\nexec(io.open(" + repr(str(probe)) + ", encoding='utf-8').read())")
+    return JOURNAL.format(status=str(status).replace("\\", "/"), command=command)
 
 
 def check_ansys(version: int | None = None, out_dir: str | Path | None = None, log=print, timeout_s: int = 900) -> Path:
@@ -65,7 +71,7 @@ def check_ansys(version: int | None = None, out_dir: str | Path | None = None, l
     out.mkdir()
     status = out / "wb_status.txt"
     journal = work / "probe.wbjn"
-    journal.write_text(JOURNAL.format(status=status, probe=SCRIPTS / "probe_api.py"), encoding="utf-8")
+    journal.write_text(journal_text(status, SCRIPTS / "probe_api.py"), encoding="utf-8")
     env = dict(os.environ, ANSYS_REPORT_OUT=str(out))
     log("Запускаю Workbench в фоне (1-3 минуты)...")
     runlog = out / "wb_run.log"

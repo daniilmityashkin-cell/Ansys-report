@@ -537,8 +537,14 @@ def test_check_ansys_journal_and_missing_install(monkeypatch, tmp_path):
     import pytest
     from ansys_report import compat
     from ansys_report.ansys_connect import ConnectError
-    j = compat.JOURNAL.format(status=r"C:\t\wb_status.txt", probe=r"C:\x\ansys_scripts\probe_api.py")
-    compile(j, "probe.wbjn", "exec")                                   # журнал Workbench - корректный Python
+    from pathlib import PureWindowsPath
+    j = compat.journal_text(PureWindowsPath(r"C:\ansys_report_work\out\wb_status.txt"), PureWindowsPath(r"C:\Ansys-report\ansys_scripts\probe_api.py"))
+    compile(j, "probe.wbjn", "exec")                                   # журнал Workbench - корректный Python (\a, \x в путях Windows не портят строку)
+    ns = {}
+    cmd = next(l for l in j.splitlines() if "SendCommand" in l).split("Command=", 1)[1].rstrip(")")
+    import re
+    code = eval(cmd)                                                      # то, что выполнит Mechanical
+    assert eval(re.search(r"io\.open\((.*), encoding", code).group(1)) == r"C:\Ansys-report\ansys_scripts\probe_api.py"      # путь доходит без искажений
     assert "probe_api.py" in j and compat.version_name(221) == "2022 R1" and compat.version_name(261) == "2026 R1"
     for k in list(__import__("os").environ):
         if k.startswith("AWP_ROOT"):
