@@ -657,6 +657,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bad = deny_csrf(request, csrf)
         if bad:
             return bad
+        if st.demo:                                                 # демо: расчёт в Ansys не запускается
+            return RedirectResponse(f"/g/{gid}", status_code=303)
         with Session() as db:
             u, g = _owned(db, request, gid)
             if not u:

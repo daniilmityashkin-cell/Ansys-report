@@ -581,3 +581,22 @@ def test_health_accepts_get_and_head(site):
     c = TestClient(site)
     assert c.get("/health").json() == {"ok": True}
     assert c.head("/health").status_code == 200
+
+
+def test_demo_mode_blocks_report_build(tmp_path, monkeypatch):
+    """ASR_DEMO=1: на странице расчёта вместо кнопки «Собрать отчёт» - пометка о демо, запуск расчёта блокируется."""
+    monkeypatch.setenv("ASR_DEMO", "1")
+    monkeypatch.setenv("ASR_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ASR_INLINE_JOBS", "1")
+    monkeypatch.setenv("ASR_SECRET", "x" * 40)
+    monkeypatch.setenv("ASR_MAX_REG_PER_IP", "100")
+    c = TestClient(create_app())
+    register(c)
+    gen = new_generation(c).headers["location"]
+    tok = csrf_of(c, gen)
+    assert c.post(gen + "/loads", data={"csrf": tok}, follow_redirects=False).status_code == 303          # нагрузки по умолчанию
+    page = c.get(gen).text
+    assert "Демо-версия" in page and "Собрать отчёт" not in page
+    r = c.post(gen + "/pay", data={"csrf": tok}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == gen
+    assert "считается" not in c.get(gen).text and "оплачено" not in c.get(gen).text
