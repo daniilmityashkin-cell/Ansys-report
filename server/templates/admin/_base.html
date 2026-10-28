@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark"><meta name="theme-color" content="#0b0c0f"><meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CRM">
+<title>{% block title %}CRM{% endblock %} · ANSYS REPORT</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/admin.css?v={{ asset_v }}"></head><body>
+<header class="ad-top"><div class="ad-bar"><b>ANSYS REPORT <span>CRM</span></b><span class="sp"></span><a class="site" href="/">на сайт →</a></div>
+<nav class="ad-tabs"><a href="/admin" class="{{ 'on' if tab == 'home' }}">Сводка</a><a href="/admin/clients" class="{{ 'on' if tab == 'clients' }}">Клиенты</a>
+<a href="/admin/payments" class="{{ 'on' if tab == 'payments' }}">Оплаты</a><a href="/admin/events" class="{{ 'on' if tab == 'events' }}">События</a></nav></header>
+<main>{% block body %}{% endblock %}</main></body></html>

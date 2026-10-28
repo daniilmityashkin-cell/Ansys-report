@@ -1,0 +1,6 @@
+{% extends "admin/_base.html" %}{% block title %}События{% endblock %}{% block body %}
+<h1>События</h1>
+<form class="filters" method="get"><select name="k" onchange="this.form.submit()"><option value="">Все действия</option>{% for key, t in KINDS.items() %}<option value="{{ key }}" {{ 'selected' if k == key }}>{{ t }}</option>{% endfor %}</select></form>
+<div class="card"><ul class="feed">{% for e in rows %}<li><time>{{ e.t.strftime('%d.%m %H:%M') }}</time><span>{{ e.label }}{% if e.email %} · <a href="/admin/clients/{{ e.user_id }}">{{ e.email }}</a>{% endif %}</span>
+{% if e.meta or e.source or e.path %}<span class="m">{{ e.meta }}{% if e.source %} · {{ e.source }}{% endif %}{% if e.path and e.kind == 'visit' %} · {{ e.path }}{% endif %}</span>{% endif %}</li>{% else %}<li class="muted">Пусто</li>{% endfor %}</ul></div>
+{% endblock %}

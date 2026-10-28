@@ -1,0 +1,12 @@
+{% extends "admin/_base.html" %}{% block title %}Клиенты{% endblock %}{% block body %}
+<h1>Клиенты <small>{{ rows|length }}</small></h1>
+<form class="filters" method="get"><input name="q" value="{{ q }}" placeholder="Почта, компания, телефон">
+<select name="s"><option value="">Все статусы</option>{% for x in STATUSES %}<option {{ 'selected' if s == x }}>{{ x }}</option>{% endfor %}</select>
+<select name="src"><option value="">Все источники</option>{% for x in all_sources %}<option {{ 'selected' if src == x }}>{{ x }}</option>{% endfor %}</select>
+<button class="btn">Найти</button><a class="btn l" href="/admin/export/clients.csv">Excel (CSV)</a></form>
+<div class="tw"><table class="cards"><thead><tr><th>Клиент</th><th>Статус</th><th>Источник</th><th class="r">Заказов</th><th class="r">Оплачено</th><th>Регистрация</th><th>Активность</th></tr></thead>
+{% for r in rows %}<tr><td class="first"><a href="/admin/clients/{{ r.u.id }}">{{ r.u.email }}</a>{% if r.u.company %}<br><small>{{ r.u.company }}</small>{% endif %}</td>
+<td data-l="Статус"><span class="tag {{ r.status }}">{{ r.status }}</span></td><td data-l="Источник">{{ r.source }}</td><td class="r" data-l="Заказов">{{ r.gens }}</td>
+<td class="r" data-l="Оплачено">{{ r.paid_sum|rub }} ₽{% if r.paid_n %} <small>({{ r.paid_n }})</small>{% endif %}</td><td data-l="Регистрация">{{ r.u.created.strftime('%d.%m.%Y') }}</td>
+<td data-l="Активность">{{ r.last.strftime('%d.%m %H:%M') }}</td></tr>{% else %}<tr><td class="first muted">Никого не найдено</td></tr>{% endfor %}</table></div>
+{% endblock %}
