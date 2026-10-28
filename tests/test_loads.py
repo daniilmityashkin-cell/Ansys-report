@@ -170,3 +170,50 @@ def test_wind_rings_snap_to_belt_boundaries():
     assert [x["z_m"] for x in r] == [3.0, 4.5]
     assert r[0]["A"] == 1000.0 and abs(r[0]["Iyy"] - 10 * 100 ** 3 / 12) < 1
     assert beams_package(p, 14000.0)["wind_rings"] == r          # без крыши - только кольца
+
+
+def test_model_params_as_etalon_T001(tmp_path):
+    """Данные модели Ansys как в эталоне Т-001 (tools/diag/etalon_T001_wb.md): F = 734 643,9 Н, ветер-возмущение 300 Па, сталь заказчика."""
+    from ansys_report import report_input as RI
+    from ansys_report.loads.export import write_package
+    rd = json.loads((Path(__file__).parents[1] / "tools" / "diag" / "report_T001.json").read_text(encoding="utf-8"))
+    ov = RI.loads_overrides(rd)
+    assert ov["roof_equipment_kg"] == [819.5, 5151, 1571.8] and ov["poisson"] == 0.3 and ov["roof_mass_kg"] == 64156
+    res = compute({**DATA["input"], **ov})
+    m = res["model"]
+    assert m["roof_force_n"] == pytest.approx(734643.9, abs=0.1)                      # раздел 4 эталона и Force «Fкр» в проекте
+    assert m["wind_disturbance_mpa"] == pytest.approx(0.0003)                           # Pressure (Components) 300 Па в ds.dat
+    assert m["material"] == {"e_mpa": 206000, "poisson": 0.3, "density_kg_m3": 7850}
+    write_package(res, tmp_path)
+    ns = {}
+    exec((tmp_path / "loads_data.py").read_text(encoding="utf-8"), ns)
+    assert ns["LOADS"]["model"]["roof_force_n"] == pytest.approx(734643.9, abs=0.1)
+    assert "roof_force_n" not in compute(DATA["input"])["model"]                        # без данных заказчика вес крыши - от геометрии, как раньше
+
+
+def test_material_and_roof_apdl():
+    """APDL материала: E, ν, плотность (т/мм3) на все материалы; крыша без плотности при заданном F."""
+    import ast, io, os
+    src = (Path(__file__).parents[1] / "ansys_scripts" / "build_model.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    tree.body = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "apdl_material"]
+    g = {"os": os, "io": io, "WALL_H": 17880.0, "bsay": lambda t: None,
+         "_lns": {"LOADS": {"model": {"material": {"e_mpa": 206000.0, "poisson": 0.3, "density_kg_m3": 7850.0}, "roof_force_n": 734643.9}}}}
+    exec(compile(tree, "build_model.py", "exec"), g)
+    t = g["apdl_material"]()
+    assert t.startswith("/PREP7") and t.endswith("/SOLU")
+    assert "MP,EX,im_,206000.0" in t and "MP,NUXY,im_,0.3" in t and "MP,DENS,im_,7.85e-09" in t
+    assert "MP,DENS,mroof_,0" in t and "ESEL,S,CENT,Z,17879.0" in t
+    g["_lns"] = {"LOADS": {"model": {}}}
+    assert g["apdl_material"]() == ""
+
+
+def test_stability_labels_required_k_and_deform(tmp_path):
+    from ansys_report.ansys_connect import _stab_label, wall_deform_mm, REQUIRED_K_WIND
+    assert _stab_label("Eigenvalue Buckling: направление ветра Y") == "Направление ветра Y"
+    assert _stab_label("Eigenvalue Устойчивость") == "Eigenvalue Устойчивость"
+    assert REQUIRED_K_WIND == 10.0
+    (tmp_path / "results_summary.csv").write_text('analysis,result,max,min,unit\n"AR: Эксплуатация","Total Deformation",40.1,0,mm\n'
+                                                  '"AR: Эксплуатация","AR Wall Deformation",13.94,0,mm\n', encoding="utf-8")
+    assert wall_deform_mm(tmp_path, "AR: Эксплуатация") == pytest.approx(13.94)
+    assert wall_deform_mm(tmp_path, "AR: другое") is None

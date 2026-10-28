@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-# Рисунки отчёта как в эталоне (docs/REPORT_PARITY.md): figures/fig01..fig05.png в папке выгрузки (ANSYS_REPORT_OUT).
-# 1 - общий вид (полупрозрачная геометрия, пояса линиями, вид сверху-сбоку); 2, 3 - сетка в разрезе, пояса разными цветами
-# (днище и стенка; стенка и кровля); 4 - нагрузки; 5 - гидростатическое давление.
+# Рисунки отчёта как в эталоне (docs/REPORT_PARITY.md, tools/diag/etalon_T001_wb.md): figures/<ключ рисунка в отчёте>.png в папке выгрузки
+# (ANSYS_REPORT_OUT). 1 - общий вид (полупрозрачная геометрия, пояса линиями, вид сверху-сбоку); 2, 3 - сетка в разрезе, пояса разными цветами
+# (днище и стенка; стенка и кровля); 4 - нагрузки; 5 - гидростатическое давление; 6-9 - налив (σэ, σм, σф, перемещения), 10-13 - пустой;
+# fig_stab1..4 - формы потери устойчивости (ветер Y, Z; моды 1, 2). Результаты 6-13 и формы - только стенка с днищем (крыша скрыта),
+# изометрия (1, 1, 1) с вертикалью вверх, как сохранённая камера эталонного проекта.
 # Нагрузки расчёта заданы APDL-фрагментом (Mechanical их не рисует): для рисунков 4-5 в сеансе добавляются видимые объекты
 # с теми же величинами из loads_data.py. Запускается после выгрузки результатов; проект не сохраняется.
 import os, io, math
@@ -48,6 +50,7 @@ def camera(view, focus=None, height_mm=None):
     cam = Graphics.Camera
     cam.UpVector = V(0, 0, 1)
     cam.ViewVector = V(view[0], view[1], view[2])
+    cam.UpVector = V(0, 0, 1)             # после смены направления взгляда «верх» мог повернуться: вертикаль резервуара вверх
     cam.SetFit()
     if focus is not None:
         p = {"X": (focus[2], focus[0], focus[1]), "Y": (focus[1], focus[2], focus[0])}.get(AXIS, focus)
@@ -67,17 +70,30 @@ def export(name, w=2000, h=1100, current=False):
     st.Resolution = GraphicsResolutionType.EnhancedResolution
     st.Width = w
     st.Height = h
+    try:                                  # белый фон, как в эталоне
+        st.Background = GraphicsBackgroundType.White
+    except Exception:
+        pass
     Graphics.ExportImage(os.path.join(out, name + ".png"), GraphicsImageExportFormat.PNG, st)
     log.append(u"ok: " + name)
 
 
+def flush_log():
+    f_ = io.open(os.path.join(out, "log_figures.txt"), "w", encoding="utf-8")
+    f_.write(u"\n".join(log))
+    f_.close()
+
+
 def step(name, fn):
     tmark(u"Рисунок: %s" % name)
+    log.append(u"-- %s" % name)
+    flush_log()                            # журнал после каждого шага: при падении Mechanical видно, на чём
     try:
         fn()
     except Exception as e:
         import traceback
         log.append(u"ОШИБКА %s: %s | %s" % (name, e, traceback.format_exc().replace("\n", " ")[-400:]))
+    flush_log()
 
 
 bodies = model.Geometry.GetChildren(DataModelObjectCategory.Body, True)
@@ -212,7 +228,7 @@ def fig01():
         fj.close()
     except Exception as e:
         log.append(u"WorldToPixel: %s" % e)
-    export("fig01", w=2514, h=1584)
+    export("fig01_general", w=2514, h=1584)
     if frame is not None:
         try:
             Graphics.RemoveContext(frame)
@@ -291,7 +307,7 @@ def fig02():
     r.Activate()
     Graphics.ViewOptions.ShowLegend = False
     camera((-1.0, -0.35, 0.75), focus=(R * 0.35, -R * 0.3, 0.0), height_mm=0.9 * R)
-    export("fig02")
+    export("fig02_mesh_wall_bottom")
 
 
 # --- рис. 3: сетка стенки и кровли в разрезе, камера у узла стенка-кровля
@@ -300,7 +316,7 @@ def fig03():
     Graphics.ViewOptions.ShowLegend = False
     belt_res[0].Activate()
     camera((-1.0, -0.35, 0.75), focus=(R * 0.35, -R * 0.5, H), height_mm=0.6 * R)
-    export("fig03")
+    export("fig03_mesh_wall_roof")
     Graphics.SectionPlanes.Clear()
     Graphics.ViewOptions.ShowMesh = False
     for r in belt_res:
@@ -332,13 +348,46 @@ def loads_objects():
             log.append(u"гидростатика %s: %s" % (c, e))
     hp.Name = u"Гидростатическое давление"
     shown.append(hp)
-    if case.get("roof_extra_mpa"):
+    roof_f = float((LOADS.get("model") or {}).get("roof_force_n") or 0.0)
+    if roof_f:                             # схема эталона Т-001: силы на верхнюю кромку стенки (как в apply_loads.py), подписи как на рис. 4 эталона
+        g_ = LOADS["gravity_mm_s2"] / 1000.0
+        ins_r = sum([m["mass_kg"] for m in LOADS["point_masses"] if m["location"] == "roof" and m.get("category") == "insulation"]) * g_
+        ins_w = sum([m["mass_kg"] for m in LOADS["point_masses"] if m["location"].startswith("belt_") and m.get("category") == "insulation"]) * g_
+        snow = -case["roof_extra_mpa"] * math.pi * R * R
+        edge = top_edge()
+        for name, val, loc in ((u"Fкр", roof_f, edge), (u"Fизол ст", ins_w, nsel("AR_WALL")), (u"Fизол кр", ins_r, edge), (u"Fсн", snow, edge)):
+            if val <= 0 or loc is None:
+                continue
+            f_ = an.AddForce()
+            f_.Location = loc
+            f_.DefineBy = LoadDefineBy.Components
+            getattr(f_, AXIS + "Component").Output.DiscreteValues = [Quantity(-val, "N")]
+            f_.Name = name
+            shown.append(f_)
+    elif case.get("roof_extra_mpa"):
         p = an.AddPressure()
         p.Location = nsel("AR_ROOF")
         p.Magnitude.Output.DiscreteValues = [Quantity(-case["roof_extra_mpa"], "MPa")]
         p.Name = u"Крыша: снег, вес"
         shown.append(p)
     return an, hp
+
+
+def top_edge():
+    """Верхняя кромка стенки: рёбра граней стенки у отметки H длиной больше половины окружности."""
+    ax = {"X": 0, "Y": 1, "Z": 2}[AXIS]
+    ids = []
+    for b in bodies:
+        for e in b.GetGeoBody().Edges:
+            c = e.Centroid
+            k = 1000.0 if abs(e.Length) < 0.05 * R else 1.0
+            if abs(c[ax] * k - H) < 0.002 * H and e.Length * k > math.pi * R:
+                ids.append(e.Id)
+    if not ids:
+        return None
+    sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
+    sel.Ids = ids
+    return sel
 
 
 def fig04_05():
@@ -349,22 +398,108 @@ def fig04_05():
     Graphics.Redraw()
     camera((-1.0, -0.75, 0.45))
     camera((-1.0, -0.75, 0.45))
-    export("fig04")
+    export("fig04_loads")
     hp.Activate()
     Graphics.ViewOptions.ShowMesh = True
     camera((-1.0, -0.75, 0.9))
-    export("fig05")
+    export("fig05_hydrostatic")
     for o in shown:
         o.Delete()
+
+
+# --- рис. 6-13 и формы потери устойчивости: только стенка с днищем и окрайкой (крыша скрыта), изометрия
+def wall_scope():
+    ids = []
+    for nm in ("AR_WALL", "AR_BOTTOM", "AR_ANNULAR"):
+        n = nsel(nm)
+        if n is not None:
+            ids += list(n.Location.Ids)
+    sel = ExtAPI.SelectionManager.CreateSelectionInfo(SelectionTypeEnum.GeometryEntities)
+    sel.Ids = ids
+    return sel
+
+
+def iso_view():
+    view_reset()
+    Graphics.ViewOptions.ShowMesh = False
+    try:
+        Graphics.ViewOptions.ShowLogo = False
+    except Exception:
+        pass
+    try:                                   # без каркаса и рёбер элементов поверх заливки (как export_results.prep_results_view)
+        rp = Graphics.ViewOptions.ResultPreference
+        rp.GetType().GetProperty("ExtraModelDisplay").SetValue(rp, getattr(type(rp.ExtraModelDisplay), "NoWireframe"), None)
+    except Exception as e:
+        log.append(u"ExtraModelDisplay: %s" % e)
+    camera((1.0, 1.0, 1.0))
+
+
+CAPTIONS = {"eq": u"Эквивалентные напряжения", "mem": u"Срединные (мембранные) напряжения", "fib": u"Поверхностные (фибровые) напряжения",
+            "def": u"Перемещения"}
+
+
+def result_figs(an, items, mode=None):
+    """items: [(имя файла, тип результата: eq|mem|fib|def)]. Результаты создаются на время снимка и удаляются."""
+    sol = an.Solution
+    sc = wall_scope()
+    made = []
+    for key, kind in items:
+        if kind == "eq":
+            r = sol.AddEquivalentStress()
+        elif kind in ("mem", "fib"):
+            r = sol.AddMaximumPrincipalStress()
+            if kind == "mem":
+                r.Position = type(r.Position).Middle
+        else:
+            r = sol.AddTotalDeformation()
+            if mode:
+                r.Mode = mode
+        r.Location = sc
+        r.Name = CAPTIONS.get(kind, kind)
+        made.append((key, r))
+    sol.EvaluateAllResults()
+    for key, r in made:
+        try:
+            r.Activate()
+            undeformed()
+            iso_view()
+            export(key)
+        except Exception as e:
+            log.append(u"ОШИБКА %s: %s" % (key, e))
+    for key, r in made:
+        try:
+            r.Delete()
+        except Exception:
+            pass
+
+
+def empty_analysis():
+    st = [a for a in model.Analyses if a.Name.startswith(u"AR:") and a.AnalysisType == AnalysisType.Static]
+    em = [a for a in st if u"пуст" in a.Name.lower()]
+    return em[0] if em else None
+
+
+def fig06_13():
+    result_figs(full_analysis(), [("fig06_eq_stress", "eq"), ("fig07_membrane", "mem"), ("fig08_fiber", "fib"), ("fig09_deform", "def")])
+    em = empty_analysis()
+    if em is not None:
+        result_figs(em, [("fig10_empty_eq", "eq"), ("fig11_empty_mem", "mem"), ("fig12_empty_fiber", "fib"), ("fig13_empty_deform", "def")])
+
+
+def fig_stab():
+    eig = sorted([a for a in model.Analyses if a.Name.startswith(os.environ.get("ANSYS_REPORT_EIGEN") or "Eigenvalue")], key=lambda a: a.Name)
+    k = 1
+    for a in eig:
+        for mode in (1, 2):
+            result_figs(a, [("fig_stab%d" % k, "def")], mode=mode)
+            k += 1
 
 
 tmark(u"Рисунки: начало")
 WANT = (os.environ.get("AR_FIGS") or "").split(",")
 if (os.environ.get("ANSYS_REPORT_IMAGES") or "all").lower() == "none":       # идеальный РВС: рисунки не нужны
     WANT = ["-"]
-for nm, fn in (("fig01", fig01), ("fig02", fig02), ("fig03", fig03), ("fig04-05", fig04_05)):
+for nm, fn in (("fig01", fig01), ("fig02", fig02), ("fig03", fig03), ("fig04-05", fig04_05), ("fig06-13", fig06_13), ("fig_stab", fig_stab)):
     if WANT == [""] or nm in WANT:
         step(nm, fn)
-f = io.open(os.path.join(out, "log_figures.txt"), "w", encoding="utf-8")
-f.write(u"\n".join(log))
-f.close()
+flush_log()

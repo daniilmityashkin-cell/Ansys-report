@@ -135,5 +135,9 @@ def loads_overrides(data: dict) -> dict:
     """Поправки во входные данные расчёта нагрузок (loads_input.json): Ansys считает с теми же числами, что в отчёте."""
     n = lambda k: _num(data[k]) if str(data.get(k, "")).strip() else None
     out = {"snow_kpa": n("snow_kpa"), "snow_gf": n("snow_gf"), "wind_kpa": n("wind_kpa"), "roof_insulation_kg": n("roof_ins_kg"),
-           "wall_insulation_kg": n("wall_ins_kg"), "ryn_mpa": n("steel_yield_mpa"), "e_mpa": n("steel_e_mpa"), "steel_density_kg_m3": n("steel_density")}
-    return {k: v for k, v in out.items() if v is not None}
+           "wall_insulation_kg": n("wall_ins_kg"), "ryn_mpa": n("steel_yield_mpa"), "e_mpa": n("steel_e_mpa"), "steel_density_kg_m3": n("steel_density"),
+           "poisson": n("steel_poisson"), "roof_mass_kg": n("roof_mass_kg"), "psi": n("psi"), "roof_gf": n("roof_gf")}
+    out = {k: v for k, v in out.items() if v is not None}
+    if str(data.get("roof_equipment_kg", "")).strip():
+        out["roof_equipment_kg"] = _nums(data["roof_equipment_kg"])
+    return out

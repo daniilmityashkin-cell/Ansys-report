@@ -82,6 +82,23 @@ def wind_nu(H_total: float, D: float) -> float:              # [V146:V164] дв�
     return v_d2 + dd * (v_d1 - v_d2) / (d2 - d1)
 
 
+def model_params(inp: dict, w0_kpa: float) -> dict:
+    """Данные расчётной модели Ansys из «Данных для отчёта» (как в эталоне Т-001, tools/diag/etalon_T001_wb.md):
+    material - сталь заказчика (только заданные поля, иначе материал Mechanical не трогаем);
+    roof_force_n - F = γf·(Mкр + ψ·ΣMоб)·g, g = 9,81 (как в формуле раздела 4), прикладывается к верхней кромке стенки вместо веса крыши по геометрии;
+    wind_disturbance_mpa - ветер-возмущение для устойчивости: нормативное давление w0 вектором по всей стенке (в эталоне 300 Па)."""
+    mat = {}
+    for key, name in (("e_mpa", "e_mpa"), ("poisson", "poisson"), ("steel_density_kg_m3", "density_kg_m3")):
+        if inp.get(key) not in (None, ""):
+            mat[name] = _num(inp, key)
+    out = {"material": mat, "wind_disturbance_mpa": w0_kpa / 1000.0}
+    if inp.get("roof_mass_kg") not in (None, ""):
+        eq = [float(x) for x in (inp.get("roof_equipment_kg") or [])]
+        gf, psi = _num(inp, "roof_gf", 1.05), _num(inp, "psi", 0.95)
+        out["roof_force_n"] = gf * (_num(inp, "roof_mass_kg") + psi * sum(eq)) * 9.81
+    return out
+
+
 def compute(inp: dict) -> dict:
     """Полный расчёт. Единицы входа: м, мм, кг, Па, МПа, кг/м3 (плотность продукта - т/м3), как в Excel."""
     D, Hw, hb = _num(inp, "diameter_m"), _num(inp, "wall_height_m"), _num(inp, "belt_height_m")
@@ -266,6 +283,7 @@ def compute(inp: dict) -> dict:
                                 "psi": PSI, "ce": CE},
     }
     return {
+        "model": model_params(inp, w0),
         "inputs": {"D": D, "H": Hw, "n_belts": n, "belt_height": hb, "snow_district": snow_d, "wind_district": wind_d, "terrain": terrain, "Sg_kpa": Sg, "w0_kpa": w0},
         "materials": {"R_operation": R_op, "R_hydrotest": R_gt, "dt_minus_mm": dtm, "dt_corrosion_mm": dtc, "corrosion_checks": checks},
         "thickness": [{"belt": i + 1, "td_mm": td[i], "tg_mm": tg[i], "nominal_pre_mm": thick_pre[i], "nominal_mm": nominal[i], "design_m": tr[i]} for i in range(n)],
