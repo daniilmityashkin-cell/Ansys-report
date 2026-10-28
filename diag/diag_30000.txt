@@ -1,0 +1,136 @@
+===== C:\ansys_report_work\model\out\log_build.txt =====
+Участков толщины: 12
+Части модели: {'band_width_mm': 1000.0, 'disc_mm': 8.0, 'band_mm': 10.0, 'annular_mm': 12.0, 'roof_mm': 7.0}
+Тел в модели: 1
+  тело Open CASCADE STEP translator 8.0 1|Surface: граней 15, площадь 5979.0 м2
+Кольцо окрайки: mapped-сетка на 1 гранях
+Сгущение сетки у вмятин: 6 зон на 12 гранях стенки, элемент 100 мм, радиусы 3724, 3396, 2507, 2110, 1870, 3122 мм
+Сетка построена, размер элемента 200 мм
+Опорная полоса крыши: 1000 x 10 мм, узлов 4226
+Балки: узлов крыши 43343, узлов верхней кромки стенки 704
+Балки: секций 22, элементов 14863
+Концы радиальных балок: 36, связь RBE3 с оболочкой в радиусе 500 мм, узлов на конец 12..14
+Балки каркаса крыши добавлены в расчёт
+Вид: Z вверх===== C:\ansys_report_work\model\out\log_loads.txt =====
+Грани: 15, масштаб координат к мм: 1, размеры модели по X/Y/Z, мм: 302 / 0 / 18000
+  грань: z 0..1500 мм, площадь 214.9 м2 -> wall
+  грань: z 1500..3000 мм, площадь 214.9 м2 -> wall
+  грань: z 3000..4500 мм, площадь 214.9 м2 -> wall
+  грань: z 4500..6000 мм, площадь 214.9 м2 -> wall
+  грань: z 6000..7500 мм, площадь 214.9 м2 -> wall
+  грань: z 7500..9000 мм, площадь 214.9 м2 -> wall
+  грань: z 9000..10500 мм, площадь 214.9 м2 -> wall
+  грань: z 10500..12000 мм, площадь 214.9 м2 -> wall
+  грань: z 12000..13500 мм, площадь 214.9 м2 -> wall
+  грань: z 13500..15000 мм, площадь 214.9 м2 -> wall
+  грань: z 15000..16500 мм, площадь 214.9 м2 -> wall
+  грань: z 16500..18000 мм, площадь 214.9 м2 -> wall
+  грань: z 0..0 мм, площадь 1632.5 м2 -> bottom
+  грань: z 18000..18000 мм, площадь 1727.9 м2 -> roof
+  грань: z 0..0 мм, площадь 40.2 м2 -> bottom
+Стенка: 12, крыша: 1, днище: 1, прочие (патрубки и т.п.): 0
+  (не удалось проверить прежние выборки: 'NoneType' object has no attribute 'GetChildren')
+Именованные выборки: AR_WALL=True AR_ROOF=True AR_BOTTOM=True AR_BASE_EDGE=2 рёбер
+Случай 'Эксплуатация': создан, нагрузки заданы
+Случай 'Вакуум, снег и ветер (пустой резервуар)': создан, нагрузки заданы
+Случай 'Налив 7.2 м': создан, нагрузки заданы
+Случай 'Налив 12.6 м': создан, нагрузки заданы
+Случай 'Налив 17.1 м': создан, нагрузки заданы
+Устойчивость: предварительное нагружение связано через InitialCondition.PreStressICEnvironment
+Устойчивость: только положительные множители нагрузки: включено
+Случай устойчивости: создан===== C:\ansys_report_work\model\out\wb_status.txt =====
+START
+TEMPLATE OK: {'TemplateName': 'Static Structural', 'Solver': 'ANSYS'}
+MECHANICAL OPEN
+BUILD DONE
+SAVED
+===== C:\ansys_report_work\model\report\Report_E2E_RVS-30000\_ansys_data\model_data.json =====
+errors:
+bodies:
+Open CASCADE STEP translator 8.0 1|Surface 16 [mm]
+p1 0.016 [m]
+p2 0.016 [m]
+p3 0.015 [m]
+p4 0.015 [m]
+p5 0.013 [m]
+p6 0.013 [m]
+p7 0.013 [m]
+p8 0.012 [m]
+p9 0.012 [m]
+p10 0.011 [m]
+p11 0.011 [m]
+p12 0.011 [m]
+dno 0.008 [m]
+okrayka 0.012 [m]
+krovlya 0.007 [m]
+belts_from_faces: True
+belt_regex: ^p\s*(\d+)$
+===== C:\ansys_report_work\model\report\log.txt =====
+The system cannot find the file specified.
+===== C:\ansys_report_work\model\report\wb_status.txt =====
+The system cannot find the file specified.
+===== C:\ansys_report_work\model\report\Report_E2E_RVS-30000\log.txt =====
+The system cannot find the file specified.
+===== C:\ansys_report_work\model\report\Report_E2E_RVS-30000\wb_status.txt =====
+The system cannot find the file specified.
+===== C:\ansys_report_work\model\report\Report_E2E_RVS-30000\_ansys_data\log.txt =====
+единицы: Н, мм, МПа
+вид результатов: ExtraModelDisplay(a): attribute 'ExtraModelDisplay' of 'namespace#' object is read-only
+вид результатов: ExtraModelDisplay(b): Cannot import name ExtraModelDisplay
+вид результатов: ExtraModelDisplay сейчас ShowElements (тип ExtraModelDisplay), варианты: CompareTo, Equals, Format, GetHashCode, GetName, GetNames, GetType, GetTypeCode, GetUnderlyingType, GetValues, HasFlag, IsDefined, MemberwiseClone, NoWireframe, Parse, ReferenceEquals, ShowElements, ToBoolean, ToByte, ToChar, ToDateTime, ToDecimal, ToDouble, ToInt16, ToInt32, ToInt64, ToObject, ToSByte, ToSingle, ToString, ToType, ToUInt16, ToUInt32, ToUInt64, TryParse, UndeformedModel, UndeformedWireframe
+вид результатов: без каркаса сетки (ExtraModelDisplay(c))
+Найдено поясов: 12
+AR: Эксплуатация: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Эксплуатация: после решения статус: Done
+AR: Эксплуатация: статус решения: Done
+AR: Эксплуатация: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Эксплуатация: выгружено 12 поясов
+AR: Вакуум, снег и ветер (пустой резервуар): расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Вакуум, снег и ветер (пустой резервуар): после решения статус: Done
+AR: Вакуум, снег и ветер (пустой резервуар): статус решения: Done
+AR: Вакуум, снег и ветер (пустой резервуар): статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-1\MECH\
+  файлов в папке: 27: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.ldhi, file.mntr, file.rdb, file.rst, file0.err, file0.r001, file0.rst, file1.r001, file1.rst, file2.r001, file2.rst
+AR: Вакуум, снег и ветер (пустой резервуар): выгружено 12 поясов
+AR: Налив 7.2 м: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Налив 7.2 м: после решения статус: Done
+AR: Налив 7.2 м: статус решения: Done
+AR: Налив 7.2 м: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-2\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Налив 7.2 м: выгружено 12 поясов
+AR: Налив 12.6 м: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Налив 12.6 м: после решения статус: Done
+AR: Налив 12.6 м: статус решения: Done
+AR: Налив 12.6 м: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-3\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Налив 12.6 м: выгружено 12 поясов
+AR: Налив 17.1 м: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Налив 17.1 м: после решения статус: Done
+AR: Налив 17.1 м: статус решения: Done
+AR: Налив 17.1 м: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-4\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Налив 17.1 м: выгружено 12 поясов
+Eigenvalue Устойчивость пустого резервуара: расчёт не решён, запускаю решение (может занять несколько минут)
+Eigenvalue Устойчивость пустого резервуара: после решения статус: Done
+Eigenvalue Устойчивость пустого резервуара: статус решения: Done
+  Eigenvalue Устойчивость пустого резервуара/Total Deformation: ReportedLoadMultiplier: 'TotalDeformation' object has no attribute 'ReportedLoadMultiplier'
+  устойчивость Eigenvalue Устойчивость пустого резервуара, форма 1: k = 1.41927294598
+  Eigenvalue Устойчивость пустого резервуара/Total Deformation 2: ReportedLoadMultiplier: 'TotalDeformation' object has no attribute 'ReportedLoadMultiplier'
+  устойчивость Eigenvalue Устойчивость пустого резервуара, форма 2: k = 1.51876859510
+  Eigenvalue Устойчивость пустого резервуара/Total Deformation 3: ReportedLoadMultiplier: 'TotalDeformation' object has no attribute 'ReportedLoadMultiplier'
+  устойчивость Eigenvalue Устойчивость пустого резервуара, форма 3: k = 1.52326473254===== C:\ansys_report_work\model\report\Report_E2E_RVS-30000\_ansys_data\wb_status.txt =====
+JOURNAL START
+SYSTEM SYS
+SYSTEM SYS 1
+SYSTEM SYS 2
+SYSTEM SYS 3
+SYSTEM SYS 4
+SYSTEM SYS 5
+MECHANICAL OPEN
+DONE export_model_data.py
+DONE export_results.py
+DONE export_model_images.py
+===== C:\ansys_report_work\model\report\Report_E2E_RVS-30000\_ansys_data\images\log.txt =====
+The system cannot find the file specified.
+===== C:\ansys_report_work\model\report\Report_E2E_RVS-30000\_ansys_data\images\wb_status.txt =====
+The system cannot find the file specified.
