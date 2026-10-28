@@ -384,29 +384,60 @@ _CROPS = {"fig02_mesh_wall_bottom": (0.12, 0.45, 0.52, 0.77), "fig03_mesh_wall_r
 
 
 def overlay_roof_frame(fig_dir: Path, color=(46, 94, 46), log=print) -> bool:
-    """Рис. 1: каркас крыши на снимок высокого разрешения. Mechanical рисует линии Draw3D только в окне (в пакетном режиме ~840 px),
-    а снимок высокого разрешения делает отдельно и без них; export_figures.py сохраняет каркас в пикселях окна (fig01_frame.json),
-    снимок fig01_general.png - ровно в k раз больше окна (fig01_window.png) с тем же ракурсом. Нужен Pillow."""
+    """Каркас крыши на снимки высокого разрешения (рис. 1 и 3). Mechanical рисует линии Draw3D только в окне (в пакетном режиме ~840 px),
+    а снимок высокого разрешения делает отдельно и без них; export_figures.py сохраняет каркас в пикселях окна (<имя>_frame.json),
+    снимок <имя>.png - ровно в k раз больше окна (<имя>_window.png) с тем же ракурсом. Рис. 1 затем обрезается по резервуару. Нужен Pillow."""
     fig_dir = Path(fig_dir)
-    src, win, js = fig_dir / "fig01_general.png", fig_dir / "fig01_window.png", fig_dir / "fig01_frame.json"
-    if not (src.exists() and win.exists() and js.exists()):
-        return False
-    try:
-        from PIL import Image, ImageDraw
-    except ImportError:
-        log("  ! Нет пакета Pillow: каркас крыши на рис. 1 не нанесён")
-        return False
-    with Image.open(win) as w:
-        ww = w.size[0]
-    im = Image.open(src).convert("RGB")
-    k = im.size[0] / float(ww)
-    dr = ImageDraw.Draw(im)
-    for row in json.loads(js.read_text(encoding="utf-8"))["polylines"]:
-        if len(row) >= 2:
-            dr.line([(x * k, y * k) for x, y in row], fill=color, width=max(2, int(round(2 * k))), joint="curve")
-    im.save(src)
-    win.unlink()
-    return True
+    done = False
+    for name in ("fig01_general", "fig02_mesh_wall_bottom", "fig03_mesh_wall_roof"):
+        src, win, js = fig_dir / f"{name}.png", fig_dir / f"{name}_window.png", fig_dir / f"{name}_frame.json"
+        if not (src.exists() and win.exists() and js.exists()):
+            continue
+        try:
+            from PIL import Image, ImageDraw
+        except ImportError:
+            log("  ! Нет пакета Pillow: каркас крыши на рисунках не нанесён")
+            return False
+        with Image.open(win) as w:
+            ww = w.size[0]
+        im = Image.open(src).convert("RGB")
+        k = im.size[0] / float(ww)
+        dr = ImageDraw.Draw(im)
+        data = json.loads(js.read_text(encoding="utf-8"))
+        for row in data["polylines"]:
+            if len(row) >= 2:
+                dr.line([(x * k, y * k) for x, y in row], fill=color, width=max(3, int(round(2.5 * k))), joint="curve")
+        if name == "fig01_general":
+            im = crop_to_tank(im)
+        elif data.get("crop_frac"):           # рис. 2, 3: кадр у узла (центр - доли ширины и высоты снимка, размер - доля frac)
+            fx, fy, frac = data["crop_frac"]
+            W, Hh = im.size
+            bw, bh = int(W * frac), int(Hh * frac)
+            x0 = min(max(0, int(fx * W - bw / 2)), W - bw)
+            y0 = min(max(0, int(fy * Hh - bh / 2)), Hh - bh)
+            im = im.crop((x0, y0, x0 + bw, y0 + bh))
+        im.save(src)
+        win.unlink()
+        done = True
+    return done
+
+
+def crop_to_tank(im, pad: float = 0.04):
+    """Рис. 1: поля обрезаются по резервуару (зеленоватые пиксели: заливка и каркас), надпись в углу и пустой фон уходят."""
+    px = im.load()
+    w, h = im.size
+    xs, ys = [], []
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            r, g, b = px[x, y]
+            if g > r + 8 and g > b + 4 and r > 20:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return im
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    d = int(pad * max(x1 - x0, y1 - y0))
+    return im.crop((max(0, x0 - d), max(0, y0 - d), min(w, x1 + d), min(h, y1 + d)))
 
 
 def crop_mesh_views(img_dir: Path, log=print) -> None:
