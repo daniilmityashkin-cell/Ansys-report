@@ -408,6 +408,43 @@ try:
 except Exception as e:
     bsay(u"Балки не добавлены: %s" % e)
 
+
+def apdl_material():
+    """Сталь из «Данных для отчёта» (LOADS["model"]["material"]: E, ν, плотность) вместо Structural Steel - на все материалы модели
+    (оболочки и балки из одной стали). Если задан вес крыши F (roof_force_n), элементы крыши и её каркаса (центр выше верха стенки)
+    получают такой же материал без плотности: вес крыши прикладывается силой F к верхней кромке стенки (apply_loads.py), как в эталоне Т-001."""
+    m = (_lns.get("LOADS") or {}).get("model") or {}
+    mat = m.get("material") or {}
+    t = [u"/PREP7", u"*GET,nmat_,MAT,0,NUM,MAX"]
+    if mat:
+        t.append(u"*DO,im_,1,nmat_")
+        if mat.get("e_mpa"):
+            t.append(u"  MP,EX,im_,%r" % float(mat["e_mpa"]))
+        if mat.get("poisson") is not None:
+            t.append(u"  MP,NUXY,im_,%r" % float(mat["poisson"]))
+        if mat.get("density_kg_m3"):
+            t.append(u"  MP,DENS,im_,%.6g" % (float(mat["density_kg_m3"]) * 1e-12))        # кг/м3 -> т/мм3 (единицы Н-мм-МПа)
+        t.append(u"*ENDDO")
+        bsay(u"Материал из данных заказчика: %s" % mat)
+    if m.get("roof_force_n") and WALL_H > 0:
+        ax = ("X", "Y", "Z")[{"X": 0, "Y": 1, "Z": 2}[(os.environ.get("ANSYS_REPORT_AXIS") or "Z").upper()]]
+        t += [u"*GET,e1_,ELEM,0,NUM,MIN", u"*GET,mat1_,ELEM,e1_,ATTR,MAT", u"mroof_=nmat_+1",
+              u"MPCOPY,,mat1_,mroof_", u"MPDELE,DENS,mroof_", u"MP,DENS,mroof_,0",
+              u"ESEL,S,CENT,%s,%r,%r" % (ax, WALL_H - 1.0, WALL_H * 10.0), u"ESEL,U,ENAME,,154,156",
+              u"*GET,ner_,ELEM,0,COUNT", u"*IF,ner_,GT,0,THEN", u"  EMODIF,ALL,MAT,mroof_", u"*ENDIF"]
+        bsay(u"Вес крыши: силой F = %.1f Н на верхнюю кромку стенки, крыша и её каркас без плотности" % m["roof_force_n"])
+    if len(t) == 2:
+        return u""
+    return u"\n".join(t + [u"ALLSEL,ALL", u"/SOLU"])
+
+
+try:
+    _bmat = apdl_material()
+    if _bmat:
+        EXTRA_APDL = (EXTRA_APDL + u"\n" if EXTRA_APDL else u"") + _bmat
+except Exception as e:
+    bsay(u"Материал/вес крыши не заданы: %s" % e)
+
 # --- нагрузки
 tmark(u"Сборка: нагрузки и расчётные случаи (apply_loads)")
 os.environ["ANSYS_REPORT_LOADS"] = os.path.join(pkg, "loads_data.py")

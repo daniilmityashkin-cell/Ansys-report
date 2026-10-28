@@ -373,10 +373,10 @@ def test_overlay_roof_frame(tmp_path):
     from PIL import Image
     from ansys_report.ansys_connect import overlay_roof_frame
     Image.new("RGB", (100, 50), "white").save(tmp_path / "fig01_window.png")
-    Image.new("RGB", (300, 150), "white").save(tmp_path / "fig01.png")
+    Image.new("RGB", (300, 150), "white").save(tmp_path / "fig01_general.png")
     (tmp_path / "fig01_frame.json").write_text(json.dumps({"polylines": [[[10, 25], [90, 25]]]}), encoding="utf-8")
     assert overlay_roof_frame(tmp_path, log=lambda s: None)
-    im = Image.open(tmp_path / "fig01.png")
+    im = Image.open(tmp_path / "fig01_general.png")
     assert im.getpixel((150, 75)) == (46, 94, 46) and im.getpixel((150, 10)) == (255, 255, 255)   # линия на y = 25 * 3
     assert not (tmp_path / "fig01_window.png").exists()
 

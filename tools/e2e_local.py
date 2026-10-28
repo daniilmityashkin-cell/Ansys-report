@@ -31,6 +31,7 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--fill", type=float, default=0.0, help="уровень налива, м (0 = 60%% высоты стенки)")
     ap.add_argument("--loads", help="JSON с полями формы нагрузок (l_density, l_snow, l_ryn, ...) поверх значений по умолчанию")
+    ap.add_argument("--report", help="JSON с «Данными для отчёта» (поля report_input: сталь, массы, снег, ветер...), например tools/diag/report_T001.json")
     ap.add_argument("--no-agent", action="store_true", help="не запускать помощника и Ansys")
     ap.add_argument("--keep-server", action="store_true", help="не останавливать сайт в конце")
     a = ap.parse_args()
@@ -82,6 +83,10 @@ def main() -> int:
             print("нагрузки:", {k: v for k, v in form.items() if k.startswith("l_")})
         r = s.post(f"{gurl}/loads", data=form, allow_redirects=False)
         assert "loads_error" not in r.headers.get("location", ""), "нагрузки: " + r.headers.get("location", "")
+        if a.report:                                       # «Данные для отчёта» - без них сборка не запускается
+            rform = {k: str(v) for k, v in json.loads(Path(a.report).read_text(encoding="utf-8-sig")).items() if not k.startswith("_")}
+            r = s.post(f"{gurl}/report-data", data={**rform, "csrf": csrf(s.get(gurl).text)}, allow_redirects=False)
+            assert "report_error" not in r.headers.get("location", ""), "данные отчёта: " + r.headers.get("location", "")
         r = s.post(f"{gurl}/pay", data={"csrf": csrf(s.get(gurl).text)}, allow_redirects=True)
         print("ждём модель и пакет для Ansys…")
         t0 = time.time()

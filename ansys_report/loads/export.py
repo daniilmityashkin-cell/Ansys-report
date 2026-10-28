@@ -93,6 +93,7 @@ def write_package(res: dict, out_dir: str | Path, design: bool = True, fill_leve
         "analytic": {"stability": [{k: b[k] for k in ("belt", "hoop_mpa", "meridional_mpa", "utilization", "ok", "reduced_height_m", "ring_hr_max_m") if k in b} for b in res["stability"]["belts"]],
                      "sigma1_cr_mpa": res["stability"]["sigma1_cr_mpa"], "sigma2_cr_mpa": res["stability"]["sigma2_cr_mpa"], "ring_modulus_cm3": res.get("ring_modulus_cm3"),
                      "frequency_hz": (res["frequency"]["f_hz"] or [None])[0], "f_lim_hz": res["frequency"]["f_lim_hz"]},
+        "model": res.get("model") or {},
         "resistance_mpa": {"operation": float(min(res["materials"]["R_operation"])), "hydrotest": float(res["materials"]["R_hydrotest"])},
     }
     (out / "loads.json").write_text(json.dumps({"input_summary": I, "loads": L, "cases": data["cases"], "notes": res["notes"]}, ensure_ascii=False, indent=1,

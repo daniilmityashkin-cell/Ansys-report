@@ -71,3 +71,13 @@
   Лучше делать его прямо в SpaceClaim скриптом (SpaceClaim Scripting: открыть model.step, вид изометрия, Window.ActiveWindow.Export(WindowExportFormat.Png, путь)),
   запуская SpaceClaim в пакетном режиме из Workbench (Geometry → Edit in SpaceClaim / RunScript). Если не получится стабильно - оставить текущий
   вариант (Mechanical + дорисовка каркаса), но вид должен совпадать с эталоном.
+
+## Сделано в Ansys-части (локально)
+- Разбор эталонного проекта: `tools/diag/etalon_T001_wb.md` (нагрузки, ГУ, материал, сетка, камера, устойчивость).
+- Рисунки `figures/<ключ>.png` (`ansys_scripts/export_figures.py`): fig01_general … fig05_hydrostatic, fig06_eq_stress … fig13_empty_deform (стенка с днищем, крыша скрыта,
+  изометрия (1, 1, 1) вертикалью вверх, белый фон), fig_stab1..4 (ветер Y моды 1-2, ветер Z моды 1-2). `make_project_folder` копирует их в images/ под ключами отчёта.
+- Материал: `LOADS["model"]["material"]` из «Данных для отчёта» -> APDL `MP` (E, ν, ρ) на все материалы.
+- Вес крыши: `LOADS["model"]["roof_force_n"]` = γf·(Mкр + ψ·ΣMоб)·9,81 -> сила на верхнюю кромку стенки (вместе с изоляцией крыши и снегом S·πR²), крыша и каркас без плотности.
+- Устойчивость: «AR: Устойчивость, ветер Y/Z» (Large Deflection, вектор w0 по стенке) -> «Eigenvalue Buckling: направление ветра Y/Z», 2 моды;
+  подписи «Направление ветра Y/Z», `results.required_k = 10`.
+- `results.max_deform_mm` (стенка, «Эксплуатация») и `ideal.deform_mm` - из `results_summary.csv` (строка «AR Wall Deformation»).

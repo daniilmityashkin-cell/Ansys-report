@@ -43,6 +43,10 @@ def main(argv=None) -> int:
             ks = [float(r[-1]) for r in list(csv.reader(st.open(encoding="utf-8")))[1:] if r and float(r[-1]) > 0]
         res = {k: round(v, 1) for k, v in best.items()}
         res["k"] = round(min(ks), 2) if ks else None
+        from .ansys_connect import wall_deform_mm
+        dm = wall_deform_mm(data, "AR: Эксплуатация")
+        if dm is not None:
+            res["deform_mm"] = round(dm, 2)
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
         print("Идеальный РВС:", res)

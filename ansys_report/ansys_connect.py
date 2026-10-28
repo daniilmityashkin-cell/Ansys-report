@@ -386,9 +386,9 @@ _CROPS = {"fig02_mesh_wall_bottom": (0.12, 0.45, 0.52, 0.77), "fig03_mesh_wall_r
 def overlay_roof_frame(fig_dir: Path, color=(46, 94, 46), log=print) -> bool:
     """Рис. 1: каркас крыши на снимок высокого разрешения. Mechanical рисует линии Draw3D только в окне (в пакетном режиме ~840 px),
     а снимок высокого разрешения делает отдельно и без них; export_figures.py сохраняет каркас в пикселях окна (fig01_frame.json),
-    снимок fig01.png - ровно в k раз больше окна (fig01_window.png) с тем же ракурсом. Нужен Pillow."""
+    снимок fig01_general.png - ровно в k раз больше окна (fig01_window.png) с тем же ракурсом. Нужен Pillow."""
     fig_dir = Path(fig_dir)
-    src, win, js = fig_dir / "fig01.png", fig_dir / "fig01_window.png", fig_dir / "fig01_frame.json"
+    src, win, js = fig_dir / "fig01_general.png", fig_dir / "fig01_window.png", fig_dir / "fig01_frame.json"
     if not (src.exists() and win.exists() and js.exists()):
         return False
     try:
@@ -455,11 +455,18 @@ def _blocks(d: Path, settings) -> dict[str, str]:
     lines += ["  stability_csv: stability.csv", "  stability_modes: 2", "  stability_labels:"]
     q = lambda t: json.dumps(str(t), ensure_ascii=False)          # строка YAML в двойных кавычках с экранированием
     for n in eigen:
-        lines.append(f'    {q(n)}: {q((settings.buckling_labels or {}).get(n, n))}')
-    lines += ["  required_k: 1.0", "", "images_dir: images", "images:"]
+        lines.append(f'    {q(n)}: {q((settings.buckling_labels or {}).get(n, _stab_label(n)))}')
+    wind_scheme = any("ветра" in n for n in eigen)             # схема эталона Т-001 (нелинейная, ветер-возмущение): рекомендуемый k = 10…15
+    lines.append(f"  required_k: {REQUIRED_K_WIND if wind_scheme else 1.0}")
+    dm = wall_deform_mm(d, full) if full else None
+    if dm is not None:
+        lines.append(f"  max_deform_mm: {dm:.2f}")
+    lines += ["", "images_dir: images", "images:"]
     img = d / "images"
 
     def add(key, aname, *results):
+        if (img / f"{key}.png").exists():                 # рисунок как в эталоне из export_figures.py (figures/) - по имени ключа
+            return
         for r in results:
             f = f"{_fname(aname)}_{r}.png"
             if (img / f).exists():
@@ -484,6 +491,34 @@ def _blocks(d: Path, settings) -> dict[str, str]:
             "images_block": "\n".join(lines[lines.index("") + 1:])}
 
 
+REQUIRED_K_WIND = 10.0      # эталон ТО-019-26: «рекомендуемый запас устойчивости для нелинейной геометрической задачи k = 10..15»
+
+
+def _stab_label(name: str) -> str:
+    """Подпись случая устойчивости в отчёте: «Eigenvalue Buckling: направление ветра Y» -> «Направление ветра Y»."""
+    if ":" in name and "ветра" in name:
+        t = name.split(":", 1)[1].strip()
+        return t[:1].upper() + t[1:]
+    return name
+
+
+def wall_deform_mm(d: Path, analysis: str) -> float | None:
+    """Максимальное перемещение стенки (results_summary.csv, строка «AR Wall Deformation» расчёта analysis), мм."""
+    import csv
+    f = Path(d) / "results_summary.csv"
+    if not f.exists():
+        return None
+    for row in csv.reader(f.read_text(encoding="utf-8").splitlines()[1:]):
+        if len(row) >= 3 and row[0] == analysis and row[1] == "AR Wall Deformation":
+            return float(row[2])
+    return None
+
+
+FIG_KEYS = ("fig01_general", "fig02_mesh_wall_bottom", "fig03_mesh_wall_roof", "fig04_loads", "fig05_hydrostatic", "fig06_eq_stress", "fig07_membrane",
+            "fig08_fiber", "fig09_deform", "fig10_empty_eq", "fig11_empty_mem", "fig12_empty_fiber", "fig13_empty_deform",
+            "fig_stab1", "fig_stab2", "fig_stab3", "fig_stab4")
+
+
 def _has_belts(d: Path) -> bool:
     try:
         from . import ansys_import as ai
@@ -503,6 +538,10 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
     if (d / "model_data.json").exists() and _has_belts(d):
         crop_mesh_views(img)
     overlay_roof_frame(d / "figures")
+    for key in FIG_KEYS:                                 # рисунки как в эталоне (export_figures.py) - в images/ под именами ключей отчёта
+        f = d / "figures" / f"{key}.png"
+        if f.exists():
+            shutil.copy2(f, img / f.name)
     text = TEMPLATE_YAML.read_text(encoding="utf-8")
     values = {"elongation_pct": 21, "roof_radius": 0}       # запасные значения полей, без которых расчёт невозможен
     values.update({k: v for k, v in (anketa or {}).items() if str(v).strip() != ""})
