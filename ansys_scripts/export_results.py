@@ -408,6 +408,17 @@ for a in model.Analyses:
                         except Exception as e:
                             log.append(u"  Activate/Evaluate: %s" % e)
                             break
+            try:                                       # максимальное перемещение стенки (выводы отчёта: max_deform_mm, ideal.deform_mm)
+                wns = [n_ for n_ in model.NamedSelections.Children if n_.Name == u"AR_WALL"]
+                if wns:
+                    tdw = sol.AddTotalDeformation()
+                    tdw.Location = wns[0]
+                    tdw.EvaluateAllResults()
+                    q_ = tdw.Maximum
+                    summary.append(u'"%s","AR Wall Deformation",%.6g,%.6g,%s' % (a.Name, q_.Value, tdw.Minimum.Value, q_.Unit))
+                    tdw.Delete()
+            except Exception as e:
+                log.append(u"%s: перемещение стенки: %s" % (a.Name, e))
             lines = [u"belt,fiber,equivalent,membrane"]
             for i, eq, fb, mem in created:
                 lines.append(u"%d,%.2f,%.2f,%.2f" % (i, mpa(fb.Maximum), mpa(eq.Maximum), mpa(mem.Maximum)))

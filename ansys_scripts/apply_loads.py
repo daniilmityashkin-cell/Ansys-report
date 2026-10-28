@@ -200,15 +200,24 @@ def apdl_case(case):
         u"*ENDDO",
     ] if ns_wall is not None else []
     t.extend(body)
+    roof_f = float((L.get("model") or {}).get("roof_force_n") or 0.0)
+    snow_f = -case["roof_extra_mpa"] * 3.14159265 * R * R if roof_f else 0.0     # схема эталона Т-001: снег Fсн = S·πR² на верхнюю кромку стенки, не на настил
     if ns_roof is not None:
-        t += [u"ALLSEL,ALL", u"CMSEL,S,AR_ROOF,NODE", u"ESLN,S,1", u"SFE,ALL,1,PRES,,sg*(pu+proof)"]
+        t += [u"ALLSEL,ALL", u"CMSEL,S,AR_ROOF,NODE", u"ESLN,S,1", u"SFE,ALL,1,PRES,,sg*(pu%s)" % (u"" if roof_f else u"+proof")]
     if ns_bottom is not None and hy:
         t += [u"ALLSEL,ALL", u"CMSEL,S,AR_BOTTOM,NODE", u"ESLN,S,1", u"SFE,ALL,1,PRES,,sg*(pu+grad*zfs)"]
     # силы от масс оборудования и теплоизоляции (метал. конструкции модели учитываются самой моделью и ускорением)
+    t.append(u"FCUM,ADD")                              # силы на общих узлах (кромка, границы поясов) складываются, а не заменяют друг друга
+    top_f = snow_f
     if case["masses"] and USE_MASSES:
         g = L["gravity_mm_s2"] / 1000.0
         by_loc = {}
+        top_f += roof_f
         for m in L["point_masses"]:
+            if roof_f and m["location"] == "roof":        # вес крыши задан силой F (металл и оборудование в ней); изоляция крыши - туда же, на кромку
+                if m.get("category") == "insulation":
+                    top_f += m["mass_kg"] * g
+                continue
             by_loc[m["location"]] = by_loc.get(m["location"], 0.0) + m["mass_kg"]
         for loc, kg in sorted(by_loc.items()):
             if loc == "roof" and ns_roof is not None:
@@ -220,6 +229,16 @@ def apdl_case(case):
             else:
                 continue
             t += [u"*GET,nn,NODE,0,COUNT", u"*IF,nn,GT,0,THEN", u"fn=%s/nn" % fmt(-kg * g), u"F,ALL,F%s,fn" % z, u"*ENDIF"]
+    if top_f and ns_wall is not None:                     # как в эталоне Т-001: F, изоляция крыши и снег - на верхнюю кромку стенки
+        t += [u"ALLSEL,ALL", u"CMSEL,S,AR_WALL,NODE", u"NSEL,R,LOC,%s,%s,%s" % (z, fmt(H - 1.0), fmt(H * 10.0)),
+              u"*GET,nn,NODE,0,COUNT", u"*IF,nn,GT,0,THEN", u"fn=%s/nn" % fmt(-top_f), u"F,ALL,F%s,fn" % z, u"*ENDIF"]
+    t.append(u"FCUM,REPL")
+    wv = case.get("wind_vector")
+    if wv and ns_wall is not None:                     # ветер-возмущение (эталон Т-001): постоянный вектор давления по всей стенке, SURF154 в глобальных осях
+        t += [u"/PREP7", u"*GET,etm_,ETYP,0,NUM,MAX", u"etw_=etm_+1", u"ET,etw_,154", u"KEYOPT,etw_,2,1",
+              u"*GET,csm_,CDSY,0,NUM,MAX", u"csw_=MAX(csm_+1,11)", u"LOCAL,csw_,0,0,0,0,0,0,0", u"CSYS,0",        # KEYOPT(2)=1 требует локальную СК (= глобальной, как в ds.dat эталона)
+              u"ALLSEL,ALL", u"CMSEL,S,AR_WALL,NODE", u"ESLN,S,1", u"ESEL,R,ENAME,,181", u"TYPE,etw_", u"ESYS,csw_", u"ESURF,,TOP", u"ESYS,0",
+              u"ALLSEL,ALL", u"/SOLU", u"ESEL,S,TYPE,,etw_", u"SFE,ALL,%d,PRES,,%s" % (wv["axis"] + 1, fmt(wv["mpa"]))]
     t.append(u"ALLSEL,ALL")
     return u"\n".join(t)
 
@@ -276,14 +295,10 @@ for ci, case in enumerate(L["cases"]):
     except Exception as e:
         say(u"ОШИБКА случая '%s': %s" % (case["name"], e))
 
-# ---------- 4. Устойчивость: Eigenvalue Buckling по предварительно нагруженному случаю «пустой резервуар, вакуум, снег и ветер» ----------
-try:
-    src = statics.get("vacuum")
-    if src is None:
-        raise Exception("нет статического случая 'vacuum' для связи")
-    bk = model.AddEigenvalueBucklingAnalysis()
-    bk.Name = u"Eigenvalue Устойчивость пустого резервуара"
-    linked = False
+# ---------- 4. Устойчивость как в эталоне Т-001 (tools/diag/etalon_T001_wb.md): пустой резервуар, нелинейная статика (большие перемещения)
+# с ветром-возмущением - вектор w0 по всей стенке вдоль горизонтальной оси, затем Eigenvalue Buckling от неё (множитель - ко всем нагрузкам).
+# Направления подписаны как в эталоне (там вертикаль X): «Y» - первая горизонтальная ось после вертикали, «Z» - вторая (при вертикали Z это X и Y).
+def link_prestress(bk, src):
     cands = [bk]
     try:
         for ch in bk.Children:
@@ -295,46 +310,64 @@ try:
             if hasattr(obj, attr):
                 try:
                     setattr(obj, attr, src)
-                    linked = True
-                    say(u"Устойчивость: предварительное нагружение связано через %s.%s" % (obj.GetType().Name, attr))
-                    break
+                    return True
                 except Exception as e:
                     say(u"  связь через %s.%s: %s" % (obj.GetType().Name, attr, e))
-        if linked:
-            break
-    if not linked:
-        say(u"Устойчивость: связь с статикой не установлена автоматически; доступные свойства: %s" % u", ".join([n for c_ in cands for n in dir(c_) if "Pre" in n]))
-    try:
-        bk.AnalysisSettings.MaximumModesToFind = 3
-    except Exception as e:
-        say(u"  число форм: %s" % e)
-    try:                                   # только положительные множители: запас по заданной (прямой) нагрузке
-        ast_ = bk.AnalysisSettings
-        done_ = False
-        for src_ in (u"IncludeNegativeLoadMultiplier",):
-            if hasattr(ast_, src_):
-                cur_ = getattr(ast_, src_)
-                for nm_ in (u"No", u"Off"):
-                    try:
-                        setattr(ast_, src_, getattr(type(cur_), nm_))
-                        done_ = True
-                        break
-                    except Exception:
-                        pass
-        say(u"Устойчивость: только положительные множители нагрузки: %s" % (u"включено" if done_ else u"не удалось (свойства: %s)" % u", ".join([n for n in dir(ast_) if "Neg" in n or "Multiplier" in n])))
-    except Exception as e:
-        say(u"  отрицательные множители: %s" % e)
-    bsol = bk.Solution
-    for mi in (1, 2, 3):
-        td = bsol.AddTotalDeformation()
-        td.Name = u"Total Deformation" if mi == 1 else u"Total Deformation %d" % mi          # имена, по которым отчёт находит рисунки форм
+    return False
+
+
+w_dist = float((L.get("model") or {}).get("wind_disturbance_mpa") or 0.0)
+base_case = [c for c in L["cases"] if c["id"] == "vacuum"]
+if not base_case:
+    say(u"Устойчивость не добавлена: нет случая 'vacuum' (пустой резервуар)")
+elif w_dist <= 0:
+    say(u"Устойчивость не добавлена: нет ветрового давления w0 (LOADS['model']['wind_disturbance_mpa'])")
+else:
+    for lab, k_ax, sgn in ((u"Y", 1, 1.0), (u"Z", 2, -1.0)):           # как в эталоне: +300 Па по Y, -300 Па по Z
         try:
-            td.Mode = mi
+            c = dict(base_case[0])
+            c["id"] = "stab_" + lab
+            c["name"] = u"Устойчивость, ветер " + lab
+            c["wind"] = []
+            c["wind_vector"] = {"axis": (AX + k_ax) % 3, "mpa": sgn * w_dist}
+            an = model.AddStaticStructuralAnalysis()
+            an.Name = u"AR: " + c["name"]
+            st_ = an.AnalysisSettings
+            st_.LargeDeflection = True
+            try:
+                st_.AutomaticTimeStepping = AutomaticTimeStepping.On
+                st_.InitialSubsteps = 5
+                st_.MinimumSubsteps = 1
+                st_.MaximumSubsteps = 50
+            except Exception as e:
+                say(u"  шаги нелинейной статики: %s" % e)
+            for nsx in ((ns_bottom, ns_annular) if (ns_bottom is not None or ns_annular is not None) else (ns_base,)):
+                if nsx is not None:
+                    fx = an.AddFixedSupport()
+                    fx.Location = nsx
+            sn = an.AddCommandSnippet()
+            sn.Name = u"AR нагрузки: " + c["name"]
+            sn.AppendText((extra_apdl + u"\n" if extra_apdl else u"") + apdl_case(c))
+            bk = model.AddEigenvalueBucklingAnalysis()
+            bk.Name = u"Eigenvalue Buckling: направление ветра " + lab
+            say(u"Устойчивость %s: предварительное нагружение %s" % (lab, u"связано" if link_prestress(bk, an) else u"НЕ связано"))
+            try:
+                bk.AnalysisSettings.MaximumModesToFind = 2
+            except Exception as e:
+                say(u"  число форм: %s" % e)
+            try:
+                ast_ = bk.AnalysisSettings
+                cur_ = ast_.IncludeNegativeLoadMultiplier
+                ast_.IncludeNegativeLoadMultiplier = getattr(type(cur_), "No")
+            except Exception as e:
+                say(u"  отрицательные множители: %s" % e)
+            for mi in (1, 2):
+                td = bk.Solution.AddTotalDeformation()
+                td.Name = u"Total Deformation" if mi == 1 else u"Total Deformation %d" % mi
+                td.Mode = mi
+            say(u"Устойчивость: ветер %s, вектор %g МПа по оси %s, большие перемещения" % (lab, sgn * w_dist, ("X", "Y", "Z")[(AX + k_ax) % 3]))
         except Exception as e:
-            say(u"  Mode=%d: %s" % (mi, e))
-    say(u"Случай устойчивости: создан")
-except Exception as e:
-    say(u"Устойчивость не добавлена: %s" % e)
+            say(u"ОШИБКА устойчивости (ветер %s): %s" % (lab, e))
 
 f = io.open(os.path.join(out, "log_loads.txt"), "w", encoding="utf-8")
 f.write(u"\n".join(log))
