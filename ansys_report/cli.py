@@ -10,12 +10,14 @@ from .util import out_names, slug
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ansys_report", description="Автоматизация отчётов по расчёту РВС в Ansys")
-    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package", "agent", "extract-ideal", "check-ansys"], help="что сформировать")
+    ap.add_argument("command", choices=["excel", "word", "all", "gui", "wizard", "wizard-classic", "apdl", "geometry", "geometry-classic", "loads", "apply-loads", "report-from-ansys", "package", "agent", "worker", "extract-ideal", "check-ansys"], help="что сформировать")
     ap.add_argument("project", nargs="?", help="путь к project.yaml")
     ap.add_argument("-o", "--out", default="out", help="папка результата (по умолчанию ./out)")
     ap.add_argument("--loads", help="apply-loads: файл loads_data.py из пакета нагрузок")
     ap.add_argument("--anketa", help="report-from-ansys: файл anketa.json (поля отчёта: номер, позиция, исполнитель и т. д.)")
     ap.add_argument("--version", type=int, help="check-ansys: версия Ansys (221 = 2022 R1, 222, 231, 232, 241, 242, 251, 252, 261 = 2026 R1); по умолчанию самая новая")
+    ap.add_argument("--server", help="worker: адрес сайта (очередь расчётов)")
+    ap.add_argument("--token", help="worker: токен расчётного сервера (ASR_WORKER_TOKEN)")
     ap.add_argument("--install", action="store_true", help="agent: зарегистрировать ссылки ansysreport:// в Windows")
     ap.add_argument("--ideal", help="report-from-ansys: ideal.json с результатами идеального РВС (без отклонений)")
     ap.add_argument("--no-solve", action="store_true", help="report-from-ansys: не запускать расчёт, взять готовые результаты проекта")
@@ -59,6 +61,14 @@ def main(argv=None) -> int:
             print("Ошибка:", e)
             return 1
         return 0
+    if a.command == "worker":                      # расчётный сервер: python -m ansys_report worker --server URL --token TOKEN
+        import os
+        from . import agent
+        server = a.server or os.environ.get("ASR_SITE_URL", "http://127.0.0.1:8000")
+        token = a.token or os.environ.get("ASR_WORKER_TOKEN", "")
+        if not token:
+            ap.error("укажите --token (ASR_WORKER_TOKEN сайта, файл server_data/worker_token.txt)")
+        return agent.worker(server, token)
     if a.command == "agent":
         from . import agent
         if a.install or not a.project:

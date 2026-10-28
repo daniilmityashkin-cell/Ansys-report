@@ -44,6 +44,8 @@ class Settings:
         e.strip().lower() for e in os.environ.get("ASR_ADMIN_EMAILS", "").split(",") if e.strip()))      # доступ в CRM /admin
     crm_url: str = field(default_factory=lambda: os.environ.get("ASR_CRM_URL", "").strip())        # CRM (crm/): адрес, например http://127.0.0.1:8100
     crm_token: str = field(default_factory=lambda: os.environ.get("ASR_CRM_TOKEN", "").strip())    # токен API CRM (CRM_API_TOKEN)
+    server_calc: bool = field(default_factory=lambda: _bool("ASR_SERVER_CALC", True))   # расчёт в Ansys на нашем сервере (очередь), а не у заказчика
+    worker_token: str = field(default_factory=lambda: os.environ.get("ASR_WORKER_TOKEN", "").strip())   # токен расчётного сервера (пусто - data_dir/worker_token.txt)
     workers: int = field(default_factory=lambda: int(os.environ.get("ASR_WORKERS", "2")))
 
     def __post_init__(self):
@@ -52,6 +54,13 @@ class Settings:
         if not self.db_url:
             self.db_url = f"sqlite:///{(self.data_dir / 'site.db').as_posix()}"
         (self.data_dir / "generations").mkdir(exist_ok=True)
+        if not self.worker_token:
+            wf = self.data_dir / "worker_token.txt"
+            if wf.exists() and wf.read_text(encoding="utf-8").strip():
+                self.worker_token = wf.read_text(encoding="utf-8").strip()
+            else:
+                self.worker_token = secrets.token_urlsafe(24)
+                wf.write_text(self.worker_token, encoding="utf-8")
         if not self.secret_key:
             kf = self.data_dir / "secret.key"
             if kf.exists() and kf.read_text(encoding="utf-8").strip():

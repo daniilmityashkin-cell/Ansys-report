@@ -233,6 +233,51 @@ def _run(info: dict, site: "Site") -> int:
         return 1
 
 
+def next_job(server: str, token: str) -> dict | None:
+    """Расчётный сервер: следующий заказ из очереди сайта ({gid, t}) или None."""
+    req = urllib.request.Request(server.rstrip("/") + "/worker/next", data=b"", method="POST", headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        if r.status == 204:
+            return None
+        return json.loads(r.read().decode("utf-8"))
+
+
+def worker(server: str, token: str, interval: float = 15.0, once: bool = False, run_job=None) -> int:
+    """Расчётный сервер (Ansys у нас): забирает оплаченные заказы из очереди сайта и считает их по одному, как помощник.
+    Запуск: python -m ansys_report worker --server https://сайт --token <ASR_WORKER_TOKEN>. Работает постоянно."""
+    import time
+    run_job = run_job or (lambda info, site: _run(info, site))
+    server = server.rstrip("/")
+    say(f"Расчётный сервер: очередь {server}")
+    done = 0
+    while True:
+        try:
+            job = next_job(server, token)
+        except Exception as e:      # noqa: BLE001  (сайт недоступен - ждём)
+            say(f"(очередь недоступна: {e})")
+            job = None
+        if job:
+            say(f"Заказ №{job['gid']}: начинаю расчёт")
+            lock = _take_lock()
+            if lock is None:
+                say("Рабочая папка занята другим расчётом - жду")
+            else:
+                try:
+                    run_job({"server": server, "gid": int(job["gid"]), "token": job["t"]}, Site(server, int(job["gid"]), job["t"]))
+                    done += 1
+                finally:
+                    try:
+                        lock.unlink()
+                    except OSError:
+                        pass
+            if once:
+                return done
+            continue
+        if once:
+            return done
+        time.sleep(interval)
+
+
 def _pythonw() -> str:
     """pythonw.exe рядом с текущим python.exe (запуск без окна консоли); если нет - обычный python."""
     exe = Path(sys.executable)

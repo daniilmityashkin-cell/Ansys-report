@@ -485,9 +485,10 @@ def test_unlimited_account(tmp_path):
     assert "безлимитный" not in other.get(g).text
 
 
-def test_agent_flow(site):
-    """Кнопка «Собрать отчёт в Ansys»: ссылка на помощника, скачивание пакета по токену, статус и загрузка отчёта обратно."""
+def test_agent_flow(tmp_path):
+    """Режим «Ansys у заказчика» (ASR_SERVER_CALC=0): ссылка на помощника, скачивание пакета по токену, статус и загрузка отчёта обратно."""
     import re as _re
+    site = create_app(Settings(data_dir=tmp_path, inline_jobs=True, secret_key="t" * 32, server_calc=False))
     c = TestClient(site)
     register(c)
     gen = new_generation(c).headers["location"]
@@ -653,3 +654,52 @@ def test_demo_mode_blocks_report_build(tmp_path, monkeypatch):
     r = c.post(gen + "/pay", data={"csrf": tok}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == gen
     assert "считается" not in c.get(gen).text and "оплачено" not in c.get(gen).text
+
+
+def test_server_calc_queue(site):
+    """Ansys на нашем сервере: после «Собрать отчёт» заказ в очереди; расчётный сервер берёт его по токену, шлёт этапы и отчёт; клиент видит
+    очередь, этапы и кнопку скачать отчёт; чужой токен - отказ; зависший расчёт возвращается в очередь."""
+    import json as _json
+    import time as _time
+    from ansys_report import agent
+    c = TestClient(site)
+    register(c)
+    tok = csrf_of(c, "/new/table")
+    data = {"csrf": tok, "title": "РВС-Т", "diameter": "28.5", "height": "18", "thicknesses": "13 12 11", "rows_are": "gens",
+            "table": "-10\t-9\t-6\n-12\t-23\t-27\n1\t-5\t-20\n60\t60\t52\n53\t64\t73",
+            "l_on": "1", "l_density": "1", "l_fill": "16", "l_hydro": "16", "l_overp": "0", "l_vac": "0", "l_snow": "IV", "l_wind": "II",
+            "l_terrain": "A", "l_roof_rise": "3", "l_deck": "4", "l_ryn": "345", "l_ins_t": "0", "l_ins_rho": "140", "l_equipment": ""}
+    gen = c.post("/new/table", data=data, follow_redirects=False).headers["location"]
+    gid = int(gen.rsplit("/", 1)[1])
+    _pay_fake(c, gen)
+    page = c.get(gen).text
+    assert "на нашем сервере" in page and "ansysreport://" not in page and 'id="calcsteps"' in page
+    assert c.get(gen + "/agent.json").json()["stage"] == "queued"
+    w = TestClient(site)
+    assert w.post("/worker/next").status_code == 403 and w.post("/worker/next", headers={"Authorization": "Bearer x"}).status_code == 403
+    H = {"Authorization": f"Bearer {site.state.settings.worker_token}"}
+    job = w.post("/worker/next", headers=H).json()
+    assert job["gid"] == gid and w.post("/worker/next", headers=H).status_code == 204          # взят - больше не выдаётся
+    t = job["t"]
+    assert w.get(f"/agent/{gid}/package.zip?t={t}").status_code == 200
+    w.post(f"/agent/{gid}/status?t={t}", json={"stage": "solve", "message": ""})
+    assert c.get(gen + "/agent.json").json()["stage"] == "solve"
+    w.post(f"/agent/{gid}/upload?t={t}", files={"file": ("Отчёт_РВС-Т.docx", b"PK-docx", "application/octet-stream")})
+    w.post(f"/agent/{gid}/status?t={t}", json={"stage": "done", "message": "Отчёт сформирован"})
+    a = c.get(gen + "/agent.json").json()
+    assert a["stage"] == "done" and "Отчёт_РВС-Т.docx" in a["files"]
+    assert c.get(f"{gen}/agent-files/Отчёт_РВС-Т.docx").content == b"PK-docx"
+    st_file = site.state.settings.data_dir / "generations" / str(gid) / "agent" / "status.json"
+    st_file.write_text(_json.dumps({"stage": "build", "updated": _time.time() - 5 * 3600}), encoding="utf-8")
+    assert w.post("/worker/next", headers=H).json()["gid"] == gid                               # зависший расчёт снова в очереди
+    # цикл расчётного сервера: берёт заказ и запускает расчёт (сам Ansys здесь подменён)
+    jobs = iter([{"gid": 5, "t": "abc"}, None])
+    ran = []
+    orig, orig_work = agent.next_job, agent.WORK
+    agent.next_job = lambda s, tk: next(jobs)
+    agent.WORK = site.state.settings.data_dir / "work"                   # рабочая папка расчёта - во временной папке теста
+    try:
+        assert agent.worker("http://site", "tok", once=True, run_job=lambda info, s: ran.append(info["gid"])) == 1
+    finally:
+        agent.next_job, agent.WORK = orig, orig_work
+    assert ran == [5]
