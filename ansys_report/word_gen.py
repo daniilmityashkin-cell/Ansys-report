@@ -139,7 +139,7 @@ class Report:
         # рисунки как в эталоне из export_figures.py: figures/fig01.png … (fig_stabN -> fig14…) - приоритетнее старых снимков
         m = re.match(r"fig_stab(\d+)$", key)
         short = f"fig{13 + int(m.group(1)):02d}" if m else key.split("_")[0]
-        for ext in (".png", ".jpg", ".jpeg"):
+        for ext in (() if short in ("fig04", "fig05") else (".png", ".jpg", ".jpeg")):     # рис. 4 и 5 - наши схемы нагрузок, не снимки Ansys
             f = self.p.root / "figures" / f"{short}{ext}"
             if f.exists():
                 return f

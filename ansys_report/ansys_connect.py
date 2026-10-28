@@ -539,6 +539,8 @@ def make_project_folder(data_dir: str | Path, anketa: dict | None = None, settin
         crop_mesh_views(img)
     overlay_roof_frame(d / "figures")
     for key in FIG_KEYS:                                 # рисунки как в эталоне (export_figures.py) - в images/ под именами ключей отчёта
+        if key in ("fig04_loads", "fig05_hydrostatic"):   # рис. 4 и 5 - наши схемы нагрузок (loads/figures.py), решение владельца
+            continue
         f = d / "figures" / f"{key}.png"
         if f.exists():
             shutil.copy2(f, img / f.name)

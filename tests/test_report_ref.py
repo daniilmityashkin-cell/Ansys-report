@@ -107,7 +107,7 @@ def test_reference_figures_folder_has_priority(tmp_path):
     from ansys_report.word_gen import Report
     rep = Report(load_project(root / "project.yaml"))
     assert rep._find_image("fig01_general") == root / "figures" / "fig01.png"
-    assert rep._find_image("fig04_loads") == root / "figures" / "fig04.png"
+    assert rep._find_image("fig04_loads") != root / "figures" / "fig04.png"          # рис. 4-5 - наши схемы нагрузок
     assert rep._find_image("fig_stab1") == root / "figures" / "fig14.png"
     assert rep._find_image("fig05_hydrostatic") != root / "figures" / "fig05.png"
 
