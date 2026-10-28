@@ -1,0 +1,13 @@
+{% extends "_base.html" %}{% from "_macros.html" import task_row, stage %}{% block title %}{{ d.title }}{% endblock %}{% block body %}
+<p><a class="muted" href="/deals">← Сделки</a></p><h1>{{ d.title }} {{ stage(d.stage) }}</h1>
+<div class="kpis"><div class="kpi acc"><small>Сумма</small><b>{{ d.amount|rub }} ₽</b></div><div class="kpi"><small>Клиент</small><b style="font-size:16px"><a href="/contacts/{{ d.contact.id }}">{{ d.contact.title }}</a></b></div>
+<div class="kpi"><small>Создана</small><b style="font-size:16px">{{ d.created|dt('%d.%m.%Y') }}</b></div><div class="kpi"><small>Источник</small><b style="font-size:16px">{{ d.source or '—' }}</b></div></div>
+<div class="card"><h2>Сделка</h2><form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><div class="form-grid">
+<label>Этап<select name="stage">{% for x in STAGES %}<option {{ 'selected' if x == d.stage }}>{{ x }}</option>{% endfor %}</select></label>
+<label>Ответственный<select name="owner_id">{% for x in managers %}<option value="{{ x.id }}" {{ 'selected' if d.owner_id == x.id }}>{{ x.name or x.email }}</option>{% endfor %}</select></label>
+<label>Название<input name="title" value="{{ d.title }}"></label><label>Сумма, ₽<input name="amount" inputmode="numeric" value="{{ d.amount }}"></label>
+<label>Причина проигрыша<input name="lost_reason" value="{{ d.lost_reason or '' }}" placeholder="если «Проигран»"></label>{% if d.site_generation_id %}<label>Заказ на сайте<input value="№{{ d.site_generation_id }}" disabled></label>{% endif %}</div>
+<p style="margin:8px 0 0"><button class="btn">Сохранить</button></p></form></div>
+<div class="card"><h2>Задачи</h2>{% for t in tasks %}{{ task_row(t, csrf, False) }}{% else %}<p class="muted">Нет</p>{% endfor %}</div>
+<div class="card"><h2>История сделки</h2><ul class="tl">{% for a in acts %}<li><span class="ic">{{ ACT_ICONS.get(a.kind, '•') }}</span><span class="tx">{{ a.text }}</span><time>{{ a.created|dt }}</time></li>{% endfor %}</ul></div>
+{% endblock %}

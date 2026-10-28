@@ -1009,6 +1009,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return stop
     app.state.start_reconciler = start_reconciler
 
+    def start_crm_sync(interval_s: float = 10.0):
+        """Фоновая отправка событий в CRM (если ASR_CRM_URL и ASR_CRM_TOKEN заданы)."""
+        import threading
+        from .crm_sync import push
+        stop = threading.Event()
+
+        def loop():
+            while not stop.wait(interval_s):
+                try:
+                    push(Session, st.crm_url, st.crm_token)
+                except Exception:   # noqa: BLE001
+                    pass
+        if st.crm_url and st.crm_token:
+            threading.Thread(target=loop, daemon=True, name="crm-sync").start()
+        return stop
+    app.state.start_crm_sync = start_crm_sync
+
+    @app.post("/lead")
+    def lead_form(request: Request, csrf: str = Form(""), name: str = Form(""), phone: str = Form(""), email: str = Form(""),
+                  company: str = Form(""), message: str = Form(""), website: str = Form("")):
+        """Заявка с сайта («Оставить заявку»): в CRM как новый лид. website - поле-ловушка для ботов (люди его не видят)."""
+        bad = deny_csrf(request, csrf)
+        if bad:
+            return bad
+        phone, email = phone.strip()[:40], email.strip()[:254]
+        if website or not (phone or valid_email(email)):
+            return RedirectResponse("/?lead=bad#lead", status_code=303)
+        if request.session.get("leads", 0) >= 5:
+            return RedirectResponse("/?lead=ok#lead", status_code=303)
+        request.session["leads"] = request.session.get("leads", 0) + 1
+        src = request.session.get("src") or {}
+        with Session() as db:
+            crm.log(db, "lead", user_id=request.session.get("uid"), request=request, path="/", name=name.strip()[:200], phone=phone, email=email,
+                    company=company.strip()[:200], message=message.strip()[:2000], form="главная: оставить заявку", page=src.get("landing") or "/",
+                    utm_source=src.get("source"), utm_medium=src.get("medium"), utm_campaign=src.get("campaign"), referrer=src.get("referrer"))
+        return RedirectResponse("/?lead=ok#lead", status_code=303)
+
     @app.post("/webhooks/yookassa")
     async def yookassa_webhook(request: Request):
         """Уведомление об оплате. Телу не доверяем: статус перепроверяется запросом к API ЮKassa."""

@@ -1,0 +1,17 @@
+{% extends "_base.html" %}{% from "_macros.html" import periods, chart %}{% block title %}Аналитика{% endblock %}{% block body %}
+<h1>Аналитика</h1>{{ periods(period, '/analytics') }}
+<div class="kpis"><div class="kpi acc"><small>Выручка</small><b>{{ s.revenue|rub }} ₽</b></div><div class="kpi"><small>Средний чек</small><b>{{ s.avg|rub }} ₽</b></div>
+<div class="kpi"><small>Новых сделок</small><b>{{ s.deals }}</b></div><div class="kpi"><small>Выиграно / проиграно</small><b>{{ s.won }} / {{ s.lost }}</b></div>
+<div class="kpi"><small>Доля выигранных</small><b>{{ s.win_rate }}</b></div><div class="kpi"><small>Дней до оплаты</small><b>{{ s.days_to_pay }}</b></div>
+<div class="kpi"><small>Визит → лид</small><b>{{ s.lead_conv }}</b></div><div class="kpi"><small>Лид → оплата</small><b>{{ s.pay_conv }}</b></div></div>
+<div class="card funnel"><h2>Конверсия по этапам</h2>{% for name, n, w, p, step in s.funnel %}<div class="row"><span>{{ name }}</span><div class="bar"><i style="width:{{ w }}%"></i></div><span class="n">{{ n }} · {{ p }}{% if step %} <small>(шаг {{ step }})</small>{% endif %}</span></div>{% endfor %}</div>
+<div class="card"><h2>Сейчас в работе по этапам</h2><div class="conv">{% for st_, n, sm in s.open_by_stage %}<span>{{ st_ }}</span><b>{{ n }}{% if sm %} · {{ sm|rub }} ₽{% endif %}</b>{% endfor %}</div></div>
+<div class="card"><h2>Выручка и лиды за 30 дней</h2>{{ chart(chart_rows) }}</div>
+{% for title, rows in [('Источники', sources), ('Страницы входа на сайте', landings)] %}<div class="card"><h2>{{ title }}</h2><div class="tw"><table class="cards"><thead><tr><th>{{ title[:-1] if title == 'Источники' else 'Страница' }}</th><th class="r">Посетители</th><th class="r">Лиды</th><th class="r">Визит→лид</th><th class="r">Оплатили</th><th class="r">Лид→оплата</th><th class="r">Выручка</th></tr></thead>
+{% for r in rows %}<tr><td class="first">{{ r.key }}</td><td class="r" data-l="Посетители">{{ r.visitors }}</td><td class="r" data-l="Лиды">{{ r.leads }}</td><td class="r" data-l="Визит→лид">{{ r.lead_conv }}</td>
+<td class="r" data-l="Оплатили">{{ r.payers }}</td><td class="r" data-l="Лид→оплата">{{ r.pay_conv }}</td><td class="r" data-l="Выручка">{{ r.revenue|rub }} ₽</td></tr>{% else %}<tr><td class="first muted">Нет данных</td></tr>{% endfor %}</table></div></div>{% endfor %}
+<div class="card"><h2>Менеджеры</h2><div class="tw"><table class="cards"><thead><tr><th>Менеджер</th><th class="r">Действий</th><th class="r">Задач выполнено</th><th class="r">Просрочено</th><th class="r">Оплат</th><th class="r">Выручка</th></tr></thead>
+{% for r in mgrs %}<tr><td class="first">{{ r.m.name or r.m.email }}</td><td class="r" data-l="Действий">{{ r.acts }}</td><td class="r" data-l="Задач выполнено">{{ r.tasks_done }}</td><td class="r" data-l="Просрочено">{{ r.overdue }}</td>
+<td class="r" data-l="Оплат">{{ r.won }}</td><td class="r" data-l="Выручка">{{ r.revenue|rub }} ₽</td></tr>{% endfor %}</table></div></div>
+{% if me.role == 'admin' %}<p><a class="btn l" href="/settings">Настройки</a></p>{% endif %}
+{% endblock %}

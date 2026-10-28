@@ -22,7 +22,7 @@ from .models import Event, Generation, Payment, User, now
 KINDS = {"visit": "Визит на сайт", "register": "Регистрация", "login": "Вход", "generation": "Создал заказ (замеры)",
          "loads": "Задал нагрузки", "report_data": "Заполнил данные отчёта", "pay_start": "Нажал «Собрать отчёт» / оплату",
          "paid": "Оплата прошла", "pack_start": "Выбрал пакет", "job_done": "Отчёт и файлы готовы", "job_error": "Ошибка расчёта",
-         "download": "Скачал файлы", "agent": "Помощник Ansys", "credits": "Выданы генерации (вручную)"}
+         "download": "Скачал файлы", "agent": "Помощник Ansys", "credits": "Выданы генерации (вручную)", "lead": "Заявка с сайта"}
 STATUSES = ["Новый", "В работе", "Клиент", "Постоянный", "Отказ"]
 SEARCH = {"yandex": "Яндекс", "google": "Google", "mail.ru": "Mail.ru", "bing": "Bing", "duckduckgo": "DuckDuckGo"}
 SOCIAL = {"vk.com": "ВКонтакте", "t.me": "Telegram", "telegram": "Telegram", "ok.ru": "Одноклассники", "dzen.ru": "Дзен",

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark"><meta name="theme-color" content="#0b0c0f"><meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CRM">
+<title>{% block title %}CRM{% endblock %} · ANSYS REPORT</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/crm.css?v={{ asset_v }}"></head><body>
+<header class="ad-top"><div class="ad-bar"><b>ANSYS REPORT <span>CRM</span></b><span class="sp"></span><span class="me">{{ me.name or me.email }}</span>
+<form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Выйти</button></form></div>
+<nav class="ad-tabs"><a href="/" class="{{ 'on' if tab == 'home' }}">Сводка</a><a href="/deals" class="{{ 'on' if tab == 'deals' }}">Сделки</a>
+<a href="/contacts" class="{{ 'on' if tab == 'contacts' }}">Клиенты</a><a href="/tasks" class="{{ 'on' if tab == 'tasks' }}">Задачи{% if overdue_n %}<span class="badge">{{ overdue_n }}</span>{% endif %}</a>
+<a href="/analytics" class="{{ 'on' if tab == 'analytics' }}">Аналитика</a>{% if me.role == 'admin' %}<a href="/settings" class="{{ 'on' if tab == 'settings' }}">Настройки</a>{% endif %}</nav></header>
+<main>{% block body %}{% endblock %}</main>
+<nav class="botnav"><a href="/" class="{{ 'on' if tab == 'home' }}"><i>📊</i>Сводка</a><a href="/deals" class="{{ 'on' if tab == 'deals' }}"><i>🗂</i>Сделки</a>
+<a href="/contacts" class="{{ 'on' if tab == 'contacts' }}"><i>👥</i>Клиенты</a><a href="/tasks" class="{{ 'on' if tab == 'tasks' }}"><i>✅</i>Задачи{% if overdue_n %}<span class="badge">{{ overdue_n }}</span>{% endif %}</a>
+<a href="/analytics" class="{{ 'on' if tab in ('analytics','settings') }}"><i>📈</i>Ещё</a></nav>
+</body></html>

@@ -80,3 +80,4 @@ class Event(Base):
     source: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     path: Mapped[str | None] = mapped_column(String(300), nullable=True)
     meta: Mapped[str] = mapped_column(Text, default="{}")
+    sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)   # отправлено в CRM (crm_sync)

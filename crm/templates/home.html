@@ -1,0 +1,18 @@
+{% extends "_base.html" %}{% from "_macros.html" import task_row, periods, chart, stage %}{% block title %}Сводка{% endblock %}{% block body %}
+{{ periods(period, '/') }}
+<div class="kpis"><div class="kpi acc"><small>Выручка</small><b>{{ s.revenue|rub }} ₽</b></div><div class="kpi"><small>Оплат</small><b>{{ s.paid_n }}</b></div>
+<div class="kpi"><small>Средний чек</small><b>{{ s.avg|rub }} ₽</b></div><div class="kpi"><small>Новых лидов</small><b>{{ s.leads }}</b></div>
+<div class="kpi"><small>Посетители сайта</small><b>{{ s.visitors }}</b></div><div class="kpi"><small>Визит → лид</small><b>{{ s.lead_conv }}</b></div>
+<div class="kpi"><small>Лид → оплата</small><b>{{ s.pay_conv }}</b></div><div class="kpi"><small>Дней до оплаты</small><b>{{ s.days_to_pay }}</b></div></div>
+<div class="grid2">
+<div class="card"><h2>Мои задачи {% if overdue_n %}<span class="tag Отказ">просрочено {{ overdue_n }}</span>{% endif %}</h2>{% for t in tasks %}{{ task_row(t, csrf) }}{% else %}<p class="muted">Задач нет 🎉</p>{% endfor %}
+<p><a class="btn l" href="/tasks">Все задачи</a></p></div>
+<div class="card"><h2>Новые лиды</h2><ul class="feed">{% for c in new_leads %}<li><time>{{ c.created|dt }}</time><span><a href="/contacts/{{ c.id }}">{{ c.title }}</a>{% if c.deals %} {{ stage(c.deals[0].stage) }}{% endif %}</span><span class="m">{{ c.source or '—' }}{% if c.phone %} · {{ c.phone }}{% endif %}</span></li>{% else %}<li class="muted">Пока нет</li>{% endfor %}</ul>
+<p><a class="btn" href="/contacts/new">+ Клиент / заявка</a></p></div></div>
+<div class="card funnel"><h2>Воронка сделок за период</h2>{% for name, n, w, p, step in s.funnel %}<div class="row"><span>{{ name }}</span><div class="bar"><i style="width:{{ w }}%"></i></div><span class="n">{{ n }} · {{ p }}</span></div>{% endfor %}</div>
+<div class="card"><h2>Выручка и лиды за 30 дней</h2>{{ chart(chart_rows) }}</div>
+<div class="card"><h2>Откуда лиды</h2><div class="tw"><table class="cards"><thead><tr><th>Источник</th><th class="r">Посетители</th><th class="r">Лиды</th><th class="r">Оплатили</th><th class="r">Выручка</th></tr></thead>
+{% for r in sources %}<tr><td class="first">{{ r.key }}</td><td class="r" data-l="Посетители">{{ r.visitors }}</td><td class="r" data-l="Лиды">{{ r.leads }} <small>{{ r.lead_conv }}</small></td><td class="r" data-l="Оплатили">{{ r.payers }} <small>{{ r.pay_conv }}</small></td><td class="r" data-l="Выручка">{{ r.revenue|rub }} ₽</td></tr>{% else %}<tr><td class="first muted">Нет данных</td></tr>{% endfor %}</table></div>
+<p><a class="btn l" href="/analytics?p={{ period }}">Подробная аналитика</a></p></div>
+<div class="card"><h2>Лента</h2><ul class="tl">{% for a, c in feed %}<li><span class="ic">{{ ACT_ICONS.get(a.kind, '•') }}</span><span class="tx">{% if c %}<a href="/contacts/{{ c.id }}">{{ c.title }}</a>: {% endif %}{{ a.text }}</span><time>{{ a.created|dt }}</time></li>{% endfor %}</ul></div>
+{% endblock %}

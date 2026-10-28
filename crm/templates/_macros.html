@@ -1,0 +1,9 @@
+{% macro stage(s) %}<span class="stage-tag {{ 'won' if s == WON else ('lost' if s == LOST else '') }}">{{ s }}</span>{% endmacro %}
+{% macro task_row(t, csrf, show_contact=True) %}<div class="task {{ 'done' if t.done }} {{ 'over' if t.overdue }} {{ 'high' if t.priority == 'high' }}">
+<form method="post" action="/tasks/{{ t.id }}/done"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="chk" title="Выполнено">{{ '✓' if t.done }}</button></form>
+<div><span class="t">{{ t.title }}</span>{% if show_contact and t.contact %} · <a href="/contacts/{{ t.contact.id }}">{{ t.contact.title }}</a>{% endif %}
+<small class="due">{% if t.due %}до {{ t.due|dt }}{% if t.overdue %} — просрочено{% endif %}{% else %}без срока{% endif %}{% if t.assignee %} · {{ t.assignee.name or t.assignee.email }}{% endif %}{% if t.auto %} · авто{% endif %}</small></div></div>{% endmacro %}
+{% macro periods(p, base) %}<div class="periods">{% for k, t in [('7','7 дней'),('30','30 дней'),('90','90 дней'),('365','Год'),('all','Всё время')] %}<a href="{{ base }}?p={{ k }}" class="{{ 'on' if p == k }}">{{ t }}</a>{% endfor %}</div>{% endmacro %}
+{% macro chart(rows) %}{% set mx = (rows|map(attribute=1)|max) or 1 %}{% set mr = (rows|map(attribute=2)|max) or 1 %}
+<div class="chart">{% for day, rev, rg in rows %}<div title="{{ day }}: {{ rev|rub }} ₽, лидов {{ rg }}"><i style="height:{{ (rev / mx * 100)|round(1) }}%"></i><em style="height:{{ (rg / mr * 25)|round(1) }}%"></em></div>{% endfor %}</div>
+<div class="chart-x"><span>{{ rows[0][0] }}</span><span>{{ rows[-1][0] }}</span></div><div class="legend"><b style="background:var(--accent)"></b>выручка<b style="background:var(--blue)"></b>новые лиды</div>{% endmacro %}

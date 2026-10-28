@@ -1,0 +1,9 @@
+{% extends "_base.html" %}{% block title %}Сделки{% endblock %}{% block body %}
+<h1>Сделки</h1><div class="periods"><a href="/deals" class="{{ 'on' if not mine and not closed }}">Все открытые</a><a href="/deals?mine=1" class="{{ 'on' if mine }}">Мои</a><a href="/deals?closed=1" class="{{ 'on' if closed }}">С закрытыми</a></div>
+<div class="kanban">{% for s, ds in cols %}<div class="col"><h3><b>{{ s }}</b><span>{{ ds|length }} · {{ ds|sum(attribute='amount')|rub }} ₽</span></h3>
+{% for d in ds %}<div class="dc"><a href="/deals/{{ d.id }}" style="text-decoration:none"><b>{{ d.title }}</b><small>{{ d.contact.title }}{% if d.source %} · {{ d.source }}{% endif %}</small>
+{% if d.amount %}<span class="amt">{{ d.amount|rub }} ₽</span>{% endif %}<small>в этапе с {{ d.stage_changed|dt('%d.%m') }}</small></a>
+<form method="post" action="/deals/{{ d.id }}"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="stage" onchange="this.form.submit()">{% for x in STAGES %}<option {{ 'selected' if x == d.stage }}>{{ x }}</option>{% endfor %}</select></form></div>
+{% else %}<p class="muted" style="font-size:13px">Пусто</p>{% endfor %}</div>{% endfor %}</div>
+<p class="muted" style="font-size:12.5px">Сделки создаются и двигаются сами по действиям клиента на сайте (замеры → расчёт → оплата → отчёт). Этап можно поменять вручную.</p>
+{% endblock %}

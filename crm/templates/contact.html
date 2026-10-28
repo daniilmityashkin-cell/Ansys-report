@@ -1,0 +1,28 @@
+{% extends "_base.html" %}{% from "_macros.html" import task_row, stage %}{% block title %}{{ c.title }}{% endblock %}{% block body %}
+<p><a class="muted" href="/contacts">← Клиенты</a></p><h1>{{ c.title }}</h1>
+<div class="big-actions">{% if c.phone %}<a class="btn" href="tel:{{ c.phone }}">📞 Позвонить</a><a class="btn l" href="https://wa.me/{{ c.phone|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}">WhatsApp</a>{% endif %}
+{% if c.email %}<a class="btn l" href="mailto:{{ c.email }}">✉️ {{ c.email }}</a>{% endif %}</div>
+<div class="kpis"><div class="kpi acc"><small>Оплачено</small><b>{{ paid|rub }} ₽</b></div><div class="kpi"><small>Сделок</small><b>{{ c.deals|length }}</b></div>
+<div class="kpi"><small>Клиент с</small><b style="font-size:16px">{{ c.created|dt('%d.%m.%Y') }}</b></div><div class="kpi"><small>Источник</small><b style="font-size:16px">{{ c.source or '—' }}</b></div></div>
+<div class="card"><h2>Записать взаимодействие</h2><form method="post" action="/contacts/{{ c.id }}/activity"><input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="acts">{% for k, t in ACT_KINDS.items() %}<label><input type="radio" name="kind" value="{{ k }}" {{ 'checked' if k == 'call' }}> {{ ACT_ICONS[k] }} {{ t }}</label>{% endfor %}</div>
+<textarea name="text" placeholder="О чём договорились, что важно"></textarea>
+{% if c.email and mail_on %}<details class="more"><summary>Отправить как письмо клиенту</summary><label>Тема<input name="subject" style="width:100%"></label><label class="acts" style="border:0;padding:0"><input type="checkbox" name="send" value="1"> отправить на {{ c.email }} (выберите «Письмо»)</label></details>{% endif %}
+<div class="row2" style="margin-top:6px"><input name="next_task" placeholder="Следующий шаг (задача), например «перезвонить»"><select name="next_days" style="flex:0 1 140px"><option value="1">завтра</option><option value="0">сегодня</option><option value="3">через 3 дня</option><option value="7">через неделю</option></select></div>
+<p style="margin:8px 0 0"><button class="btn">Сохранить</button></p></form></div>
+<div class="grid2">
+<div class="card"><h2>Сделки</h2>{% for d in c.deals %}<p style="margin:6px 0"><a href="/deals/{{ d.id }}">{{ d.title }}</a> {{ stage(d.stage) }} {% if d.amount %}<b style="color:var(--accent)">{{ d.amount|rub }} ₽</b>{% endif %}<br><small>{{ d.created|dt('%d.%m.%Y') }}{% if d.site_generation_id %} · заказ №{{ d.site_generation_id }}{% endif %}</small></p>{% else %}<p class="muted">Нет</p>{% endfor %}
+<form method="post" action="/deal-new" class="row2"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="contact_id" value="{{ c.id }}"><input name="title" placeholder="Новая сделка"><button class="btn l" style="flex:0 0 auto">+ Сделка</button></form></div>
+<div class="card"><h2>Задачи</h2>{% for t in tasks %}{{ task_row(t, csrf, False) }}{% else %}<p class="muted">Нет</p>{% endfor %}
+<form method="post" action="/tasks" class="row2" style="margin-top:8px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="contact_id" value="{{ c.id }}"><input name="title" placeholder="Новая задача"><input type="datetime-local" name="due" style="flex:0 1 200px"><button class="btn l" style="flex:0 0 auto">+</button></form></div></div>
+<div class="card"><h2>История</h2><ul class="tl">{% for a in acts %}<li><span class="ic">{{ ACT_ICONS.get(a.kind, '•') }}</span><span class="tx">{{ a.text }}</span><time>{{ a.created|dt }}{% if a.manager %} · {{ a.manager.name or a.manager.email }}{% endif %}</time></li>{% else %}<li class="muted">Пусто</li>{% endfor %}</ul></div>
+<div class="card"><h2>Карточка</h2><form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><div class="form-grid">
+<label>Имя<input name="name" value="{{ c.name or '' }}"></label><label>Телефон<input name="phone" value="{{ c.phone or '' }}" inputmode="tel"></label>
+<label>Почта<input name="email" value="{{ c.email or '' }}"></label><label>Компания<input name="company" value="{{ c.company or '' }}"></label>
+<label>Регион<input name="region" value="{{ c.region or '' }}"></label><label>Теги (через запятую)<input name="tags" value="{{ c.tags }}"></label>
+<label>Ответственный<select name="owner_id">{% for x in managers %}<option value="{{ x.id }}" {{ 'selected' if c.owner_id == x.id }}>{{ x.name or x.email }}</option>{% endfor %}</select></label></div>
+<label>Заметка<textarea name="note">{{ c.note or '' }}</textarea></label><p style="margin:8px 0 0"><button class="btn">Сохранить</button></p></form>
+<div class="kv" style="margin-top:12px"><span>Источник</span><span>{{ c.source or '—' }}</span><span>utm_medium / campaign</span><span>{{ c.utm_medium or '—' }} / {{ c.utm_campaign or '—' }}</span>
+<span>Переход с</span><span style="word-break:break-all">{{ c.referrer or '—' }}</span><span>Страница входа</span><span>{{ c.landing or '—' }}</span>
+{% if c.site_user_id %}<span>Аккаунт на сайте</span><span>№{{ c.site_user_id }}</span>{% endif %}</div></div>
+{% endblock %}
