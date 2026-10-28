@@ -39,7 +39,7 @@ def make_load_figures(loads_file, out_dir) -> list[Path]:
     paths = []
 
     # --- рисунок 5: эпюры гидростатического давления по высоте стенки
-    fig, ax = plt.subplots(figsize=(6.4, 5.2))
+    fig, ax = plt.subplots(figsize=(7.0, 5.0))
     for case, color, label in ((op, "#1f77b4", "Эксплуатация"), (hyd, "#d62728", "Гидроиспытания")):
         if not case or not case.get("hydro"):
             continue
@@ -47,24 +47,26 @@ def make_load_figures(loads_file, out_dir) -> list[Path]:
         zs = [0, hs]
         ps = [g * hs * 1000, 0]                               # МПа/мм * мм = МПа
         ax.fill_betweenx(zs, 0, ps, alpha=0.25, color=color)
-        ax.plot(ps, zs, color=color, lw=2, label=f"{label}: уровень {hs:g} м, p_max = {mpa(ps[0])} МПа")
+        ax.plot(ps, zs, color=color, lw=2, label=f"{label}: уровень {hs:g} м, p_max = {mpa(ps[0])} МПа".replace(".", ",", 1))
     for z in zb:
         ax.axhline(z, color="#999", lw=0.5, ls=":")
-    ax.set_xlabel("Гидростатическое давление, МПа")
-    ax.set_ylabel("Высота от днища, м")
+    ax.set_xlabel("Гидростатическое давление, МПа", fontsize=11)
+    ax.set_ylabel("Высота от днища, м", fontsize=11)
+    ax.tick_params(labelsize=10)
     ax.set_ylim(0, H)
     ax.set_xlim(left=0)
     ax.grid(alpha=0.25)
-    ax.legend(loc="upper right", fontsize=8)
-    ax.set_title("Эпюры гидростатического давления (пунктир - границы поясов)", fontsize=9)
+    ax.legend(loc="upper right", fontsize=10)
+    ax.set_title("Эпюры гидростатического давления (пунктир - границы поясов)", fontsize=11)
     fig.tight_layout()
     p5 = out / "fig05_hydrostatic.png"
-    fig.savefig(p5, dpi=150)
+    fig.savefig(p5, dpi=200, bbox_inches="tight", pad_inches=0.05)
     plt.close(fig)
     paths.append(p5)
 
     # --- рисунок 4: схема нагрузок на резервуар (боковой вид)
-    fig, ax = plt.subplots(figsize=(7.2, 5.4))
+    fig, ax = plt.subplots(figsize=(8.0, 5.6))
+    fs = 10
     D = L["geometry"]["diameter_mm"] / 1000
     ax.plot([0, 0, D, D], [H, 0, 0, H], color="k", lw=2)                 # стенка и днище
     ax.plot([0, D / 2, D], [H, H * 1.06, H], color="k", lw=2)             # крыша (схематично)
@@ -79,32 +81,38 @@ def make_load_figures(loads_file, out_dir) -> list[Path]:
             z = hs * k / 6
             ln = w_ * (1 - z / hs)
             ax.annotate("", xy=(0, z), xytext=(-ln, z), arrowprops=dict(arrowstyle="->", color="#1f4e8c"))
-        ax.text(-w_ * 1.05, hs * 0.5, f"гидростатика\n{mpa(pm)} МПа у днища", fontsize=8, color="#1f4e8c", ha="right", va="center")
+        ax.text(-w_ * 1.05, hs * 0.5, f"гидростатика\n{mpa(pm)} МПа\nу днища", fontsize=fs, color="#1f4e8c", ha="right", va="center")
         ax.plot([0, D], [hs, hs], color="#1f77b4", ls="--", lw=1)
-        ax.text(D * 0.5, hs, f"уровень налива {hs:g} м", ha="center", va="bottom", fontsize=8, color="#1f77b4")
+        ax.text(D * 0.5, hs, f"уровень налива {hs:g} м".replace(".", ","), ha="center", va="bottom", fontsize=fs, color="#1f77b4")
     if wind_case and wind_case.get("wind"):
         wmax = max(abs(w["p_mpa"]) for w in wind_case["wind"]) or 1
         for w in wind_case["wind"]:
             zc = (w["z_lo_mm"] + w["z_hi_mm"]) / 2000
             ln = D * 0.18 * abs(w["p_mpa"]) / wmax
             ax.annotate("", xy=(D, zc), xytext=(D + ln, zc), arrowprops=dict(arrowstyle="->", color="#2ca02c"))
-        ax.text(D * 1.02, H * 1.02, f"ветер, до {mpa(wmax)} МПа", fontsize=8, color="#2ca02c")
-    roof = (op.get("roof_extra_mpa") or 0) + (op.get("uniform_mpa") or 0)
-    for k in range(1, 6):
-        x = D * k / 6
-        ax.annotate("", xy=(x, H * 1.03), xytext=(x, H * 1.16), arrowprops=dict(arrowstyle="->", color="#7f3fbf"))
-    ax.text(D / 2, H * 1.18, f"крыша: снег {mpa(op.get('roof_extra_mpa') or 0)} МПа, избыточное давление {mpa(op.get('uniform_mpa') or 0)} МПа",
-            ha="center", fontsize=8, color="#7f3fbf")
-    ax.annotate("опора (заделка по контуру днища)", xy=(0, 0), xytext=(D * 0.05, -H * 0.1), fontsize=8, color="#c00",
+        ax.text(D * 1.22, H * 0.45, f"ветер,\nдо {mpa(wmax)} МПа", fontsize=fs, color="#2ca02c", ha="left", va="center")
+    F = (L.get("model") or {}).get("roof_force_n")
+    if F:                                                    # схема эталона: вес крыши, оборудования и снег - силы на верхнюю кромку стенки
+        snow_line = abs(op.get("roof_extra_mpa") or 0) * 1e6 * (D / 2) / 2      # Н/м по кромке
+        for x in (0, D):
+            ax.annotate("", xy=(x, H), xytext=(x, H * 1.14), arrowprops=dict(arrowstyle="-|>", color="#b35900", lw=2))
+        ax.text(D / 2, H * 1.16, f"верхняя кромка стенки: Fкр = {F / 1000:.1f} кН, Fсн = {snow_line:.0f} Н/м".replace(".", ","),
+                ha="center", fontsize=fs, color="#b35900")
+    else:
+        for k in range(1, 6):
+            x = D * k / 6
+            ax.annotate("", xy=(x, H * 1.03), xytext=(x, H * 1.16), arrowprops=dict(arrowstyle="->", color="#7f3fbf"))
+        ax.text(D / 2, H * 1.18, f"крыша: снег {mpa(op.get('roof_extra_mpa') or 0)} МПа, избыточное давление {mpa(op.get('uniform_mpa') or 0)} МПа",
+                ha="center", fontsize=fs, color="#7f3fbf")
+    ax.annotate("опора (заделка по контуру днища)", xy=(0, 0), xytext=(D * 0.05, -H * 0.1), fontsize=fs, color="#c00",
                 arrowprops=dict(arrowstyle="->", color="#c00"))
-    ax.set_xlim(-D * 0.45, D * 1.25)
-    ax.set_ylim(-H * 0.18, H * 1.28)
+    ax.set_xlim(-D * 0.42, D * 1.42)
+    ax.set_ylim(-H * 0.16, H * 1.25)
     ax.set_aspect("equal")
     ax.axis("off")
-    ax.set_title("Схема нагрузок: гидростатика, ветер, снег и давление на крыше", fontsize=9)
     fig.tight_layout()
     p4 = out / "fig04_loads.png"
-    fig.savefig(p4, dpi=150)
+    fig.savefig(p4, dpi=200, bbox_inches="tight", pad_inches=0.05)
     plt.close(fig)
     paths.append(p4)
     return paths

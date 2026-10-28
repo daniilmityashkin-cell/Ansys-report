@@ -1,0 +1,22 @@
+{% extends "_base.html" %}{% from "_macros.html" import stage %}{% block title %}Клиенты{% endblock %}{% block body %}
+<h1>Клиенты <small>{{ rows|length }}</small> <a class="btn" style="float:right;font-size:14px" href="/contacts/new">+ Добавить</a></h1>
+<form class="filters" method="get" id="flt"><input name="q" value="{{ f.q }}" placeholder="Имя, почта, телефон, компания">
+<select name="kind"><option value="">Все</option>{% for k, t in [('new','Новые (30 дней)'),('paid','Оплатили'),('repeat','Повторные (2+ оплаты)'),('unpaid','Не оплатили')] %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ t }}</option>{% endfor %}</select>
+<select name="stage"><option value="">Любой этап</option>{% for x in STAGES %}<option {{ 'selected' if f.stage == x }}>{{ x }}</option>{% endfor %}</select>
+<select name="source"><option value="">Все источники</option>{% for x in sources %}<option {{ 'selected' if f.source == x }}>{{ x }}</option>{% endfor %}</select>
+<input name="region" value="{{ f.region }}" placeholder="Регион" style="flex:0 1 140px"><input name="tag" value="{{ f.tag }}" placeholder="Тег" style="flex:0 1 120px">
+<select name="idle"><option value="">Любая активность</option>{% for k in ['7','30','90'] %}<option value="{{ k }}" {{ 'selected' if f.idle == k }}>Нет активности {{ k }}+ дней</option>{% endfor %}</select>
+<button class="btn">Показать</button><a class="btn l" href="/contacts.csv?{% for k, v in f.items() if v %}{{ k }}={{ v|urlencode }}&{% endfor %}">Excel (CSV)</a></form>
+{% if segs %}<div class="periods">{% for sg in segs %}<a href="/contacts?{% for k, v in (sg.filters|fromjson).items() if v %}{{ k }}={{ v|urlencode }}&{% endfor %}">★ {{ sg.name }}</a>{% endfor %}</div>{% endif %}
+<div class="tw"><table class="cards"><thead><tr><th>Клиент</th><th>Этап</th><th>Источник</th><th>Регион / теги</th><th>Активность</th></tr></thead>
+{% for c in rows %}<tr><td class="first"><a href="/contacts/{{ c.id }}">{{ c.title }}</a>{% if c.company %}<br><small>{{ c.company }}</small>{% endif %}{% if c.phone %}<br><small>{{ c.phone }}</small>{% endif %}</td>
+<td data-l="Этап">{% if c.deals %}{{ stage(c.deals[0].stage) }}{% else %}—{% endif %}</td><td data-l="Источник">{{ c.source or '—' }}</td>
+<td data-l="Регион / теги">{{ c.region or '' }}{% for t in c.tag_list %} <span class="tag">{{ t }}</span>{% endfor %}</td><td data-l="Активность">{{ c.last_activity|dt }}</td></tr>
+{% else %}<tr><td class="first muted">Никого не найдено</td></tr>{% endfor %}</table></div>
+<details class="more card"><summary>Сохранить как сегмент / рассылка по выборке</summary>
+<form method="post" action="/segments" class="row2" style="margin:8px 0"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="filters" value="{{ f|tojson|forceescape }}">
+<input name="name" placeholder="Название сегмента, например «Не оплатили, Яндекс»"><button class="btn l" style="flex:0 0 auto">Сохранить сегмент</button></form>
+{% if me.role == 'admin' %}<form method="post" action="/mail"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="filters" value="{{ f|tojson|forceescape }}">
+<label>Тема письма<input name="subject" style="width:100%"></label><label>Текст<textarea name="body" placeholder="Письмо уйдёт всем клиентам этой выборки, у кого есть почта"></textarea></label>
+<button class="btn" onclick="return confirm('Отправить письмо {{ rows|selectattr('email')|list|length }} клиентам?')">Отправить рассылку ({{ rows|selectattr('email')|list|length }})</button></form>{% endif %}</details>
+{% endblock %}

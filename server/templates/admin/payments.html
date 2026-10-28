@@ -1,0 +1,10 @@
+{% extends "admin/_base.html" %}{% block title %}Оплаты{% endblock %}{% block body %}
+<h1>Оплаты <small>оплачено {{ total|rub }} ₽</small></h1>
+<form class="filters" method="get"><select name="s"><option value="">Все статусы</option>{% for k, t in [('paid','Оплачен'),('pending','Ожидает'),('canceled','Отменён')] %}<option value="{{ k }}" {{ 'selected' if s == k }}>{{ t }}</option>{% endfor %}</select>
+<select name="p">{% for k, t in [('7','7 дней'),('30','30 дней'),('90','90 дней'),('365','Год'),('all','Всё время')] %}<option value="{{ k }}" {{ 'selected' if period == k }}>{{ t }}</option>{% endfor %}</select>
+<button class="btn">Показать</button><a class="btn l" href="/admin/export/payments.csv">Excel (CSV)</a></form>
+<div class="tw"><table class="cards"><thead><tr><th>Дата</th><th>Клиент</th><th>Что</th><th class="r">Сумма</th><th>Статус</th><th>Провайдер · способ</th></tr></thead>
+{% for p, email in rows %}<tr><td class="first">{{ p.created.strftime('%d.%m.%Y %H:%M') }}</td><td data-l="Клиент"><a href="/admin/clients/{{ p.user_id }}">{{ email }}</a></td>
+<td data-l="Что">{% if p.kind == 'pack' %}Пакет {{ p.qty }}{% else %}Генерация №{{ p.generation_id }}{% endif %}</td><td class="r" data-l="Сумма">{{ p.amount_rub|rub }} ₽</td>
+<td data-l="Статус"><span class="tag {{ p.status }}">{{ p.status }}</span></td><td data-l="Способ">{{ p.provider }} · {{ METHODS.get(p.method or '', p.method or '—') }}</td></tr>{% else %}<tr><td class="first muted">Платежей нет</td></tr>{% endfor %}</table></div>
+{% endblock %}

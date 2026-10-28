@@ -67,7 +67,9 @@ class YooKassaProvider(PaymentProvider):
         with self._client() as c:
             r = c.get(f"{self.API}/{provider_id}")
             r.raise_for_status()
-            st = r.json().get("status")
+            data = r.json()
+        st = data.get("status")
+        self.last_method = ((data.get("payment_method") or {}).get("type") or "")[:40]      # для CRM: bank_card, sbp, yoo_money …
         return {"succeeded": "paid", "canceled": "canceled"}.get(st, "pending")
 
 

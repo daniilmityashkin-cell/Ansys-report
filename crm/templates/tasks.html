@@ -1,0 +1,7 @@
+{% extends "_base.html" %}{% from "_macros.html" import task_row %}{% block title %}Задачи{% endblock %}{% block body %}
+<h1>Задачи</h1><div class="periods"><a href="/tasks?v=my" class="{{ 'on' if v == 'my' }}">Мои</a><a href="/tasks?v=all" class="{{ 'on' if v == 'all' }}">Все открытые</a><a href="/tasks?v=done" class="{{ 'on' if v == 'done' }}">Выполненные</a></div>
+<form method="post" action="/tasks" class="card row2"><input type="hidden" name="csrf" value="{{ csrf }}"><input name="title" placeholder="Новая задача"><input type="datetime-local" name="due" style="flex:0 1 200px">
+<select name="assignee_id" style="flex:0 1 180px">{% for x in managers %}<option value="{{ x.id }}" {{ 'selected' if x.id == me.id }}>{{ x.name or x.email }}</option>{% endfor %}</select>
+<select name="priority" style="flex:0 1 130px"><option value="normal">Обычная</option><option value="high">Срочная</option></select><button class="btn" style="flex:0 0 auto">Добавить</button></form>
+<div class="card">{% for t in rows %}{{ task_row(t, csrf) }}{% else %}<p class="muted">Пусто</p>{% endfor %}</div>
+{% endblock %}

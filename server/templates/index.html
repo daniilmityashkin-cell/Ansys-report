@@ -37,4 +37,16 @@
 
 <section class="cta"><h2>Проверьте свои замеры за минуту</h2><p>Регистрация и первая проверка бесплатны.</p>
 {% if user %}<a class="btn" href="/studio">Новая генерация</a>{% else %}<a class="btn" href="/register">Создать аккаунт</a>{% endif %}</section>
+
+<section class="sec" id="lead"><h2>Нужна консультация или расчёт под ваш резервуар?</h2><p>Оставьте контакты — инженер свяжется с вами в рабочее время.</p></section>
+{% set lead = request.query_params.get('lead') %}
+{% if lead == 'ok' %}<div class="card" style="max-width:640px;margin:0 auto;text-align:center"><b>Спасибо! Заявка принята.</b><p class="muted" style="margin:6px 0 0">Мы свяжемся с вами в ближайшее время.</p></div>
+{% else %}<form class="card lead-form" method="post" action="/lead" style="max-width:640px;margin:0 auto"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% if lead == 'bad' %}<div class="err">Укажите телефон или корректную почту.</div>{% endif %}
+<div class="grid"><div><label>Имя</label><input type="text" name="name" autocomplete="name"></div><div><label>Телефон</label><input type="text" name="phone" inputmode="tel" autocomplete="tel"></div>
+<div><label>Почта</label><input type="email" name="email" autocomplete="email"></div><div><label>Компания</label><input type="text" name="company" autocomplete="organization"></div></div>
+<label>Что нужно рассчитать</label><textarea name="message" placeholder="Тип и объём резервуара, что есть из исходных данных"></textarea>
+<input type="text" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+<p class="muted" style="font-size:12.5px">Отправляя заявку, вы соглашаетесь на <a href="/privacy">обработку персональных данных</a>.</p>
+<p><button class="btn">Оставить заявку</button></p></form>{% endif %}
 {% endblock %}

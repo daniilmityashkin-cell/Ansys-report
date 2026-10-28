@@ -1,0 +1,29 @@
+{% extends "admin/_base.html" %}{% block title %}Сводка{% endblock %}{% block body %}
+<div class="periods">{% for k, t in [('7','7 дней'),('30','30 дней'),('90','90 дней'),('365','Год'),('all','Всё время')] %}<a href="/admin?p={{ k }}" class="{{ 'on' if period == k }}">{{ t }}</a>{% endfor %}</div>
+<div class="kpis">
+<div class="kpi acc"><small>Выручка</small><b>{{ d.revenue|rub }} ₽</b></div>
+<div class="kpi"><small>Оплат</small><b>{{ d.paid_n }}</b></div>
+<div class="kpi"><small>Средний чек</small><b>{{ d.avg|rub }} ₽</b></div>
+<div class="kpi"><small>Посетители</small><b>{{ d.visitors }}</b></div>
+<div class="kpi"><small>Регистрации</small><b>{{ d.regs }}</b></div>
+<div class="kpi"><small>Заказы (замеры)</small><b>{{ d.gens }}</b></div>
+<div class="kpi"><small>Запущено отчётов</small><b>{{ d.started }}</b></div>
+<div class="kpi"><small>Платящих клиентов</small><b>{{ d.payers }}</b></div>
+</div>
+<div class="grid2">
+<div class="card funnel"><h2>Воронка (зарегистрированные за период)</h2>
+{% for name, n, w, p in d.funnel %}<div class="row"><span>{{ name }}</span><div class="bar"><i style="width:{{ w }}%"></i></div><span class="n">{{ n }} · {{ p }}</span></div>{% endfor %}</div>
+<div class="card"><h2>Конверсия</h2><div class="conv">{% for name, v in d.conv %}<span>{{ name }}</span><b>{{ v }}</b>{% endfor %}</div>
+{% if d.methods %}<h2 style="margin-top:16px">Как платят</h2><div class="conv">{% for k, n, s in d.methods %}<span>{{ k }}</span><b>{{ n }} · {{ s|rub }} ₽</b>{% endfor %}</div>{% endif %}</div>
+</div>
+<div class="card"><h2>Выручка и регистрации по дням</h2>
+<div class="chart">{% for day, rev, rg in d.chart %}<div title="{{ day }}: {{ rev|rub }} ₽, регистраций {{ rg }}"><i style="height:{{ (rev / d.chart_max * 100)|round(1) }}%"></i><em style="height:{{ (rg / d.regs_max * 25)|round(1) }}%"></em></div>{% endfor %}</div>
+<div class="chart-x"><span>{{ d.chart[0][0] }}</span><span>{{ d.chart[-1][0] }}</span></div>
+<div class="legend"><b style="background:var(--accent)"></b>выручка<b style="background:var(--blue)"></b>регистрации</div></div>
+<div class="card"><h2>Источники лидов</h2><div class="tw"><table class="cards"><thead><tr><th>Источник</th><th class="r">Посетители</th><th class="r">Регистрации</th><th class="r">Визит→рег.</th><th class="r">Оплатили</th><th class="r">Рег.→оплата</th><th class="r">Выручка</th></tr></thead>
+{% for r in d.sources %}<tr><td class="first">{{ r.source }}</td><td class="r" data-l="Посетители">{{ r.visitors }}</td><td class="r" data-l="Регистрации">{{ r.regs }}</td><td class="r" data-l="Визит→рег.">{{ r.conv_visit }}</td>
+<td class="r" data-l="Оплатили">{{ r.payers }}</td><td class="r" data-l="Рег.→оплата">{{ r.conv }}</td><td class="r" data-l="Выручка">{{ r.revenue|rub }} ₽</td></tr>{% else %}<tr><td class="first muted">Пока нет данных</td></tr>{% endfor %}</table></div>
+<p class="muted" style="font-size:12.5px;margin:8px 0 0">Источник берётся из ссылки с метками (?utm_source=…&utm_medium=…&utm_campaign=…) или из сайта, с которого перешли. Для рекламы ставьте ссылки с utm-метками.</p></div>
+<div class="card"><h2>Последние действия</h2><ul class="feed">{% for e in d.feed %}<li><time>{{ e.t.strftime('%d.%m %H:%M') }}</time><span>{{ e.label }}{% if e.email %} · <a href="/admin/clients/{{ e.user_id }}">{{ e.email }}</a>{% endif %}</span>{% if e.meta or e.source %}<span class="m">{{ e.meta }}{% if e.source and e.kind in ('visit','register') %} · {{ e.source }}{% endif %}</span>{% endif %}</li>{% endfor %}</ul>
+<p><a class="btn l" href="/admin/events">Все события</a></p></div>
+{% endblock %}

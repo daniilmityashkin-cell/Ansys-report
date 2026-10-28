@@ -26,6 +26,7 @@ from ansys_report import report_input as RI
 from .structinput import DEFAULTS as SDEFAULTS, SHAPES, ROOF_SHAPES
 from .payments import get_provider, settle
 from .jobs import JobRunner
+from . import crm
 
 HERE = Path(__file__).parent
 PUBLIC_FILE_EXT = {".docx", ".step", ".igs", ".csv", ".json", ".html", ".png", ".py", ".txt", ".bat", ".wbjn"}
@@ -61,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not g:
                 return
             g.status, g.error = ("done", "") if not error else ("error", error)
+            crm.log(db, "job_error" if error else "job_done", user_id=g.user_id, commit=False, generation=gid, error=error[:200] if error else "")
             if error and g.charged == "credit":                      # ошибка расчёта: генерация возвращается в пакет
                 u = db.get(User, g.user_id)
                 u.credits = (u.credits or 0) + 1
@@ -105,8 +107,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return db.get(User, uid) if uid else None
 
     def render(request: Request, name: str, user=None, status_code: int = 200, **ctx):
-        return templates.TemplateResponse(request, name, {"user": user, "csrf": csrf_token(request.session), "st": st, **ctx},
+        if request.method == "GET":                                   # CRM: источник первого захода и визит (раз в сутки)
+            if "vid" not in request.session or request.session.get("vday") != now().date().isoformat():
+                with Session() as db:
+                    crm.touch(request, db)
+        is_admin = bool(user and user.email.lower() in st.admin_emails)
+        return templates.TemplateResponse(request, name, {"user": user, "csrf": csrf_token(request.session), "st": st, "is_admin": is_admin, **ctx},
                                           status_code=status_code)
+
+    def keep_tracking(request: Request) -> dict:
+        """Сессия очищается при входе - источник и id посетителя сохраняем."""
+        return {k: request.session[k] for k in ("vid", "src", "vday") if k in request.session}
 
     def deny_csrf(request: Request, token: str | None):
         return None if csrf_ok(request.session, token) else HTMLResponse("Сессия устарела. Обновите страницу.", status_code=400)
@@ -162,10 +173,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if err:
                 return render(request, "register.html", error=err, email=email, status_code=400)
             u = User(email=email, email_key=key, reg_ip=ip, password_hash=hash_password(password), consent_at=now())
+            crm.apply_source(u, request)
             db.add(u)
             db.commit()
+            keep = keep_tracking(request)
             request.session.clear()
+            request.session.update(keep)
             request.session["uid"] = u.id
+            crm.log(db, "register", user_id=u.id, request=request, path="/register")
         return RedirectResponse("/cabinet", status_code=303)
 
     @app.get("/login", response_class=HTMLResponse)
@@ -187,8 +202,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 limiter.fail(key)
                 return render(request, "login.html", error="Неверная почта или пароль.", email=email, status_code=400)
             limiter.ok(key)
+            keep = keep_tracking(request)
             request.session.clear()
+            request.session.update(keep)
             request.session["uid"] = u.id
+            crm.log(db, "login", user_id=u.id, request=request, path="/login")
         return RedirectResponse("/cabinet", status_code=303)
 
     @app.post("/logout")
@@ -256,6 +274,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                        data_key=data_key(project))
         db.add(g)
         db.commit()
+        crm.log(db, "generation", user_id=u.id, generation=g.id, title=g.title, with_loads=bool(loads_input))
         d = gen_dir(g.id)
         d.mkdir(parents=True, exist_ok=True)
         (d / "input.json").write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
@@ -596,6 +615,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 project = json.loads((gen_dir(g.id) / "input.json").read_text(encoding="utf-8-sig"))
                 loads_in = _with_report_overrides(g.id, build_loads_input(lform, project))
                 (gen_dir(g.id) / "loads_input.json").write_text(json.dumps(loads_in, ensure_ascii=False), encoding="utf-8")
+                crm.log(db, "loads", user_id=u.id, request=request, generation=g.id)
             except Exception as e:  # noqa: BLE001
                 from urllib.parse import quote
                 return RedirectResponse(f"/g/{gid}?loads_error={quote(str(e)[:250])}#loads", status_code=303)
@@ -645,6 +665,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse(f"/g/{gid}?report_error={quote(' '.join(errors)[:380])}#report", status_code=303)
             prev = (d / "report_input.json").read_text(encoding="utf-8") if (d / "report_input.json").exists() else None
             (d / "report_input.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            crm.log(db, "report_data", user_id=u.id, request=request, generation=g.id, missing=len(RI.missing(data)))
             lp = d / "loads_input.json"
             if lp.exists():
                 try:
@@ -730,6 +751,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse(f"/g/{g.id}", status_code=303)
             if (gen_dir(g.id) / "loads_input.json").exists() and RI.missing(_report_data(g.id)):     # отчёт не собирается без данных заказчика
                 return RedirectResponse(f"/g/{g.id}#report", status_code=303)
+            crm.log(db, "pay_start", user_id=u.id, request=request, commit=False, generation=g.id, mode=mode)
             if mode in ("credit", "free", "unlimited"):         # из пакета, первая бесплатная и безлимитный аккаунт - без платежа
                 if mode == "credit":
                     u.credits = u.credit_count - 1
@@ -805,6 +827,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             u, g = _owned(db, request, gid)
             if not u or not g or g.status != "done":
                 return HTMLResponse("Недоступно", status_code=404)
+            crm.log(db, "download", user_id=u.id, request=request, generation=g.id)
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
                 for n in _files(g.id):
@@ -858,6 +881,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"error": "forbidden"}, status_code=403)
         body = await request.json()
         rec = {"stage": str(body.get("stage", ""))[:30], "message": str(body.get("message", ""))[:500], "updated": time.time()}
+        prev = agent_state(gid).get("stage")
+        if rec["stage"] != prev:                                      # CRM: только смена этапа помощника
+            with Session() as db:
+                g = db.get(Generation, gid)
+                crm.log(db, "agent", user_id=g.user_id if g else None, generation=gid, stage=rec["stage"])
         (agent_dir(gid) / "status.json").write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
         return JSONResponse({"ok": True})
 
@@ -927,6 +955,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def _apply_payment(db, p: Payment) -> str:
         applied = settle(db, p)
+        if applied:
+            if p.provider == "fake" and not p.method:
+                p.method = "fake"
+            crm.log(db, "paid", user_id=p.user_id, commit=False, payment=p.id, amount=p.amount_rub, provider=p.provider, method=p.method,
+                    what=("пакет %s" % p.qty) if p.kind == "pack" else "генерация №%s" % p.generation_id)
         db.commit()
         if p.kind == "generation" and p.generation_id:
             g = db.get(Generation, p.generation_id)
@@ -947,9 +980,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if not p.provider_id:
                     continue
                 try:
-                    verdict = get_provider(p.provider).verify(p.provider_id)
+                    prov = get_provider(p.provider)
+                    verdict = prov.verify(p.provider_id)
                 except Exception:   # noqa: BLE001  (провайдер недоступен - попробуем в следующий раз)
                     continue
+                if getattr(prov, "last_method", ""):
+                    p.method = prov.last_method
                 if verdict == "paid":
                     _apply_payment(db, p)
                     n += 1
@@ -972,6 +1008,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         threading.Thread(target=loop, daemon=True, name="payments-reconciler").start()
         return stop
     app.state.start_reconciler = start_reconciler
+
+    def start_crm_sync(interval_s: float = 10.0):
+        """Фоновая отправка событий в CRM (если ASR_CRM_URL и ASR_CRM_TOKEN заданы)."""
+        import threading
+        from .crm_sync import push
+        stop = threading.Event()
+
+        def loop():
+            while not stop.wait(interval_s):
+                try:
+                    push(Session, st.crm_url, st.crm_token)
+                except Exception:   # noqa: BLE001
+                    pass
+        if st.crm_url and st.crm_token:
+            threading.Thread(target=loop, daemon=True, name="crm-sync").start()
+        return stop
+    app.state.start_crm_sync = start_crm_sync
+
+    @app.post("/lead")
+    def lead_form(request: Request, csrf: str = Form(""), name: str = Form(""), phone: str = Form(""), email: str = Form(""),
+                  company: str = Form(""), message: str = Form(""), website: str = Form("")):
+        """Заявка с сайта («Оставить заявку»): в CRM как новый лид. website - поле-ловушка для ботов (люди его не видят)."""
+        bad = deny_csrf(request, csrf)
+        if bad:
+            return bad
+        phone, email = phone.strip()[:40], email.strip()[:254]
+        if website or not (phone or valid_email(email)):
+            return RedirectResponse("/?lead=bad#lead", status_code=303)
+        if request.session.get("leads", 0) >= 5:
+            return RedirectResponse("/?lead=ok#lead", status_code=303)
+        request.session["leads"] = request.session.get("leads", 0) + 1
+        src = request.session.get("src") or {}
+        with Session() as db:
+            crm.log(db, "lead", user_id=request.session.get("uid"), request=request, path="/", name=name.strip()[:200], phone=phone, email=email,
+                    company=company.strip()[:200], message=message.strip()[:2000], form="главная: оставить заявку", page=src.get("landing") or "/",
+                    utm_source=src.get("source"), utm_medium=src.get("medium"), utm_campaign=src.get("campaign"), referrer=src.get("referrer"))
+        return RedirectResponse("/?lead=ok#lead", status_code=303)
 
     @app.post("/webhooks/yookassa")
     async def yookassa_webhook(request: Request):
@@ -1017,6 +1090,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if n not in st.packs:
                 return RedirectResponse("/packs", status_code=303)
             p = Payment(user_id=u.id, kind="pack", qty=n, amount_rub=st.packs[n], provider=st.payment_provider)
+            crm.log(db, "pack_start", user_id=u.id, request=request, commit=False, qty=n, amount=st.packs[n])
             db.add(p)
             db.flush()
             url = get_provider(st.payment_provider).create(p, f"{st.base_url}/packs", f"Пакет {n} генераций")
@@ -1039,6 +1113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for g in db.scalars(select(Generation).where(Generation.status.in_(("paid", "running")))).all():
                 start_job(db, g)
     app.state.recover = recover
+    crm.install(app, Session, current_user, templates, csrf_token, csrf_ok, st)
     return app
 
 

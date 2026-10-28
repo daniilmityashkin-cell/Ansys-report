@@ -139,7 +139,7 @@ class Report:
         # рисунки как в эталоне из export_figures.py: figures/fig01.png … (fig_stabN -> fig14…) - приоритетнее старых снимков
         m = re.match(r"fig_stab(\d+)$", key)
         short = f"fig{13 + int(m.group(1)):02d}" if m else key.split("_")[0]
-        for ext in (".png", ".jpg", ".jpeg"):
+        for ext in (() if short in ("fig04", "fig05") else (".png", ".jpg", ".jpeg")):     # рис. 4 и 5 - наши схемы нагрузок, не снимки Ansys
             f = self.p.root / "figures" / f"{short}{ext}"
             if f.exists():
                 return f
@@ -410,7 +410,12 @@ class Report:
         L(f"гидростатическое давление продукта плотностью {fmt(rho, 0)} кг/м3, высота налива продукта {fmt(fill)} м.")
         L("вес металлоконструкций стенки, задан с помощью приложения ускорения свободного падения,")
         r = float(t["diameter"]) / 2000
-        if rd.get("snow_kpa") is not None:
+        if rd.get("snow_line_n_m"):                      # погонная сила задана заказчиком (по КМД), как в эталоне
+            F = rd["snow_line_n_m"]
+            L(f"расчетная снеговая нагрузка {g3(rd.get('snow_kpa'))} кПа согласно КМД, приложенная к верхней грани стенки РВС, расчетное значение "
+              "снеговой нагрузки согласно ГОСТ Р 58622-2019, ф. 87:")
+            self.formula(["Fсн = ", ("r∙S", "2"), " = ", (f"{trim(r, 3)}∙{fmt(2 * F / r, 0)}", "2"), f" = {fmt(F, 0)} Н/м."])
+        elif rd.get("snow_kpa") is not None:
             S = rd["snow_gf"] * CE * rd["snow_kpa"] * 1000
             L(f"расчетная снеговая нагрузка {g3(rd['snow_kpa'])} кПа, приложенная к верхней грани стенки РВС, расчетное значение снеговой нагрузки "
               "согласно ГОСТ Р 58622-2019, ф. 87:")

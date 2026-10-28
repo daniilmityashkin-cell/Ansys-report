@@ -40,6 +40,10 @@ class Settings:
     first_generation_free: bool = field(default_factory=lambda: _bool("ASR_FIRST_FREE", False))  # первая генерация на аккаунте бесплатна
     unlimited_emails: frozenset = field(default_factory=lambda: frozenset(
         e.strip().lower() for e in os.environ.get("ASR_UNLIMITED_EMAILS", "").split(",") if e.strip()))   # аккаунты без лимита генераций (владелец, тесты)
+    admin_emails: frozenset = field(default_factory=lambda: frozenset(
+        e.strip().lower() for e in os.environ.get("ASR_ADMIN_EMAILS", "").split(",") if e.strip()))      # доступ в CRM /admin
+    crm_url: str = field(default_factory=lambda: os.environ.get("ASR_CRM_URL", "").strip())        # CRM (crm/): адрес, например http://127.0.0.1:8100
+    crm_token: str = field(default_factory=lambda: os.environ.get("ASR_CRM_TOKEN", "").strip())    # токен API CRM (CRM_API_TOKEN)
     workers: int = field(default_factory=lambda: int(os.environ.get("ASR_WORKERS", "2")))
 
     def __post_init__(self):

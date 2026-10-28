@@ -1,0 +1,20 @@
+{% extends "_base.html" %}{% block title %}Настройки{% endblock %}{% block body %}
+<h1>Настройки</h1>
+<div class="card"><h2>Автоматические сценарии</h2><form method="post" action="/settings/rules"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% for k, t, on in rules %}<label class="acts" style="border:0;padding:4px 0;display:flex"><input type="checkbox" name="{{ k }}" value="1" {{ 'checked' if on }}> {{ t }}</label>{% endfor %}
+<p class="muted" style="font-size:12.5px">Сроки: «связаться» — {{ st.lead_call_minutes }} мин (CRM_LEAD_CALL_MIN), «не оплатил» — {{ st.unpaid_hours }} ч (CRM_UNPAID_HOURS).</p>
+<button class="btn">Сохранить</button></form></div>
+<div class="card"><h2>Интеграции</h2><div class="kv">
+<span>Сайт → CRM</span><span>адрес API: <code>{{ st.public_url }}/api/v1/events</code>, заявки с форм: <code>{{ st.public_url }}/api/v1/leads</code></span>
+<span>Токен API</span><span><code>{{ st.api_token[:4] }}…{{ st.api_token[-4:] }}</code> (полностью — в crm_data/api_token.txt или CRM_API_TOKEN; на сайте — ASR_CRM_TOKEN)</span>
+<span>Telegram</span><span>{{ 'подключён' if tg_on else 'не настроен (CRM_TG_TOKEN, CRM_TG_CHAT)' }}</span>
+<span>Почта</span><span>{{ 'подключена' if mail_on else 'не настроена (CRM_SMTP_HOST, CRM_SMTP_USER, CRM_SMTP_PASSWORD, CRM_MAIL_FROM)' }}</span>
+<span>Оплаты</span><span>приходят с сайта (ЮKassa → сайт → CRM)</span><span>Телефония, 1С</span><span>через тот же API заявок/событий (подключим по запросу)</span></div>
+<form method="post" action="/settings/test" style="margin-top:10px"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn l">Отправить тестовое уведомление</button></form></div>
+<div class="card"><h2>Менеджеры</h2><div class="tw"><table class="cards"><thead><tr><th>Почта</th><th>Имя</th><th>Роль</th><th></th></tr></thead>
+{% for x in managers %}<tr><td class="first">{{ x.email }}</td><td data-l="Имя">{{ x.name }}</td><td data-l="Роль">{{ 'администратор' if x.role == 'admin' else 'менеджер' }}{% if not x.active %} · отключён{% endif %}</td>
+<td>{% if x.id != me.id %}<form method="post" action="/settings/managers"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="toggle" value="{{ x.id }}"><button class="btn l">{{ 'Отключить' if x.active else 'Включить' }}</button></form>{% endif %}</td></tr>{% endfor %}</table></div>
+<form method="post" action="/settings/managers" class="form-grid" style="margin-top:10px"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>Почта<input name="email" type="email"></label><label>Имя<input name="name"></label><label>Пароль (от 8 символов)<input name="password" type="password"></label>
+<label>Роль<select name="role"><option value="manager">Менеджер</option><option value="admin">Администратор</option></select></label><p><button class="btn">Добавить</button></p></form></div>
+{% endblock %}

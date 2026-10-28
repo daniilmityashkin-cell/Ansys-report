@@ -21,6 +21,16 @@ class User(Base):
     email_key: Mapped[str | None] = mapped_column(String(254), nullable=True, index=True)  # почта без псевдонимов (точки, +метки): защита от дублей
     reg_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     credits: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)          # остаток генераций из купленных пакетов
+    # CRM: откуда пришёл (первое касание), статус и заметка менеджера
+    source: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)     # utm_source или домен перехода; «прямой заход»
+    utm_medium: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    utm_campaign: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    referrer: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    landing: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    crm_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    crm_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
     generations: Mapped[list["Generation"]] = relationship(back_populates="user")
 
     @property
@@ -56,3 +66,18 @@ class Payment(Base):
     provider_id: Mapped[str] = mapped_column(String(100), default="")
     created: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     paid_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    method: Mapped[str | None] = mapped_column(String(40), nullable=True)                  # способ оплаты у провайдера: bank_card, sbp, …
+
+
+class Event(Base):
+    """Действия посетителей и клиентов для CRM: визит, регистрация, заказ, нагрузки, оплата, готовый отчёт …"""
+    __tablename__ = "events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created: Mapped[dt.datetime] = mapped_column(DateTime, default=now, index=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    visitor: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)    # анонимный id посетителя (сессия)
+    source: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    path: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    meta: Mapped[str] = mapped_column(Text, default="{}")
+    sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)   # отправлено в CRM (crm_sync)

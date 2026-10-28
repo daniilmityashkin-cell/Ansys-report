@@ -1,0 +1,24 @@
+{% extends "admin/_base.html" %}{% block title %}{{ c.email }}{% endblock %}{% block body %}
+<p><a class="muted" href="/admin/clients">← Клиенты</a></p>
+<h1>{{ c.email }} <span class="tag {{ status }}">{{ status }}</span></h1>
+<div class="kpis"><div class="kpi acc"><small>Оплачено</small><b>{{ paid_sum|rub }} ₽</b></div><div class="kpi"><small>Заказов</small><b>{{ gens|length }}</b></div>
+<div class="kpi"><small>Генераций в пакете</small><b>{{ c.credit_count }}</b></div><div class="kpi"><small>С нами с</small><b style="font-size:18px">{{ c.created.strftime('%d.%m.%Y') }}</b></div></div>
+<div class="grid2">
+<div class="card"><h2>Откуда пришёл</h2><div class="kv"><span>Источник</span><span>{{ c.source or '—' }}</span><span>utm_medium</span><span>{{ c.utm_medium or '—' }}</span>
+<span>utm_campaign</span><span>{{ c.utm_campaign or '—' }}</span><span>Переход с</span><span style="word-break:break-all">{{ c.referrer or '—' }}</span><span>Страница входа</span><span>{{ c.landing or '—' }}</span>
+<span>IP регистрации</span><span>{{ c.reg_ip or '—' }}</span></div></div>
+<div class="card"><h2>Карточка</h2><form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><div class="form-grid">
+<label>Статус<select name="crm_status"><option value="">Автоматически</option>{% for x in STATUSES %}<option {{ 'selected' if c.crm_status == x }}>{{ x }}</option>{% endfor %}</select></label>
+<label>Выдать генерации (можно минус)<input name="add_credits" inputmode="numeric" placeholder="0"></label>
+<label>Телефон<input name="phone" value="{{ c.phone or '' }}" inputmode="tel"></label><label>Компания<input name="company" value="{{ c.company or '' }}"></label></div>
+<label>Заметка<textarea name="crm_note" placeholder="Договорённости, контакты, что предложить">{{ c.crm_note or '' }}</textarea></label>
+<p style="margin:8px 0 0"><button class="btn">Сохранить</button></p></form></div>
+</div>
+<div class="card"><h2>Заказы</h2><div class="tw"><table class="cards"><thead><tr><th>№</th><th>Резервуар</th><th>Статус</th><th>Оплата</th><th>Создан</th></tr></thead>
+{% for g in gens %}<tr><td class="first">№{{ g.id }}</td><td data-l="Резервуар">{{ g.title }}</td><td data-l="Статус"><span class="tag {{ g.status }}">{{ g.status }}</span></td>
+<td data-l="Оплата">{{ g.charged or '—' }}</td><td data-l="Создан">{{ g.created.strftime('%d.%m.%Y %H:%M') }}</td></tr>{% else %}<tr><td class="first muted">Заказов нет</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h2>Платежи</h2><div class="tw"><table class="cards"><thead><tr><th>Дата</th><th>Что</th><th class="r">Сумма</th><th>Статус</th><th>Способ</th></tr></thead>
+{% for p in pays %}<tr><td class="first">{{ p.created.strftime('%d.%m.%Y %H:%M') }}</td><td data-l="Что">{% if p.kind == 'pack' %}Пакет {{ p.qty }}{% else %}Генерация №{{ p.generation_id }}{% endif %}</td>
+<td class="r" data-l="Сумма">{{ p.amount_rub|rub }} ₽</td><td data-l="Статус"><span class="tag {{ p.status }}">{{ p.status }}</span></td><td data-l="Способ">{{ p.provider }} · {{ METHODS.get(p.method or '', p.method or '—') }}</td></tr>{% else %}<tr><td class="first muted">Платежей нет</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h2>История действий</h2><ul class="feed">{% for e in events %}<li><time>{{ e.t.strftime('%d.%m %H:%M') }}</time><span>{{ e.label }}</span>{% if e.meta %}<span class="m">{{ e.meta }}</span>{% endif %}</li>{% else %}<li class="muted">Пусто</li>{% endfor %}</ul></div>
+{% endblock %}

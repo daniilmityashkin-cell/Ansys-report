@@ -18,6 +18,8 @@ services:
         value: /tmp/asr_data
       - key: ASR_UNLIMITED_EMAILS      # почты без лимита генераций через запятую (задаётся в панели Render, в репозиторий не пишется)
         sync: false
+      - key: ASR_ADMIN_EMAILS          # доступ в CRM /admin: почты владельцев через запятую (задаётся в панели, в репозиторий не пишется)
+        sync: false
       - key: ASR_PAYMENT_PROVIDER      # демо: оплата тестовая, деньги не списываются
         value: fake
       - key: ASR_FIRST_FREE            # первая генерация на аккаунте бесплатно
