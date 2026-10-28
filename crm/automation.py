@@ -27,13 +27,15 @@ RULES = {"lead_task": "Новый лид: задача менеджеру «св
          "lead_tg": "Новый лид: уведомление команде в Telegram",
          "unpaid_task": "Нажал «Собрать отчёт», но не оплатил за N часов: задача «дожать»",
          "paid_tg": "Оплата: уведомление в Telegram",
-         "error_task": "Ошибка расчёта у клиента: срочная задача и уведомление",
+         "error_task": "Ошибка расчёта у клиента: срочная задача",
+         "error_tg": "Ошибка расчёта: уведомление в Telegram",
          "done_email": "Отчёт готов: письмо клиенту со ссылкой на сайт"}
+DEFAULT_ON = {"unpaid_task", "error_task"}      # решение владельца: без задачи «15 минут», писем и Telegram - всё видно в самой CRM
 
 
 def rule_on(db, key: str) -> bool:
     s = db.get(Setting, "rule:" + key)
-    return s is None or s.value != "0"
+    return (key in DEFAULT_ON) if s is None else s.value != "0"
 
 
 def _fmt(kind: str, meta: dict) -> str:
@@ -186,6 +188,7 @@ def handle_event(db, ev: dict, notifier, st) -> str:
     if kind == "job_error" and rule_on(db, "error_task"):
         d, _ = open_deal(db, c)
         task(db, f"Ошибка расчёта у клиента (заказ №{gen}) — разобраться и связаться", c, d, minutes=60, auto="job_error", priority="high")
+    if kind == "job_error" and rule_on(db, "error_tg"):
         notifier.telegram(f"⚠️ Ошибка расчёта у {c.title}, заказ №{gen}: {meta.get('error', '')}")
     return "ok"
 

@@ -10,10 +10,31 @@ from crm.models import Contact, Deal, Task
 TOKEN = "test-token-123"
 
 
-def _crm(tmp_path):
+def _crm(tmp_path, all_rules=True):
     app = create_app(Settings(data_dir=tmp_path / "crm", api_token=TOKEN, admin_email="boss@example.com", admin_password="secret-pass-1",
                               send_inline=True, public_url="http://crm.local", site_url="http://site.local"))
+    if all_rules:                                       # сценарии уведомлений по умолчанию выключены - для проверки включаем все
+        from crm.automation import RULES
+        from crm.models import Setting
+        with app.state.Session() as db:
+            for k in RULES:
+                db.merge(Setting(key="rule:" + k, value="1"))
+            db.commit()
     return app
+
+
+def test_default_rules_quiet(tmp_path):
+    """По умолчанию: без задачи «связаться за 15 минут», без писем и Telegram; задача «не оплатил» и ошибка расчёта - остаются."""
+    app = _crm(tmp_path, all_rules=False)
+    api = TestClient(app)
+    H = {"Authorization": f"Bearer {TOKEN}"}
+    api.post("/api/v1/events", json={"events": [ev(1, "register", U), ev(2, "pay_start", U, generation=5, mode="pay"),
+                                                ev(3, "job_error", U, generation=5, error="x"), ev(4, "paid", U, amount=1500)]}, headers=H)
+    api.post("/api/v1/leads", json={"phone": "+7 900", "name": "Лид"}, headers=H)
+    assert app.state.notifier.outbox == []
+    with app.state.Session() as db:
+        autos = sorted(t.auto for t in db.query(Task).all())
+        assert autos == ["job_error", "unpaid"]
 
 
 def _login(c, email="boss@example.com", pw="secret-pass-1"):
