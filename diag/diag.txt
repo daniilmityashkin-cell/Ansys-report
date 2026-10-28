@@ -1,0 +1,363 @@
+===== C:\ansys_report_work\model\out\log_build.txt =====
+Участков толщины: 12
+Части модели: {'band_width_mm': 1000.0, 'disc_mm': 8.0, 'band_mm': 10.0, 'annular_mm': 12.0, 'roof_mm': 7.0}
+Тел в модели: 1
+  тело Open CASCADE STEP translator 8.0 1|Surface: граней 15, площадь 2907.4 м2
+Сетка построена, размер элемента 200 мм
+Опорная полоса крыши: 1000 x 10 мм, узлов 2688
+Балки: узлов крыши 17976, узлов верхней кромки стенки 448
+Балки: секций 14, элементов 6224
+Концы радиальных балок: 24, связь RBE3 с оболочкой в радиусе 500 мм, узлов на конец 13..13
+Балки каркаса крыши добавлены в расчёт
+Материал из данных заказчика: {'e_mpa': 206000.0, 'density_kg_m3': 7850.0, 'poisson': 0.29999999999999999}
+Вес крыши: силой F = 734643.9 Н на верхнюю кромку стенки, крыша и её каркас без плотности
+Вид: Z вверх===== C:\ansys_report_work\model\out\log_loads.txt =====
+Грани: 15, масштаб координат к мм: 1, размеры модели по X/Y/Z, мм: 264 / 0 / 17880
+  грань: z 0..1490 мм, площадь 133.4 м2 -> wall
+  грань: z 1490..2980 мм, площадь 133.4 м2 -> wall
+  грань: z 2980..4470 мм, площадь 133.4 м2 -> wall
+  грань: z 4470..5960 мм, площадь 133.4 м2 -> wall
+  грань: z 5960..7450 мм, площадь 133.4 м2 -> wall
+  грань: z 7450..8940 мм, площадь 133.4 м2 -> wall
+  грань: z 8940..10430 мм, площадь 133.4 м2 -> wall
+  грань: z 10430..11920 мм, площадь 133.4 м2 -> wall
+  грань: z 11920..13410 мм, площадь 133.4 м2 -> wall
+  грань: z 13410..14900 мм, площадь 133.4 м2 -> wall
+  грань: z 14900..16390 мм, площадь 133.3 м2 -> wall
+  грань: z 16390..17880 мм, площадь 133.3 м2 -> wall
+  грань: z 0..0 мм, площадь 637.7 м2 -> bottom
+  грань: z 17880..17880 мм, площадь 650.2 м2 -> roof
+  грань: z 0..0 мм, площадь 19.0 м2 -> bottom
+Стенка: 12, крыша: 1, днище: 1, прочие (патрубки и т.п.): 0
+  (не удалось проверить прежние выборки: 'NoneType' object has no attribute 'GetChildren')
+Именованные выборки: AR_WALL=True AR_ROOF=True AR_BOTTOM=True AR_BASE_EDGE=2 рёбер
+Случай 'Эксплуатация': создан, нагрузки заданы
+Случай 'Вакуум, снег и ветер (пустой резервуар)': создан, нагрузки заданы
+Случай 'Налив 7.2 м': создан, нагрузки заданы
+Случай 'Налив 12.5 м': создан, нагрузки заданы
+Устойчивость Y: предварительное нагружение связано
+Устойчивость: ветер Y, вектор 0.0003 МПа по оси X, большие перемещения
+Устойчивость Z: предварительное нагружение связано
+Устойчивость: ветер Z, вектор -0.0003 МПа по оси Y, большие перемещения===== C:\ansys_report_work\model\out\wb_status.txt =====
+START
+TEMPLATE OK: {'TemplateName': 'Static Structural', 'Solver': 'ANSYS'}
+MECHANICAL OPEN
+BUILD DONE
+SAVED
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\model_data.json =====
+errors:
+bodies:
+Open CASCADE STEP translator 8.0 1|Surface 16 [mm]
+p1 0.016 [m]
+p2 0.014 [m]
+p3 0.013 [m]
+p4 0.012 [m]
+p5 0.012 [m]
+p6 0.012 [m]
+p7 0.012 [m]
+p8 0.012 [m]
+p9 0.011 [m]
+p10 0.011 [m]
+p11 0.011 [m]
+p12 0.011 [m]
+dno 0.008 [m]
+okrayka 0.012 [m]
+krovlya 0.007 [m]
+belts_from_faces: True
+belt_regex: ^p\s*(\d+)$
+===== C:\ansys_report_work\model\report\log.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\wb_status.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_T-001\log.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_T-001\wb_status.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\log.txt =====
+единицы: Н, мм, МПа
+вид результатов: ExtraModelDisplay(a): attribute 'ExtraModelDisplay' of 'namespace#' object is read-only
+вид результатов: ExtraModelDisplay(b): Cannot import name ExtraModelDisplay
+вид результатов: ExtraModelDisplay сейчас ShowElements (тип ExtraModelDisplay), варианты: CompareTo, Equals, Format, GetHashCode, GetName, GetNames, GetType, GetTypeCode, GetUnderlyingType, GetValues, HasFlag, IsDefined, MemberwiseClone, NoWireframe, Parse, ReferenceEquals, ShowElements, ToBoolean, ToByte, ToChar, ToDateTime, ToDecimal, ToDouble, ToInt16, ToInt32, ToInt64, ToObject, ToSByte, ToSingle, ToString, ToType, ToUInt16, ToUInt32, ToUInt64, TryParse, UndeformedModel, UndeformedWireframe
+вид результатов: без каркаса сетки (ExtraModelDisplay(c))
+Найдено поясов: 12
+картинки: report; в отчёт: AR: Эксплуатация, AR: Вакуум, снег и ветер (пустой резервуар)
+AR: Эксплуатация: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Эксплуатация: после решения статус: Done
+AR: Эксплуатация: статус решения: Done
+AR: Эксплуатация: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Эксплуатация: выгружено 12 поясов
+AR: Вакуум, снег и ветер (пустой резервуар): расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Вакуум, снег и ветер (пустой резервуар): после решения статус: Done
+AR: Вакуум, снег и ветер (пустой резервуар): статус решения: Done
+AR: Вакуум, снег и ветер (пустой резервуар): статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-1\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Вакуум, снег и ветер (пустой резервуар): выгружено 12 поясов
+AR: Налив 7.2 м: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Налив 7.2 м: после решения статус: Done
+AR: Налив 7.2 м: статус решения: Done
+AR: Налив 7.2 м: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-2\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Налив 7.2 м: выгружено 12 поясов
+AR: Налив 12.5 м: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Налив 12.5 м: после решения статус: Done
+AR: Налив 12.5 м: статус решения: Done
+AR: Налив 12.5 м: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-3\MECH\
+  файлов в папке: 9: CAERep.xml, ds.dat, file.aapresults, file.DSP, file.mntr, file.rst, file0.err, MatML.xml, solve.out
+AR: Налив 12.5 м: выгружено 12 поясов
+AR: Устойчивость, ветер Y: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Устойчивость, ветер Y: после решения статус: Done
+AR: Устойчивость, ветер Y: статус решения: Done
+AR: Устойчивость, ветер Y: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-4\MECH\
+  файлов в папке: 19: CAERep.xml, ds.dat, file.DSP, file.gst, file.ldhi, file.mntr, file.rdb, file.rst, file0.err, file0.r001, file0.rst, file1.r001, file1.rst, file2.r001, file2.rst
+AR: Устойчивость, ветер Y: выгружено 12 поясов
+Eigenvalue Buckling: направление ветра Y: расчёт не решён, запускаю решение (может занять несколько минут)
+Eigenvalue Buckling: направление ветра Y: после решения статус: Done
+Eigenvalue Buckling: направление ветра Y: статус решения: Done
+  Eigenvalue Buckling: направление ветра Y/Total Deformation: ReportedLoadMultiplier: 'TotalDeformation' object has no attribute 'ReportedLoadMultiplier'
+  устойчивость Eigenvalue Buckling: направление ветра Y, форма 1: k = 8.91867843957
+  Eigenvalue Buckling: направление ветра Y/Total Deformation 2: ReportedLoadMultiplier: 'TotalDeformation' object has no attribute 'ReportedLoadMultiplier'
+  устойчивость Eigenvalue Buckling: направление ветра Y, форма 2: k = 8.99040735570
+AR: Устойчивость, ветер Z: расчёт не решён, запускаю решение (может занять несколько минут)
+AR: Устойчивость, ветер Z: после решения статус: Done
+AR: Устойчивость, ветер Z: статус решения: Done
+AR: Устойчивость, ветер Z: статус решения: PostProcessingRequired; папка: C:\ansys_report_work\model\Tank_model_files\dp0\SYS-6\MECH\
+  файлов в папке: 19: CAERep.xml, ds.dat, file.DSP, file.gst, file.ldhi, file.mntr, file.rdb, file.rst, file0.err, file0.r001, file0.rst, file1.r001, file1.rst, file2.r001, file2.rst
+AR: Устойчивость, ветер Z: выгружено 12 поясов
+Eigenvalue Buckling: направление ветра Z: расчёт не решён, запускаю решение (может занять несколько минут)
+Eigenvalue Buckling: направление ветра Z: после решения статус: Done
+Eigenvalue Buckling: направление ветра Z: статус решения: Done
+  Eigenvalue Buckling: направление ветра Z/Total Deformation: ReportedLoadMultiplier: 'TotalDeformation' object has no attribute 'ReportedLoadMultiplier'
+  устойчивость Eigenvalue Buckling: направление ветра Z, форма 1: k = 8.91292614996
+  Eigenvalue Buckling: направление ветра Z/Total Deformation 2: ReportedLoadMultiplier: 'TotalDeformation' object has no attribute 'ReportedLoadMultiplier'
+  устойчивость Eigenvalue Buckling: направление ветра Z, форма 2: k = 9.19428489398===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\wb_status.txt =====
+JOURNAL START
+SYSTEM SYS
+SYSTEM SYS 1
+SYSTEM SYS 2
+SYSTEM SYS 3
+SYSTEM SYS 4
+SYSTEM SYS 5
+SYSTEM SYS 6
+SYSTEM SYS 7
+MECHANICAL OPEN
+DONE export_model_data.py
+DONE export_results.py
+DONE export_model_images.py
+DONE export_figures.py
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\figures\log.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\figures\wb_status.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\images\log.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\images\wb_status.txt =====
+�� 㤠���� ���� 㪠����� 䠩�.
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_AR__�����__᭥�_�_����__���⮩_१����_.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:16:37  OCT 28, 2026  Elapsed Time=       0.047
+*** NOTE ***                            ELAPSED TIME =       0.841   TIME= 21:16:37
+The /CONFIG,NOELDB command is not valid in a distributed memory
+20120530  VERSION=WINDOWS x64   21:16:37  OCT 28, 2026 Elapsed Time=      0.864
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.162
+DO NOT COMBINE ELEMENT MATRIX FILES (.emat) AFTER DISTRIBUTED PARALLEL SOLUTION
+DO NOT COMBINE ELEMENT SAVE DATA FILES (.esav) AFTER DISTRIBUTED PARALLEL SOLUTION
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.238
+20120530  VERSION=WINDOWS x64   21:16:37  OCT 28, 2026 Elapsed Time=      1.239
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.363
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.364
+20120530  VERSION=WINDOWS x64   21:16:37  OCT 28, 2026 Elapsed Time=      1.364
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.421
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.421
+20120530  VERSION=WINDOWS x64   21:16:37  OCT 28, 2026 Elapsed Time=      1.421
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_AR__�����_12.5_�.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:18:02  OCT 28, 2026  Elapsed Time=       0.047
+*** NOTE ***                            ELAPSED TIME =       0.858   TIME= 21:18:02
+The /CONFIG,NOELDB command is not valid in a distributed memory
+20120530  VERSION=WINDOWS x64   21:18:02  OCT 28, 2026 Elapsed Time=      0.876
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.173
+DO NOT COMBINE ELEMENT MATRIX FILES (.emat) AFTER DISTRIBUTED PARALLEL SOLUTION
+DO NOT COMBINE ELEMENT SAVE DATA FILES (.esav) AFTER DISTRIBUTED PARALLEL SOLUTION
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.250
+20120530  VERSION=WINDOWS x64   21:18:02  OCT 28, 2026 Elapsed Time=      1.250
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.379
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.379
+20120530  VERSION=WINDOWS x64   21:18:02  OCT 28, 2026 Elapsed Time=      1.380
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.441
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.441
+20120530  VERSION=WINDOWS x64   21:18:02  OCT 28, 2026 Elapsed Time=      1.442
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_AR__�����_7.2_�.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:17:25  OCT 28, 2026  Elapsed Time=       0.062
+*** NOTE ***                            ELAPSED TIME =       0.838   TIME= 21:17:25
+The /CONFIG,NOELDB command is not valid in a distributed memory
+20120530  VERSION=WINDOWS x64   21:17:25  OCT 28, 2026 Elapsed Time=      0.864
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.164
+DO NOT COMBINE ELEMENT MATRIX FILES (.emat) AFTER DISTRIBUTED PARALLEL SOLUTION
+DO NOT COMBINE ELEMENT SAVE DATA FILES (.esav) AFTER DISTRIBUTED PARALLEL SOLUTION
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.236
+20120530  VERSION=WINDOWS x64   21:17:26  OCT 28, 2026 Elapsed Time=      1.236
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.362
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.363
+20120530  VERSION=WINDOWS x64   21:17:26  OCT 28, 2026 Elapsed Time=      1.363
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.421
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.421
+20120530  VERSION=WINDOWS x64   21:17:26  OCT 28, 2026 Elapsed Time=      1.422
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_AR__��⮩稢����__����_Y.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:18:36  OCT 28, 2026  Elapsed Time=       0.062
+*** NOTE ***                            ELAPSED TIME =       0.858   TIME= 21:18:36
+The /CONFIG,NOELDB command is not valid in a distributed memory
+20120530  VERSION=WINDOWS x64   21:18:36  OCT 28, 2026 Elapsed Time=      0.883
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.186
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.194
+20120530  VERSION=WINDOWS x64   21:18:37  OCT 28, 2026 Elapsed Time=      1.194
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.323
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.324
+20120530  VERSION=WINDOWS x64   21:18:37  OCT 28, 2026 Elapsed Time=      1.324
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.385
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.385
+20120530  VERSION=WINDOWS x64   21:18:37  OCT 28, 2026 Elapsed Time=      1.385
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.464
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.464
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_AR__��⮩稢����__����_Z.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:21:30  OCT 28, 2026  Elapsed Time=       0.062
+*** NOTE ***                            ELAPSED TIME =       0.807   TIME= 21:21:30
+The /CONFIG,NOELDB command is not valid in a distributed memory
+20120530  VERSION=WINDOWS x64   21:21:30  OCT 28, 2026 Elapsed Time=      0.841
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.191
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.198
+20120530  VERSION=WINDOWS x64   21:21:30  OCT 28, 2026 Elapsed Time=      1.199
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.333
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.333
+20120530  VERSION=WINDOWS x64   21:21:31  OCT 28, 2026 Elapsed Time=      1.334
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.393
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.394
+20120530  VERSION=WINDOWS x64   21:21:31  OCT 28, 2026 Elapsed Time=      1.394
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.472
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.473
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_AR__��ᯫ����.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:15:58  OCT 28, 2026  Elapsed Time=       0.031
+*** NOTE ***                            ELAPSED TIME =       0.863   TIME= 21:15:58
+The /CONFIG,NOELDB command is not valid in a distributed memory
+20120530  VERSION=WINDOWS x64   21:15:58  OCT 28, 2026 Elapsed Time=      0.887
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.193
+DO NOT COMBINE ELEMENT MATRIX FILES (.emat) AFTER DISTRIBUTED PARALLEL SOLUTION
+DO NOT COMBINE ELEMENT SAVE DATA FILES (.esav) AFTER DISTRIBUTED PARALLEL SOLUTION
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.261
+20120530  VERSION=WINDOWS x64   21:15:58  OCT 28, 2026 Elapsed Time=      1.261
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.385
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.385
+20120530  VERSION=WINDOWS x64   21:15:59  OCT 28, 2026 Elapsed Time=      1.386
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.444
+***** ROUTINE COMPLETED *****  ELAPSED TIME =         1.444
+20120530  VERSION=WINDOWS x64   21:15:59  OCT 28, 2026 Elapsed Time=      1.444
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_Eigenvalue_Buckling__���ࠢ�����_����_Y.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:20:19  OCT 28, 2026  Elapsed Time=       0.062
+*** NOTE ***                            ELAPSED TIME =       0.918   TIME= 21:20:19
+The /CONFIG,NOELDB command is not valid in a distributed memory
+*** NOTE ***                            ELAPSED TIME =       0.971   TIME= 21:20:19
+20120530  VERSION=WINDOWS x64   21:20:21  OCT 28, 2026 Elapsed Time=      2.513
+*** NOTE ***                            ELAPSED TIME =       3.688   TIME= 21:20:22
+*** NOTE ***                            ELAPSED TIME =       4.643   TIME= 21:20:23
+*** NOTE ***                            ELAPSED TIME =       4.643   TIME= 21:20:23
+*** NOTE ***                            ELAPSED TIME =       9.530   TIME= 21:20:28
+*** WARNING ***                         ELAPSED TIME =       9.751   TIME= 21:20:28
+*** WARNING ***                         ELAPSED TIME =       9.876   TIME= 21:20:28
+*** NOTE ***                            ELAPSED TIME =      10.018   TIME= 21:20:28
+*** NOTE ***                            ELAPSED TIME =      10.033   TIME= 21:20:28
+20120530  VERSION=WINDOWS x64   21:20:28  OCT 28, 2026 Elapsed Time=     10.119
+*** NOTE ***                            ELAPSED TIME =      25.015   TIME= 21:20:43
+===== C:\ansys_report_work\model\report\Report_T-001\_ansys_data\solve_Eigenvalue_Buckling__���ࠢ�����_����_Z.out =====
+* Ansys, Inc. or its subsidiaries under a software license    *
+* with the terms and conditions of that software license      *
+* by the Ansys, Inc. software license agreement, the use,     *
+* software license agreement and FAR 12.212 (for non-DOD      *
+* licenses).                                                  *
+Ansys, Inc. License Manager 2026 R1
+Speos HPC 2026 R1
+DISTRIBUTED MEMORY PARALLEL REQUESTED
+4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+TOTAL OF     4 CORES REQUESTED
+CURRENT JOBNAME=file0  21:23:08  OCT 28, 2026  Elapsed Time=       0.031
+*** NOTE ***                            ELAPSED TIME =       0.859   TIME= 21:23:09
+The /CONFIG,NOELDB command is not valid in a distributed memory
+*** NOTE ***                            ELAPSED TIME =       0.910   TIME= 21:23:09
+20120530  VERSION=WINDOWS x64   21:23:10  OCT 28, 2026 Elapsed Time=      2.328
+*** NOTE ***                            ELAPSED TIME =       3.381   TIME= 21:23:11
+*** NOTE ***                            ELAPSED TIME =       4.558   TIME= 21:23:12
+*** NOTE ***                            ELAPSED TIME =       4.558   TIME= 21:23:12
+*** NOTE ***                            ELAPSED TIME =       9.861   TIME= 21:23:18
+*** WARNING ***                         ELAPSED TIME =      10.085   TIME= 21:23:18
+*** WARNING ***                         ELAPSED TIME =      10.217   TIME= 21:23:18
+*** NOTE ***                            ELAPSED TIME =      10.359   TIME= 21:23:18
+*** NOTE ***                            ELAPSED TIME =      10.374   TIME= 21:23:18
+20120530  VERSION=WINDOWS x64   21:23:18  OCT 28, 2026 Elapsed Time=     10.457
+*** NOTE ***                            ELAPSED TIME =      26.691   TIME= 21:23:34
