@@ -16,13 +16,14 @@ if not exist .venv (
 )
 call .venv\Scripts\activate.bat
 python -m pip install -q -r requirements-server.txt
-if not exist crm_data\crm.db (
-  echo.
-  echo Первый запуск CRM: задайте вход администратора.
-  set /p CRMMAIL=Почта администратора CRM: 
-  set /p CRMPASS=Пароль (от 8 символов): 
-  call python -m crm adduser %%CRMMAIL%% %%CRMPASS%% admin
-)
+rem первый запуск CRM: вход администратора (без скобок в блоке if - cmd их не любит)
+if exist crm_data\crm.db goto crm_ready
+echo.
+echo Первый запуск CRM: задайте вход администратора.
+set /p CRMMAIL=Почта администратора CRM: 
+set /p CRMPASS=Пароль, не короче 8 символов: 
+python -m crm adduser "%CRMMAIL%" "%CRMPASS%" admin
+:crm_ready
 rem CRM в отдельном окне, порт 8100 (доступна и с телефона в той же Wi-Fi)
 start "CRM ANSYS REPORT" cmd /k "set CRM_HOST=0.0.0.0&& set CRM_SITE_URL=http://127.0.0.1:8000&& .venv\Scripts\python -m crm"
 for /f "usebackq delims=" %%t in ("crm_data\api_token.txt") do set ASR_CRM_TOKEN=%%t
@@ -36,7 +37,7 @@ set ASR_HOST=0.0.0.0
 set ASR_MAX_REG_PER_IP=100
 echo.
 echo Сайт: http://127.0.0.1:8000     CRM: http://127.0.0.1:8100
-echo С телефона (та же Wi-Fi): http://АДРЕС_КОМПЬЮТЕРА:8000 и :8100 (адрес: команда ipconfig, IPv4)
+echo С телефона в той же Wi-Fi: http://АДРЕС_КОМПЬЮТЕРА:8000 и :8100, адрес - команда ipconfig, строка IPv4
 start "" http://127.0.0.1:8100
 python -m server
 pause
