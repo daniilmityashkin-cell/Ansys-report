@@ -45,6 +45,7 @@ FIELDS = [
     ("ins_thickness_mm", "Толщина теплоизоляции, мм", "Нагрузки", "num", False, "", "100"),
     ("snow_kpa", "Нормативный вес снегового покрова, кПа", "Нагрузки", "num", True, "", "1,8"),
     ("snow_gf", "Коэффициент надёжности по снеговой нагрузке", "Нагрузки", "num", True, "1.4", ""),
+    ("snow_line_n_m", "Погонная снеговая нагрузка на кромку Fсн, Н/м (как в КМД/эталоне; пусто - по ГОСТ 31385)", "Нагрузки", "num", False, "", "11610"),
     ("snow_blowoff", "Учёт сдувания снега с крыши", "Нагрузки", "text", True, "Не учитывается", ""),
     ("wind_kpa", "Расчётное ветровое давление, кПа", "Нагрузки", "num", True, "", "0,3"),
 ]
@@ -103,12 +104,12 @@ def report_data(data: dict, loads_input: dict | None = None) -> dict:
     n = lambda k: _num(data[k]) if str(data.get(k, "")).strip() else None
     return {
         "steel": {"name": data.get("steel_name", ""), "standard": data.get("steel_standard", ""), "density": n("steel_density"),
-                  "young_modulus_mpa": n("steel_e_mpa"), "poisson": n("steel_poisson"), "ultimate_mpa": n("steel_ultimate_mpa"),
+                  "young_modulus_mpa": n("steel_e_mpa"), "poisson": n("steel_poisson"), "snow_line_n_m": n("snow_line_n_m"), "ultimate_mpa": n("steel_ultimate_mpa"),
                   "yield_mpa": n("steel_yield_mpa"), "elongation_pct": n("elongation_pct"), "thickness_range": data.get("steel_thickness_range", "")},
         "roof_mass_kg": n("roof_mass_kg"), "roof_equipment_kg": _nums(data.get("roof_equipment_kg")), "psi": n("psi"), "roof_gf": n("roof_gf"),
         "load_factor": n("load_factor"), "overp_gf": n("overp_gf"), "roof_ins_kg": n("roof_ins_kg"), "wall_ins_kg": n("wall_ins_kg"),
         "ins_thickness_mm": n("ins_thickness_mm"), "snow_kpa": n("snow_kpa"), "snow_gf": n("snow_gf"), "snow_blowoff": data.get("snow_blowoff", ""),
-        "wind_kpa": n("wind_kpa"), "roof_radius_mm": n("roof_radius"), "hazard_class": data.get("hazard_class", ""), "product": data.get("product", ""),
+        "wind_kpa": n("wind_kpa"), "snow_line_n_m": n("snow_line_n_m"), "roof_radius_mm": n("roof_radius"), "hazard_class": data.get("hazard_class", ""), "product": data.get("product", ""),
         "overpressure_kpa": float(L.get("overpressure_pa") or 0) / 1000.0, "terrain": L.get("terrain", ""),
         "product_density_kg_m3": float(L["product_density_t_m3"]) * 1000.0 if L.get("product_density_t_m3") else None,
         "fill_level_mm": float(L["fill_height_m"]) * 1000.0 if L.get("fill_height_m") else None,
@@ -136,7 +137,7 @@ def loads_overrides(data: dict) -> dict:
     n = lambda k: _num(data[k]) if str(data.get(k, "")).strip() else None
     out = {"snow_kpa": n("snow_kpa"), "snow_gf": n("snow_gf"), "wind_kpa": n("wind_kpa"), "roof_insulation_kg": n("roof_ins_kg"),
            "wall_insulation_kg": n("wall_ins_kg"), "ryn_mpa": n("steel_yield_mpa"), "e_mpa": n("steel_e_mpa"), "steel_density_kg_m3": n("steel_density"),
-           "poisson": n("steel_poisson"), "roof_mass_kg": n("roof_mass_kg"), "psi": n("psi"), "roof_gf": n("roof_gf")}
+           "poisson": n("steel_poisson"), "snow_line_n_m": n("snow_line_n_m"), "roof_mass_kg": n("roof_mass_kg"), "psi": n("psi"), "roof_gf": n("roof_gf")}
     out = {k: v for k, v in out.items() if v is not None}
     if str(data.get("roof_equipment_kg", "")).strip():
         out["roof_equipment_kg"] = _nums(data["roof_equipment_kg"])

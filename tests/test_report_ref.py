@@ -25,8 +25,8 @@ HEADINGS = ["1 Вводная часть", "2 Информация об объе
 NEW_PAGE = ["3 Сетка", "4 Граничные", "5 Результаты", "5.2 Результаты", "6 Результаты", "7 Выводы", "Приложение 1", "Приложение 2", "Приложение 3"]
 
 
-def _report(tmp_path):
-    data, err = RI.parse(T001)
+def _report(tmp_path, **over):
+    data, err = RI.parse({**T001, **over})
     assert not err and not RI.missing(data)
     p = load_project(YAML)
     an = RI.anketa(data, LOADS)
@@ -110,3 +110,21 @@ def test_reference_figures_folder_has_priority(tmp_path):
     assert rep._find_image("fig04_loads") == root / "figures" / "fig04.png"
     assert rep._find_image("fig_stab1") == root / "figures" / "fig14.png"
     assert rep._find_image("fig05_hydrostatic") != root / "figures" / "fig05.png"
+
+
+def test_snow_line_load_like_reference(tmp_path):
+    """Снег как в эталоне: погонная сила Fсн = 11 610 Н/м на кромку - в расчёт нагрузок (S = 2·Fсн/r) и в раздел 4."""
+    import math
+    from ansys_report.loads.rvs_loads import compute
+    from tests.test_calc import _points_project  # noqa: F401
+    inp = {"diameter_m": 28.5, "wall_height_m": 17.88, "belt_height_m": 1.49, "n_belts": 12, "thicknesses_mm": [16, 14, 13, 12, 12, 12, 12, 12, 11, 11, 11, 11],
+           "product_density_t_m3": 1.0, "fill_height_m": 17.2, "overpressure_pa": 0, "vacuum_pa": 0, "snow_district": "IV", "wind_district": "II",
+           "terrain": "A", "roof_rise_m": 3.11, "roof_deck_thickness_m": 0.004, "ryn_mpa": 325, "snow_kpa": 1.8, "snow_line_n_m": 11610}
+    L = compute(inp)["loads"]
+    r = 14.25
+    total = L["snow_mpa"]["design"] * 1e6 * math.pi * r * r                  # что ляжет на кромку (S·πR²)
+    assert abs(total - 11610 * 2 * math.pi * r) < 1
+    _, d = _report(tmp_path, snow_line_n_m="11610")
+    m = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
+    formulas = ["".join(t.text or "" for t in om.iter(m + "t")) for om in d.element.body.iter(m + "oMath")]
+    assert any(f.startswith("Fсн = r∙S2 = 14,25∙16292") and f.endswith("= 11610 Н/м.") for f in formulas)

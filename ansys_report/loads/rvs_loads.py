@@ -193,6 +193,9 @@ def compute(inp: dict) -> dict:
     # --- прочность стенки [A99:J106]
     snow_design = gf_snow * PSI["t1"] * CE * Sg / 1000      # МПа
     snow_char = CE * Sg / 1000
+    if inp.get("snow_line_n_m") not in (None, ""):           # снег задан погонной силой на кромку (как в эталоне Т-001): Fсн = r·S/2 -> S = 2·Fсн/r
+        snow_design = 2 * float(inp["snow_line_n_m"]) / (D / 2) * 1e-6
+        snow_char = snow_design / (gf_snow * PSI["t1"] * CE)
     strength = []
     for i in range(n):
         hoop = (0.001 * rho * g * (Hop - hb * i) + 1.2 * p_pa * 1e-6) * (D / 2) / tr[i]
