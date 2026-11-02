@@ -175,28 +175,93 @@ def pix(p):
         return [float(q[0]), float(q[1])]
 
 
-def draw_frame(color=0x2E5E2E, weight=3):
-    lines = frame_polylines()
-    if not lines:
-        return None
-    ctx = Graphics.CreateAndOpenDraw3DContext()
-    ctx.Color = color
-    ctx.LineWeight = weight
-    for pl in lines:
-        flat = []
-        for (x, y, z) in pl:
-            flat += [x, y, z]
+# --- разрезы: вертикальная плоскость через ось (рис. 2, 3) и горизонтальная над кромкой стенки (крыша скрыта, рис. 4-17)
+CUT_SIGN = float(os.environ.get("AR_CUT_SIGN") or 1.0)        # Mechanical оставляет сторону, куда направлена нормаль плоскости (проверено на рисунках)
+
+
+def add_plane(center, direction, name):
+    sp = Ansys.Mechanical.Graphics.SectionPlane()
+    sp.Center = Point(list(center), "mm")
+    sp.Direction = direction
+    sp.Name = name
+    Graphics.SectionPlanes.Add(sp)
+    sp.Active = True
+    return sp
+
+
+def cut_roof():
+    """Открытый верх: срез чуть выше кромки стенки (крыша - грань того же тела, скрыть её иначе нельзя)."""
+    Graphics.SectionPlanes.Clear()
+    c = {"X": (H + 5.0, 0.0, 0.0), "Y": (0.0, H + 5.0, 0.0)}.get(AXIS, (0.0, 0.0, H + 5.0))
+    add_plane(c, V(0, 0, -CUT_SIGN), u"AR без крыши")           # остаётся сторона, куда смотрит нормаль: вниз
+
+
+def section_half():
+    """Разрез по вертикальной плоскости через ось: половина резервуара (x < 0) срезана."""
+    add_plane((0.0, 0.0, 0.0), V(CUT_SIGN, 0, 0), u"AR разрез")
+    log.append(u"разрез: плоскостей %d" % Graphics.SectionPlanes.Count)
+
+
+def window_frame(name, lines, crop=None):
+    """Каркас крыши линиями Draw3D в окне + пиксели линий (name_frame.json) для переноса на снимок высокого разрешения
+    (ansys_connect.overlay_roof_frame): Mechanical рисует Draw3D только в окне, а снимок высокого разрешения - без них."""
+    import json
+    ctx = None
+    if lines:
         try:
-            ctx.DrawPolyline(flat)
+            ctx = Graphics.CreateAndOpenDraw3DContext()
+            ctx.Color = 0x2E5E2E
+            ctx.LineWeight = 3
+            for pl in lines:
+                flat = []
+                for (x, y, z) in pl:
+                    flat += [x, y, z]
+                ctx.DrawPolyline(flat)
+            ctx.Close()
         except Exception as e:
-            log.append(u"DrawPolyline: %s" % e)
-            break
-    ctx.Close()
-    log.append(u"каркас крыши: линий %d" % len(lines))
+            log.append(u"Draw3D: %s" % e)
+    export(name + "_window", current=True)
+    try:
+        pts = [[pix(Graphics.WorldToPixel([x, y, z])) for (x, y, z) in pl] for pl in lines]
+        data = {"polylines": pts}
+        if crop:                           # приближение к узлу: снимок высокого разрешения вписывает всю модель, поэтому кадр вырезается в Python
+            data["crop_frac"] = list(crop)  # центр кадра (доли ширины и высоты снимка) и размер кадра (доля)
+        fj = io.open(os.path.join(out, name + "_frame.json"), "w", encoding="utf-8")
+        fj.write(unicode(json.dumps(data)))
+        fj.close()
+    except Exception as e:
+        log.append(u"WorldToPixel: %s" % e)
     return ctx
 
 
-# --- рис. 1: общий вид - полупрозрачная зелёная геометрия, пояса и края граней линиями, вид сверху-сбоку
+def drop_context(ctx):
+    if ctx is None:
+        return
+    try:
+        Graphics.RemoveContext(ctx)
+    except Exception:
+        ctx.Visible = False
+
+
+def half_lines(lines):
+    """Части линий каркаса в оставленной разрезом половине (x >= 0)."""
+    res = []
+    for pl in lines:
+        cur = []
+        for p_ in pl:
+            if p_[0] * CUT_SIGN >= 0.0:
+                cur.append(p_)
+            else:
+                if len(cur) >= 2:
+                    res.append(cur)
+                cur = []
+        if len(cur) >= 2:
+            res.append(cur)
+    return res
+
+
+# --- рис. 1: общий вид - полупрозрачная зелёная геометрия, пояса и края граней линиями, каркас крыши, вид сверху-сбоку;
+# поля обрезаются по резервуару (ansys_connect.overlay_roof_frame)
 def fig01():
     view_reset()
     Graphics.ViewOptions.ShowMesh = False
@@ -206,35 +271,14 @@ def fig01():
         b.Transparency = 0.45
     Graphics.ViewOptions.ShowLegend = False
     Graphics.ViewOptions.ShowRuler = False
+    Graphics.ViewOptions.ShowTriad = False
     model.Geometry.Activate()
     camera((-1.0, -0.75, 0.75))
-    try:
-        frame = draw_frame()
-    except Exception as e:
-        frame = None
-        log.append(u"каркас: %s" % e)
-    export("fig01_window", current=True)                  # проверка: окно с каркасом (низкое разрешение)
-    try:                                                   # каркас в пиксели окна: наносится на снимок высокого разрешения в Python
-        import json
-        pts = []
-        for pl in frame_polylines():
-            row = []
-            for (x, y, z) in pl:
-                row.append(pix(Graphics.WorldToPixel([x, y, z])))
-            pts.append(row)
-        log.append(u"WorldToPixel: центр днища -> %s" % pix(Graphics.WorldToPixel([0.0, 0.0, 0.0])))
-        fj = io.open(os.path.join(out, "fig01_frame.json"), "w", encoding="utf-8")
-        fj.write(unicode(json.dumps({"polylines": pts})))
-        fj.close()
-    except Exception as e:
-        log.append(u"WorldToPixel: %s" % e)
+    ctx = window_frame("fig01_general", frame_polylines())
     export("fig01_general", w=2514, h=1584)
-    if frame is not None:
-        try:
-            Graphics.RemoveContext(frame)
-        except Exception:
-            frame.Visible = False
+    drop_context(ctx)
     Graphics.ViewOptions.ShowRuler = True
+    Graphics.ViewOptions.ShowTriad = True
     for b in bodies:
         b.Transparency = 0.0
 
@@ -255,18 +299,59 @@ def undeformed():
     for nm in ("Undeformed", "TrueScale", "True"):
         if nm in names:
             rp.DeformationScaling = getattr(type(cur), nm)
-            log.append(u"масштаб деформаций: %s (варианты %s)" % (nm, names))
             return
     log.append(u"масштаб деформаций: нет подходящего (%s)" % names)
 
 
+# цвета как у тел эталона (рис. 2, 3): днище серое, пояса снизу вверх, крыша голубая
+BELT_RGB = [(150, 160, 175), (125, 160, 120), (200, 155, 115), (165, 200, 190), (220, 210, 125), (185, 185, 205),
+            (175, 175, 135), (145, 145, 145), (115, 135, 165), (105, 135, 95), (170, 170, 105), (145, 165, 185)]
+BOTTOM_RGB, ROOF_RGB = (205, 205, 205), (185, 210, 235)
+
+
+def band_color(lg, i, rgb):
+    """Цвет полосы легенды: в разных версиях Mechanical принимает целое 0xBBGGRR / 0xRRGGBB или System.Drawing.Color."""
+    r_, g_, b_ = rgb
+    errs = []
+    for c in (r_ + (g_ << 8) + (b_ << 16), ):
+        try:
+            lg.SetBandColor(i, c)
+            return True
+        except Exception as e:
+            errs.append(u"%s" % e)
+    try:
+        import clr
+        clr.AddReference("System.Drawing")
+        from System.Drawing import Color as DColor
+        lg.SetBandColor(i, DColor.FromArgb(255, r_, g_, b_))
+        return True
+    except Exception as e:
+        errs.append(u"%s" % e)
+    if i == 0:
+        log.append(u"цвет полосы: %s" % u" | ".join(errs))
+    return False
+
+
+def show_elements():
+    """Рёбра элементов поверх заливки результата (сетка на рис. 2, 3)."""
+    rp = Graphics.ViewOptions.ResultPreference
+    cur = rp.ExtraModelDisplay
+    names = [n for n in dir(type(cur)) if n[:1].isupper()]
+    for nm in ("ShowElements", "ShowElementOutlines", "UndeformedModel"):
+        if nm in names:
+            rp.GetType().GetProperty("ExtraModelDisplay").SetValue(rp, getattr(type(cur), nm), None)
+            log.append(u"рёбра элементов: %s" % nm)
+            return
+    log.append(u"рёбра элементов: нет подходящего (%s)" % names)
+
+
 def belt_colors():
-    """Пояса разными цветами: результат «высота узла» (LOCZ) с числом полос = числу поясов от 0 до H - полоса совпадает с поясом
-    (пояса одной высоты). Стенка - одно тело с гранями-поясами, а Mechanical красит по телу; объекты Thickness на окраску не влияют."""
+    """Пояса разными цветами: результат «высота узла» (LOC по вертикали), полосы легенды = днище, пояса, крыша, цвета - как тела эталона.
+    Стенка - одно тело с гранями-поясами, а Mechanical красит по телу; объекты Thickness на окраску не влияют."""
     sol = full_analysis().Solution
     r = sol.AddUserDefinedResult()
     r.Expression = "LOC" + AXIS
-    r.Name = u"Пояса стенки"
+    r.Name = u"Сетка"
     r.EvaluateAllResults()
     belt_res.append(r)
     r.Activate()
@@ -277,46 +362,68 @@ def belt_colors():
     n = max(len(wall_faces()), 3)
     try:
         lg = Ansys.Mechanical.Graphics.Tools.CurrentLegendSettings()
-        lg.NumberOfBands = n
-        for i in range(n):                         # полоса 0 - нижняя
-            lg.SetUpperBound(i, Quantity(H * (i + 1) / float(n), "mm"))
-        log.append(u"легенда: полос %d" % n)
+        lg.NumberOfBands = n + 2
+        bounds = [1.0] + [H * k / float(n) for k in range(1, n)] + [H + 1.0]
+        for i, ub in enumerate(bounds):
+            lg.SetUpperBound(i, Quantity(ub, "mm"))
+        ok = band_color(lg, 0, BOTTOM_RGB)
+        for k in range(n):
+            ok = band_color(lg, k + 1, BELT_RGB[k % len(BELT_RGB)]) and ok
+        ok = band_color(lg, n + 1, ROOF_RGB) and ok
+        log.append(u"легенда: полос %d, цвета %s" % (n + 2, u"заданы" if ok else u"НЕ заданы"))
     except Exception as e:
         log.append(u"легенда: %s" % e)
+    show_elements()
     return r
 
 
-def section_half():
-    """Разрез по вертикальной плоскости через ось: половина резервуара срезана."""
-    sp = Ansys.Mechanical.Graphics.SectionPlane()
-    sp.Center = Point([0.0, 0.0, 0.0], "mm")
-    sp.Direction = V(1, 0, 0)
-    sp.Name = u"AR разрез"
-    Graphics.SectionPlanes.Add(sp)
-    sp.Active = True
-    log.append(u"разрез: плоскостей %d" % Graphics.SectionPlanes.Count)
+def hide_legend():
+    """Без легенды и заголовка результата (рис. 2, 3 - сетка, как в эталоне)."""
+    Graphics.ViewOptions.ShowLegend = False
+    try:
+        lg = Ansys.Mechanical.Graphics.Tools.CurrentLegendSettings()
+        done = []
+        for nm in ("Visible", "IsVisible", "ShowLegend", "Show"):
+            if hasattr(lg, nm):
+                try:
+                    setattr(lg, nm, False)
+                    done.append(nm)
+                except Exception:
+                    pass
+        log.append(u"легенда скрыта: ShowLegend=%s, %s; свойства легенды: %s" % (Graphics.ViewOptions.ShowLegend, done,
+                   u", ".join([n for n in dir(lg) if n[:1].isupper()])))
+    except Exception as e:
+        log.append(u"легенда: %s" % e)
 
 
-# --- рис. 2: сетка стенки и днища в разрезе (пояса разными цветами), камера у узла стенка-днище
+def mesh_view(r):
+    r.Activate()
+    show_elements()
+    Graphics.ViewOptions.ShowMesh = True
+    hide_legend()
+
+
+# --- рис. 2: сетка в разрезе у узла стенка-днище, днище изнутри (пояса своими цветами)
 def fig02():
     view_reset()
     r = belt_colors()
-    Graphics.ViewOptions.ShowMesh = True
-    Graphics.ViewOptions.ShowLegend = False
     section_half()
-    r.Activate()
-    Graphics.ViewOptions.ShowLegend = False
+    mesh_view(r)
     camera((-1.0, -0.35, 0.75), focus=(R * 0.35, -R * 0.3, 0.0), height_mm=0.9 * R)
-    export("fig02_mesh_wall_bottom")
+    hide_legend()
+    ctx = window_frame("fig02_mesh_wall_bottom", [], crop=(0.48, 0.50, 0.62))      # узел стенка-днище, днище изнутри
+    export("fig02_mesh_wall_bottom", w=2514, h=1584)
+    drop_context(ctx)
 
 
-# --- рис. 3: сетка стенки и кровли в разрезе, камера у узла стенка-кровля
+# --- рис. 3: сетка в разрезе у узла стенка-крыша, крыша с каркасом (каркас - BEAM188 из APDL, в Mechanical не виден: дорисовывается линиями)
 def fig03():
-    Graphics.ViewOptions.ShowMesh = True
-    Graphics.ViewOptions.ShowLegend = False
-    belt_res[0].Activate()
+    mesh_view(belt_res[0])
     camera((-1.0, -0.35, 0.75), focus=(R * 0.35, -R * 0.5, H), height_mm=0.6 * R)
-    export("fig03_mesh_wall_roof")
+    hide_legend()
+    ctx = window_frame("fig03_mesh_wall_roof", half_lines(frame_polylines()), crop=(0.58, 0.45, 0.50))   # узел стенка-крыша
+    export("fig03_mesh_wall_roof", w=2514, h=1584)
+    drop_context(ctx)
     Graphics.SectionPlanes.Clear()
     Graphics.ViewOptions.ShowMesh = False
     for r in belt_res:
@@ -391,18 +498,22 @@ def top_edge():
 
 
 def fig04_05():
+    """Как рис. 9 эталона: изометрия, открытый верх (крыша срезана плоскостью над кромкой), видны стрелки и подписи нагрузок."""
     view_reset()
     Graphics.ViewOptions.ShowMesh = False
     an, hp = loads_objects()
     an.Activate()
+    cut_roof()
     Graphics.Redraw()
-    camera((-1.0, -0.75, 0.45))
-    camera((-1.0, -0.75, 0.45))
+    iso_view(keep_cut=True)
     export("fig04_loads")
     hp.Activate()
+    cut_roof()                             # после активации объекта нагрузки разрез сбрасывается
     Graphics.ViewOptions.ShowMesh = True
-    camera((-1.0, -0.75, 0.9))
+    iso_view(keep_cut=True)
+    Graphics.ViewOptions.ShowMesh = True
     export("fig05_hydrostatic")
+    Graphics.SectionPlanes.Clear()
     for o in shown:
         o.Delete()
 
@@ -419,8 +530,13 @@ def wall_scope():
     return sel
 
 
-def iso_view():
-    view_reset()
+def iso_view(keep_cut=False):
+    if keep_cut:
+        Graphics.ViewOptions.ShowLegend = True
+        Graphics.ViewOptions.ShowTriad = True
+    else:
+        view_reset()
+        cut_roof()
     Graphics.ViewOptions.ShowMesh = False
     try:
         Graphics.ViewOptions.ShowLogo = False

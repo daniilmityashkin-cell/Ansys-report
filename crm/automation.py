@@ -15,7 +15,7 @@ from .models import (LOST, OPEN_STAGES, STAGES, WON, Activity, Contact, Deal, In
 SITE_LABELS = {"register": "Зарегистрировался на сайте", "login": "Вошёл на сайт", "generation": "Загрузил замеры (заказ №{generation})",
                "loads": "Задал нагрузки (заказ №{generation})", "report_data": "Заполнил данные отчёта (заказ №{generation})",
                "pay_start": "Нажал «Собрать отчёт» (заказ №{generation})", "pack_start": "Выбрал пакет {qty} генераций ({amount} ₽)",
-               "paid": "Оплата {amount} ₽: {what} ({provider}{method})", "job_done": "Отчёт и файлы готовы (заказ №{generation})",
+               "paid": "Оплата {amount} ₽: {what} ({provider}{method})", "files_ready": "Модель и файлы подготовлены, заказ №{generation} в очереди на расчёт", "job_done": "Технический отчёт готов (заказ №{generation})",
                "job_error": "Ошибка расчёта (заказ №{generation}): {error}", "download": "Скачал файлы (заказ №{generation})",
                "agent": "Помощник Ansys: {stage} (заказ №{generation})", "credits": "Выданы генерации: {qty}", "lead": "Заявка с сайта"}
 # какой этап сделки означает действие клиента

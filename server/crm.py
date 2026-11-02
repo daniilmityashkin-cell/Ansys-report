@@ -21,7 +21,7 @@ from .models import Event, Generation, Payment, User, now
 # названия событий в ленте
 KINDS = {"visit": "Визит на сайт", "register": "Регистрация", "login": "Вход", "generation": "Создал заказ (замеры)",
          "loads": "Задал нагрузки", "report_data": "Заполнил данные отчёта", "pay_start": "Нажал «Собрать отчёт» / оплату",
-         "paid": "Оплата прошла", "pack_start": "Выбрал пакет", "job_done": "Отчёт и файлы готовы", "job_error": "Ошибка расчёта",
+         "paid": "Оплата прошла", "pack_start": "Выбрал пакет", "files_ready": "Модель подготовлена, в очереди на расчёт", "job_done": "Технический отчёт готов", "job_error": "Ошибка расчёта",
          "download": "Скачал файлы", "agent": "Помощник Ansys", "credits": "Выданы генерации (вручную)", "lead": "Заявка с сайта"}
 STATUSES = ["Новый", "В работе", "Клиент", "Постоянный", "Отказ"]
 SEARCH = {"yandex": "Яндекс", "google": "Google", "mail.ru": "Mail.ru", "bing": "Bing", "duckduckgo": "DuckDuckGo"}

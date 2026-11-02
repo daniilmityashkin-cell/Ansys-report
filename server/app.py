@@ -62,7 +62,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not g:
                 return
             g.status, g.error = ("done", "") if not error else ("error", error)
-            crm.log(db, "job_error" if error else "job_done", user_id=g.user_id, commit=False, generation=gid, error=error[:200] if error else "")
+            crm.log(db, "job_error" if error else "files_ready", user_id=g.user_id, commit=False, generation=gid, error=error[:200] if error else "")
+            if not error and st.server_calc and (gen_dir(gid) / "result" / "ansys_model").exists():     # отчёт считает наш расчётный сервер
+                ad = gen_dir(gid) / "agent"
+                ad.mkdir(parents=True, exist_ok=True)
+                (ad / "status.json").write_text(json.dumps({"stage": "queued", "message": "", "updated": time.time()}), encoding="utf-8")
             if error and g.charged == "credit":                      # ошибка расчёта: генерация возвращается в пакет
                 u = db.get(User, g.user_id)
                 u.credits = (u.credits or 0) + 1
@@ -885,7 +889,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if rec["stage"] != prev:                                      # CRM: только смена этапа помощника
             with Session() as db:
                 g = db.get(Generation, gid)
-                crm.log(db, "agent", user_id=g.user_id if g else None, generation=gid, stage=rec["stage"])
+                kind = {"done": "job_done", "error": "job_error"}.get(rec["stage"], "agent")
+                crm.log(db, kind, user_id=g.user_id if g else None, generation=gid, stage=rec["stage"], error=rec["message"] if kind == "job_error" else "")
         (agent_dir(gid) / "status.json").write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
         return JSONResponse({"ok": True})
 
@@ -904,13 +909,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         (fd / name).write_bytes(data)
         return JSONResponse({"ok": True})
 
+    # --- расчётный сервер (Ansys у нас): берёт заказы из очереди, дальше работает как помощник (package.zip, status, upload) ---
+    STALE_S = 4 * 3600                          # расчёт завис/сервер перезапускался - заказ возвращается в очередь
+
+    def worker_ok(request: Request) -> bool:
+        auth = request.headers.get("authorization", "")
+        tok = auth[7:] if auth.lower().startswith("bearer ") else ""
+        return bool(tok) and hmac.compare_digest(tok, st.worker_token)
+
+    def queue(db) -> list[int]:
+        out = []
+        for (gid,) in db.execute(select(Generation.id).where(Generation.status == "done").order_by(Generation.id)).all():
+            f = gen_dir(gid) / "agent" / "status.json"
+            if not f.exists():
+                continue
+            a = json.loads(f.read_text(encoding="utf-8"))
+            if a.get("stage") == "queued" or (a.get("stage") in ("taken", "download", "build", "solve", "upload") and time.time() - a.get("updated", 0) > STALE_S):
+                out.append(gid)
+        return out
+
+    @app.post("/worker/next")
+    def worker_next(request: Request):
+        """Следующий заказ для расчётного сервера: {gid, t} или 204 (очередь пуста)."""
+        if not worker_ok(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        with Session() as db:
+            q = queue(db)
+        if not q:
+            return Response(status_code=204)
+        gid = q[0]
+        (agent_dir(gid) / "status.json").write_text(json.dumps({"stage": "taken", "message": "", "updated": time.time()}), encoding="utf-8")
+        return JSONResponse({"gid": gid, "t": agent_token(gid)})
+
     @app.get("/g/{gid}/agent.json")
     def agent_state_json(request: Request, gid: int):
         with Session() as db:
             u, g = _owned(db, request, gid)
             if not u or not g:
                 return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(agent_state(gid))
+        a = agent_state(gid)
+        if a.get("stage") == "queued":
+            with Session() as db:
+                q = queue(db)
+            a["ahead"] = q.index(gid) if gid in q else 0          # сколько заказов впереди в очереди
+        return JSONResponse(a)
 
     @app.get("/g/{gid}/agent-files/{name}")
     def agent_file(request: Request, gid: int, name: str):

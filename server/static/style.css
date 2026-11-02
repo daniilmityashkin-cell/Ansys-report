@@ -260,3 +260,6 @@ main:has(.studio){max-width:min(1900px,97vw);padding-left:clamp(12px,1.6vw,28px)
 [hidden]{display:none!important}
 .thick-auto .filebtn:focus-within{outline:none}
 .req{color:var(--accent,#e0a33a);font-weight:700}
+.calc{display:flex;gap:14px;align-items:center}.calcsteps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:14px 0 6px}
+.calcsteps li{padding:4px 12px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-size:13px}
+.calcsteps li.on{color:var(--accent);border-color:rgba(255,183,27,.5)}.calcsteps li.ok{color:var(--ok);border-color:rgba(60,207,122,.4)}.calcsteps li.ok:before{content:"✓ "}

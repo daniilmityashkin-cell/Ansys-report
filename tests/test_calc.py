@@ -372,13 +372,20 @@ def test_overlay_roof_frame(tmp_path):
     import json
     from PIL import Image
     from ansys_report.ansys_connect import overlay_roof_frame
-    Image.new("RGB", (100, 50), "white").save(tmp_path / "fig01_window.png")
-    Image.new("RGB", (300, 150), "white").save(tmp_path / "fig01_general.png")
-    (tmp_path / "fig01_frame.json").write_text(json.dumps({"polylines": [[[10, 25], [90, 25]]]}), encoding="utf-8")
+    Image.new("RGB", (100, 50), "white").save(tmp_path / "fig03_mesh_wall_roof_window.png")
+    Image.new("RGB", (300, 150), "white").save(tmp_path / "fig03_mesh_wall_roof.png")
+    (tmp_path / "fig03_mesh_wall_roof_frame.json").write_text(json.dumps({"polylines": [[[10, 25], [90, 25]]]}), encoding="utf-8")
     assert overlay_roof_frame(tmp_path, log=lambda s: None)
-    im = Image.open(tmp_path / "fig01_general.png")
+    im = Image.open(tmp_path / "fig03_mesh_wall_roof.png")
     assert im.getpixel((150, 75)) == (46, 94, 46) and im.getpixel((150, 10)) == (255, 255, 255)   # линия на y = 25 * 3
-    assert not (tmp_path / "fig01_window.png").exists()
+    assert not (tmp_path / "fig03_mesh_wall_roof_window.png").exists()
+    # рис. 1: после каркаса поля обрезаются по резервуару
+    Image.new("RGB", (100, 50), "white").save(tmp_path / "fig01_general_window.png")
+    Image.new("RGB", (300, 150), "white").save(tmp_path / "fig01_general.png")
+    (tmp_path / "fig01_general_frame.json").write_text(json.dumps({"polylines": [[[40, 20], [60, 30]]]}), encoding="utf-8")
+    assert overlay_roof_frame(tmp_path, log=lambda s: None)
+    w, h = Image.open(tmp_path / "fig01_general.png").size
+    assert 60 <= w <= 80 and 30 <= h <= 50                                                      # кадр - линия 120x30 плюс поля 4 %
 
 
 def test_timing_table(tmp_path):
