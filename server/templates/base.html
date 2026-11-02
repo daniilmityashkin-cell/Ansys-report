@@ -2,8 +2,8 @@
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>{% block title %}ANSYS REPORT{% endblock %}</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v={{ asset_v }}"><link rel="stylesheet" href="/static/redsun.css?v={{ asset_v }}"><script defer src="/static/motion.js?v={{ asset_v }}"></script><script>document.documentElement.classList.add("js")</script></head><body>
-<nav class="top"><b><a href="/"><img class="logo" src="/static/logo.svg" alt="" width="30" height="30">ANSYS REPORT</a></b>
-{% if not user %}<div class="nav-sections"><a href="/#features">Возможности</a><a href="/#workflow">Как это работает</a><a href="/#pricing">Тарифы</a></div>{% endif %}
+<nav class="top{% if not user %} nav-guest{% endif %}"><b><a href="/"><img class="logo" src="/static/logo.svg" alt="" width="30" height="30">ANSYS REPORT</a></b>
+{% if not user %}<div class="nav-sections" id="site-menu"><a href="/#features">Возможности</a><a href="/#workflow">Как это работает</a><a href="/#pricing">Тарифы</a><a class="mobile-auth" href="/login">Войти</a><a class="mobile-auth" href="/register">Регистрация</a></div><button class="nav-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" aria-controls="site-menu"><span aria-hidden="true"></span></button>{% endif %}
 {% if user %}{% if is_admin %}<a href="/admin">CRM</a>{% endif %}<a href="/cabinet">Кабинет</a><a href="/studio">Геометрия</a><a href="/packs">Пакеты</a>
 <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Выйти ({{ user.email }})</button></form>
 {% else %}<a href="/login">Войти</a><a href="/register">Регистрация</a>{% endif %}</nav>

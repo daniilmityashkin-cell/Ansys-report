@@ -1,22 +1,75 @@
-/* A subtle pointer light follows the hero; motion preferences remain live. */
+/* Landing motion: a rotating wireframe, orbit light and scroll depth. */
 (() => {
-  const hero = document.querySelector('.solar-hero');
-  const preference = matchMedia('(prefers-reduced-motion: reduce)');
-  if (!hero) return;
-  let frame = 0;
-  hero.addEventListener('pointermove', event => {
-    if (preference.matches || event.pointerType !== 'mouse') return;
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      const bounds = hero.getBoundingClientRect();
-      const offset = (event.clientX - bounds.left - bounds.width / 2) / 35;
-      hero.querySelector('.solar-halo').style.translate = `${offset}px 0`;
-    });
+  const menu = document.querySelector('.nav-sections');
+  const toggle = document.querySelector('.nav-toggle');
+  function closeMenu() {
+    menu?.classList.remove('open');
+    toggle?.setAttribute('aria-expanded', 'false');
+    toggle?.setAttribute('aria-label', 'Открыть меню');
+  }
+  toggle?.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    menu.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Закрыть меню' : 'Открыть меню');
   });
-  const reset = () => {
+  menu?.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeMenu(); toggle?.focus(); } });
+  const hero = document.querySelector('.solar-hero');
+  if (!hero) return;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const svg = hero.querySelector('.preview-model svg');
+  const group = svg.querySelector('g');
+  const panel = hero.querySelector('.workspace-preview');
+  const stage = hero.querySelector('.solar-stage');
+  const NS = 'http://www.w3.org/2000/svg';
+  const wire = document.createElementNS(NS, 'path');
+  wire.setAttribute('fill', 'url(#tank-fill)');
+  group.replaceChildren(wire);
+  let visible = true, frame = 0, angle = 0, last = 0;
+  function draw(rotation) {
+    const paths = [];
+    function point(a, level) {
+      return [200 + 110 * Math.cos(a), 60 + level * 112 + 34 * Math.sin(a)];
+    }
+    for (let level = 0; level <= 3; level++) {
+      let ring = '';
+      for (let i = 0; i <= 64; i++) {
+        const [x, y] = point(i * Math.PI / 32, level / 3);
+        ring += `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+      }
+      paths.push(ring);
+    }
+    for (let i = 0; i < 18; i++) {
+      const a = rotation + i * Math.PI / 9;
+      const [x, y] = point(a, 0), [, bottom] = point(a, 1);
+      paths.push(`M${x.toFixed(1)},${y.toFixed(1)}V${bottom.toFixed(1)}`);
+    }
+    wire.setAttribute('d', paths.join(' '));
+  }
+  function animate(time) {
+    if (reduced.matches || document.hidden || !visible) return;
+    const delta = last ? Math.min(time - last, 50) : 0;
+    last = time;
+    angle += delta * .00018;
+    draw(angle);
+    const rect = hero.getBoundingClientRect();
+    const progress = Math.max(0, Math.min(1, -rect.top / rect.height));
+    panel.style.setProperty('--panel-tilt', `${(1 - progress) * 3}deg`);
+    stage.style.translate = `0 ${progress * 35}px`;
+    frame = requestAnimationFrame(animate);
+  }
+  function sync() {
     cancelAnimationFrame(frame);
-    hero.querySelector('.solar-halo').style.translate = '0 0';
-  };
-  hero.addEventListener('pointerleave', reset);
-  preference.addEventListener('change', reset);
+    last = 0;
+    if (!reduced.matches && visible && !document.hidden) frame = requestAnimationFrame(animate);
+    else { panel.style.removeProperty('--panel-tilt'); stage.style.translate = '0 0'; }
+  }
+  draw(0);
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(entries => { visible = entries[0].isIntersecting; sync(); }).observe(hero);
+  }
+  reduced.addEventListener('change', sync);
+  document.addEventListener('visibilitychange', sync);
+  sync();
 })();
