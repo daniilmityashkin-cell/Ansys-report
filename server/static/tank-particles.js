@@ -6,6 +6,17 @@ export function mountTankParticles(stage) {
   if (!ctx) return () => {};
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   let frame=0, elapsed=0, last=0, visible=false, width=0, height=0, disposed=false;
+  const hero=stage.closest('.solar-hero') || stage;
+  const pointer={x:0,y:0,active:false};
+  let zoom=1;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  function pointerMove(event){
+    if(event.pointerType!=='mouse'||motion.matches)return;
+    pointer.x=event.clientX;pointer.y=event.clientY;pointer.active=true;
+  }
+  function pointerLeave(){pointer.active=false;}
+  hero.addEventListener('pointermove',pointerMove,{passive:true});
+  hero.addEventListener('pointerleave',pointerLeave,{passive:true});
   const points=[];
   // A fixed seed keeps resizing and screenshots from generating a different cloud.
   let seed=1937;
@@ -13,13 +24,21 @@ export function mountTankParticles(stage) {
   for(let row=0;row<=24;row++)for(let col=0;col<60;col++){
     const angle=col/60*Math.PI*2;
     const x=Math.cos(angle),z=Math.sin(angle),y=row/24*1.6-.8;
-    points.push({x,y,z,sx:(random()-.5)*3.2,sy:(random()-.5)*2.1,sz:(random()-.5)*2.8,warm:random()<.085,size:.65+random()*.55,delay:random()*.24});
+    points.push({x,y,z,sx:(random()-.5)*3.2,sy:(random()-.5)*2.1,sz:(random()-.5)*2.8,warm:random()<.085,size:.65+random()*.55,delay:random()*.24,follow:random()<.45,dx:0,dy:0,vx:0,vy:0});
   }
   function project(x,y,z,rotation){
     const xx=x*Math.cos(rotation)+z*Math.sin(rotation),zz=z*Math.cos(rotation)-x*Math.sin(rotation);
-    return {x:width/2+xx*height*.53,y:height*.49+y*height*.37+zz*height*.15,depth:zz};
+    return {x:width/2+xx*height*.53*zoom,y:height*.49+(y*height*.37+zz*height*.15)*zoom,depth:zz};
   }
-  function draw(){
+  function draw(step=1){
+    const rect=stage.getBoundingClientRect();
+    const heroTop=hero.getBoundingClientRect().top+scrollY;
+    const progress=clamp((scrollY-heroTop)/Math.max(400,stage.offsetTop+height*.7),0,1);
+    const desiredZoom=motion.matches?1:1-.58*(progress*progress*(3-2*progress));
+    zoom+=(desiredZoom-zoom)*(1-Math.pow(.86,step));
+    const mouse={x:pointer.x-rect.left,y:pointer.y-rect.top};
+    const active=pointer.active&&!motion.matches&&mouse.x>=0&&mouse.x<=width&&mouse.y>=0&&mouse.y<=height;
+
     ctx.clearRect(0,0,width,height);
     const assembling=motion.matches?1:Math.min(1,elapsed/2000);
     const rotation=motion.matches ? .3 : .3+Math.max(0,elapsed-2000)*.00009;
@@ -30,19 +49,31 @@ export function mountTankParticles(stage) {
       for(let row=0;row<=6;row++){
         ctx.beginPath();
         for(let i=0;i<=80;i++){const a=i/80*Math.PI*2,p=project(Math.cos(a),row/6*1.6-.8,Math.sin(a),rotation);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);}
-        ctx.strokeStyle=`rgba(145,183,215,${grid*((row===0||row===6) ? .32 : .13)})`;ctx.stroke();
+        ctx.strokeStyle=`rgba(145,183,215,${grid*(active ? .12 :((row===0||row===6) ? .32 : .13))})`;ctx.stroke();
       }
       for(let i=0;i<18;i++){
         const a=i/18*Math.PI*2,p=project(Math.cos(a),-.8,Math.sin(a),rotation),q=project(Math.cos(a),.8,Math.sin(a),rotation);
-        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.strokeStyle=`rgba(145,183,215,${grid*(.1+(p.depth+1)*.055)})`;ctx.stroke();
+        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.strokeStyle=`rgba(145,183,215,${grid*(active ? .07 :(.1+(p.depth+1)*.055))})`;ctx.stroke();
       }
     }
     for(const point of points){
       const t=Math.min(1,Math.max(0,(assembling-point.delay)/(1-point.delay))),ease=1-Math.pow(1-t,3);
       const p=project(point.sx+(point.x-point.sx)*ease,point.sy+(point.y-point.sy)*ease,point.sz+(point.z-point.sz)*ease,rotation);
+      const distance=Math.hypot(mouse.x-p.x,mouse.y-p.y);
+      const radius=point.follow?440:180;
+      const influence=active?Math.exp(-distance*distance/(radius*radius))*(point.follow ? 1 : .45):0;
+      const targetX=(mouse.x-p.x)*influence*assembling,targetY=(mouse.y-p.y)*influence*assembling;
+      if(motion.matches){point.dx=point.dy=point.vx=point.vy=0;}
+      else{
+        // A damped spring makes the cloud chase the mouse and trail behind it.
+        const damping=Math.pow(.76,step);
+        point.vx=(point.vx+(targetX-point.dx)*.075*step)*damping;
+        point.vy=(point.vy+(targetY-point.dy)*.075*step)*damping;
+        point.dx+=point.vx*step;point.dy+=point.vy*step;
+      }
       const alpha=(.18+(p.depth+1)*.22)*Math.min(1,assembling*5);
       ctx.fillStyle=point.warm?`rgba(255,151,87,${alpha*.9})`:`rgba(183,209,231,${alpha})`;
-      ctx.beginPath();ctx.arc(p.x,p.y,point.size,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(p.x+point.dx,p.y+point.dy,point.size*Math.max(.65,zoom),0,Math.PI*2);ctx.fill();
     }
     stage.dataset.particlePhase=assembling<1?'assembling':'formed';
   }
@@ -53,7 +84,7 @@ export function mountTankParticles(stage) {
   }
   function animate(time){
     frame=0;if(disposed||!visible||document.hidden||motion.matches)return;
-    elapsed+=last?Math.min(time-last,50):0;last=time;draw();frame=requestAnimationFrame(animate);
+    const delta=last?Math.min(time-last,32):16.67;elapsed+=delta;last=time;draw(delta/16.67);frame=requestAnimationFrame(animate);
   }
   function sync(){
     cancelAnimationFrame(frame);frame=0;last=0;
@@ -66,5 +97,5 @@ export function mountTankParticles(stage) {
   let observer;
   if('IntersectionObserver' in window){observer=new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;sync();});observer.observe(stage);}else{visible=true;sync();}
   motion.addEventListener('change',sync);document.addEventListener('visibilitychange',sync);
-  return ()=>{disposed=true;cancelAnimationFrame(frame);resizeObserver.disconnect();observer?.disconnect();motion.removeEventListener('change',sync);document.removeEventListener('visibilitychange',sync);canvas.remove();stage.classList.remove('particles-ready');delete stage.dataset.particlePhase;};
+  return ()=>{disposed=true;cancelAnimationFrame(frame);resizeObserver.disconnect();observer?.disconnect();motion.removeEventListener('change',sync);document.removeEventListener('visibilitychange',sync);hero.removeEventListener('pointermove',pointerMove);hero.removeEventListener('pointerleave',pointerLeave);canvas.remove();stage.classList.remove('particles-ready');delete stage.dataset.particlePhase;};
 }
