@@ -39,7 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=st.secret_key, https_only=st.https_only, same_site="lax", max_age=14 * 86400)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=str(HERE / "templates"))
-    templates.env.globals["asset_v"] = max((HERE / "static" / name).stat().st_mtime_ns for name in ("style.css", "redsun.css", "motion.js", "model-controls.js", "loads3d.js", "viewer3d.js", "structure3d.js", "studio.js", "model-runtime.js", "model-loader.js", "model-inspector.js"))    # сброс кэша стилей при обновлении
+    templates.env.globals["asset_v"] = max((HERE / "static" / name).stat().st_mtime_ns for name in ("style.css", "redsun.css", "motion.js", "model-controls.js", "loads3d.js", "viewer3d.js", "structure3d.js", "studio.js", "model-runtime.js", "model-loader.js", "model-inspector.js", "tank-particles.js"))    # сброс кэша стилей при обновлении
     templates.env.filters["rub"] = lambda n: f"{int(n):,}".replace(",", "\u00a0")       # 12000 -> 12 000
     templates.env.globals["min_unit"] = min((p // n for n, p in st.packs.items()), default=0)    # самая низкая цена генерации в пакетах
     limiter = LoginLimiter()

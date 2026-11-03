@@ -41,3 +41,12 @@ main:has(.studio){max-width:1600px;padding-inline:24px}.st-head{padding-bottom:1
 .model-analysis{border-top:1px solid var(--line);padding:12px}.model-analysis>summary{cursor:pointer;font-size:15px;padding:6px;color:var(--ink)}.model-analysis .comparison-tools,.model-analysis .inspector-tools{padding:12px 0}.viewer>.point-result{margin:10px 12px}.result-actions{display:flex;flex-wrap:wrap;gap:12px}.result-actions .btn{font-size:14px;padding:10px 16px}.result-metrics input[type=checkbox],.comparison-tools input[type=checkbox],.inspector-tools input[type=checkbox]{accent-color:var(--data)}
 
 :root{--warn:#d9bd76}.l3-options input[type=checkbox],.vbar input[type=checkbox]{accent-color:var(--data)}
+
+/* One contained particle illustration replaces the solid arc on desktop. */
+.tank-particles{display:none}
+@media(min-width:1024px) and (hover:hover) and (pointer:fine){
+  .solar-stage.particles-ready{height:290px}
+  .particles-ready .tank-particles{display:block;width:100%;height:100%;position:absolute;inset:0;pointer-events:none}
+  .particles-ready .solar-orbit,.particles-ready .solar-core,.particles-ready .orbit-dot{display:none}
+  .particles-ready .solar-halo{opacity:.35;animation:none;background:radial-gradient(ellipse,#b4c7e514,transparent 64%);height:300px;top:0}
+}

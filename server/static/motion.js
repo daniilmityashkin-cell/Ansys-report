@@ -73,3 +73,21 @@
   document.addEventListener('visibilitychange', sync);
   sync();
 })();
+
+// Import the particle illustration only on desktop; touch/mobile keeps its current hero.
+(() => {
+  const stage=document.querySelector('.solar-stage');
+  if(!stage)return;
+  const desktop=matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
+  let dispose=null,version=0;
+  async function sync(){
+    const current=++version;
+    if(dispose){dispose();dispose=null;}
+    if(!desktop.matches)return;
+    try{
+      const module=await import('./tank-particles.js');
+      if(current===version&&desktop.matches)dispose=module.mountTankParticles(stage);
+    }catch(error){ /* The existing solar illustration remains as the fallback. */ }
+  }
+  desktop.addEventListener('change',sync);sync();
+})();
