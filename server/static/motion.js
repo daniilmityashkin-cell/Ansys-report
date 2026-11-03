@@ -56,7 +56,7 @@
     const rect = hero.getBoundingClientRect();
     const progress = Math.max(0, Math.min(1, -rect.top / rect.height));
     panel.style.setProperty('--panel-tilt', `${(1 - progress) * 3}deg`);
-    stage.style.translate = `0 ${progress * 35}px`;
+    stage.style.translate = stage.classList.contains("particles-ready") ? "0 0" : `0 ${progress * 35}px`;
     frame = requestAnimationFrame(animate);
   }
   function sync() {

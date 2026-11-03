@@ -42,11 +42,15 @@ main:has(.studio){max-width:1600px;padding-inline:24px}.st-head{padding-bottom:1
 
 :root{--warn:#d9bd76}.l3-options input[type=checkbox],.vbar input[type=checkbox]{accent-color:var(--data)}
 
-/* Desktop viewport particle layer; page controls remain fully interactive. */
+/* Desktop hero background is clipped before the workspace preview. */
 .tank-particles{display:none}
 @media(min-width:1024px) and (hover:hover) and (pointer:fine){
-  .solar-stage.particles-ready{height:380px;margin-top:22px}
-  .tank-particles{display:block;position:fixed;inset:0;width:100vw;height:100vh;z-index:5;pointer-events:none}
+  .solar-stage.particles-ready{position:absolute;top:0;left:50%;transform:translateX(-50%);width:calc(100vw - 64px);max-width:1800px;height:var(--particle-art-height,75vh);margin:0;z-index:0;pointer-events:none;overflow:hidden;isolation:isolate}
+  .tank-particles{display:block;position:absolute;inset:0;width:100%;height:100%;opacity:.48;pointer-events:none}
+  .solar-hero:has(>.particles-ready)>:not(.solar-stage){position:relative;z-index:2}
+  .solar-hero:has(>.particles-ready) h1{text-shadow:0 3px 24px #08090b}
+  .solar-hero:has(>.particles-ready)>p{color:#c9cbd3;text-shadow:0 2px 12px #08090b}
+  .solar-hero:has(>.particles-ready) .hero-actions .btn.light{background:#111318ed}
   .particles-ready .solar-orbit,.particles-ready .solar-core,.particles-ready .orbit-dot{display:none}
   .particles-ready .solar-halo{opacity:.35;animation:none;background:radial-gradient(ellipse,#b4c7e514,transparent 64%);height:300px;top:0}
 }
