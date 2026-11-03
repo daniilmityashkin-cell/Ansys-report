@@ -1,6 +1,10 @@
 // Студия геометрии: пошаговый ввод замеров → восстановленная стенка → конструкция → нагрузки → страница расчёта.
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/OrbitControls.js";
+import { modelQuality } from "./model-runtime.js";
+let THREE, OrbitControls, modelControls, modelInspector, enginePromise;
+function ensure3D() {
+  if (!enginePromise) enginePromise = Promise.all([import('three'), import('three/addons/OrbitControls.js'), import('./model-controls.js'), import('./model-inspector.js')]).then(([three, orbit, controls, inspector]) => { THREE=three; OrbitControls=orbit.OrbitControls; modelControls=controls.modelControls; modelInspector=inspector.modelInspector; }).catch(error => {enginePromise=null;throw error;});
+  return enginePromise;
+}
 
 const root = document.getElementById("studio");
 const $ = (id) => document.getElementById(id);
@@ -173,10 +177,18 @@ document.addEventListener("paste", (e) => {                   // Ctrl+V в се�
 function loadProject(p) {
   S.raw = p;
   S.D = num(p.diameter); S.H = num(p.height);
-  S.angles = (p.angles || []).map(Number); S.heights = (p.heights || []).map(Number);
-  S.values = (p.values || []).map((r) => r.map(Number));
+  S.angles = (p.angles || []).map(v => num(v)); S.heights = (p.heights || []).map(v => num(v));
+  S.values = (p.values || []).map((r) => r.map(v => num(v)));
   S.thick = (p.bands || []).map((b) => thickOf(b[1]));
-  S.defects = p.defects || [];
+  S.defects = (p.defects || []).map(d => {
+    const result = { ...d };
+    for (const key of ['anchor', 'height', 'width', 'span_height']) result[key] = num(d[key]);
+    if ((d.mode || 'Дуга, м') === 'Дуга, м') result.anchor = result.anchor / (S.D / 2) * 180 / Math.PI;
+    result.mode = 'Угол, град';
+    result.x = (d.x || []).map(v => num(v)); result.y = (d.y || []).map(v => num(v));
+    result.values = (d.values || []).map(row => row.map(v => num(v)));
+    return result;
+  });
   $("p-D").value = S.D; $("p-H").value = S.H; $("p-ng").value = S.angles.length; $("p-nz").value = S.heights.length - 1;
   const ex = p.export_selection;                              // что входит в модель — видимость на шаге 5
   if (ex) { $("v-nozzles").checked = ex.nozzles !== false; }
@@ -249,6 +261,7 @@ $("b-ideal").onclick = () => { loaded = true; say("Идеальный резер
 
 /* ---------- шаг 2: профили образующих ---------- */
 function drawProfiles() {
+  $("profiles").style.setProperty("--profile-columns", Math.ceil(S.angles.length / Math.max(1, Math.ceil(S.angles.length / 9))));
   const box = $("profiles"); box.innerHTML = "";
   let mx = 1; S.values.forEach((r) => r.forEach((v) => { mx = Math.max(mx, Math.abs(v)); }));
   const nz = S.heights.length;
@@ -336,16 +349,24 @@ $("d-paste").onclick = async () => {
 const views = {};
 function makeView(id, target, cam) {
   if (views[id]) return views[id];
-  const canvas = $(id), renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  const canvas = $(id); canvas.dataset.modelQuality = modelQuality().compact ? "compact" : "full";
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); renderer.setPixelRatio(modelQuality().pixelRatio);
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0b0d10);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 2000); camera.up.set(0, 0, 1);
   const controls = new OrbitControls(camera, canvas); controls.enableDamping = true;
   scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 1.1)); const sun = new THREE.DirectionalLight(0xffffff, 1.0); sun.position.set(1, -1, 2); scene.add(sun);
-  const v = { id, canvas, renderer, scene, camera, controls, group: new THREE.Group(), home: null };
+  const interaction = modelControls(controls, canvas, camera);
+  const v = { interaction, id, canvas, renderer, scene, camera, controls, group: new THREE.Group(), home: null };
   scene.add(v.group);
-  v.setHome = (t, c) => { v.home = { t, c }; camera.position.set(...c); controls.target.set(...t); controls.update(); };
+  v.inspection = modelInspector({THREE,renderer,scene,camera,canvas,scope:canvas.parentElement,R:S.D/2,H:S.H,objects:()=>[v.group],describe:(hit,angle)=>hit.object.userData.presentation==='measurements' ? `Исходный замер: образующая ${hit.index%S.angles.length+1} · Z = ${S.heights[Math.floor(hit.index/S.angles.length)].toFixed(3)} м · Δr = ${S.values[Math.floor(hit.index/S.angles.length)][hit.index%S.angles.length].toFixed(1)} мм` : `φ = ${angle.toFixed(1)}° · Z = ${hit.point.z.toFixed(3)} м`+(id==='cv-wall'||id==='cv-rings' ? ` · Δr ≈ ${fieldFn()(angle,hit.point.z).toFixed(1)} мм (интерполяция)` : ' · конструктивная поверхность')});
+  v.setHome = (t, c) => {
+    v.inspection?.setBounds(S.D/2,S.H);
+    const r=Math.hypot(...c.map((x,i)=>x-t[i]));controls.minDistance=r*.15;controls.maxDistance=r*5;v.home={t,c};
+    const dimensions=JSON.stringify([S.D,S.H]);
+    if(v.dimensions!==dimensions){v.dimensions=dimensions;camera.position.set(...c);controls.target.set(...t);controls.update();}
+  };
   v.setHome(target, cam);
-  v.clear = () => { while (v.group.children.length) { const o = v.group.children.pop(); o.traverse && o.traverse((m) => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); }); } };
+  v.clear = () => { while (v.group.children.length) { const o = v.group.children[0]; v.group.remove(o); o.traverse && o.traverse((m) => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); }); } };
   views[id] = v; return v;
 }
 function loop() {
@@ -354,7 +375,7 @@ function loop() {
     const v = views[k]; if (!v.canvas.offsetParent) continue;
     const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
     if (v.canvas.width !== Math.round(w * v.renderer.getPixelRatio()) || v.canvas.height !== Math.round(h * v.renderer.getPixelRatio())) { v.renderer.setSize(w, h, false); v.camera.aspect = w / h; v.camera.updateProjectionMatrix(); }
-    v.controls.update(); v.renderer.render(v.scene, v.camera);
+    if (v.interaction.update()) v.renderer.render(v.scene, v.camera);
   }
 }
 loop();
@@ -386,11 +407,14 @@ function fieldFn() {                                          // δr(θ, z), м�
     return v;
   };
 }
+const wallFieldCache = new Map();
 function buildWall(view, amp, rings) {
   view.clear();
-  const R = S.D / 2, H = S.H, NT = 220, NZ = 110, f = fieldFn();
-  const pos = [], col = [], idx = []; let mxAbs = 1e-9; const vals = [];
-  for (let j = 0; j <= NZ; j++) for (let i = 0; i <= NT; i++) { const th = 360 * (i % NT) / NT, z = H * j / NZ, v = f(th, z); vals.push(v); mxAbs = Math.max(mxAbs, Math.abs(v)); }
+  const R = S.D / 2, H = S.H, NT = modelQuality().wallTheta, NZ = modelQuality().wallZ, f = fieldFn();
+  const key=JSON.stringify([S.D,S.H,S.angles,S.heights,S.values,S.defects,NT,NZ]);
+  let cached=wallFieldCache.get(key);
+  if(!cached){const values=[];let max=1e-9;for(let j=0;j<=NZ;j++)for(let i=0;i<=NT;i++){const v=f(360*(i%NT)/NT,H*j/NZ);values.push(v);max=Math.max(max,Math.abs(v));}cached={values,max};wallFieldCache.set(key,cached);if(wallFieldCache.size>2)wallFieldCache.delete(wallFieldCache.keys().next().value);}
+  const pos = [], col = [], idx = [], vals=cached.values, mxAbs=cached.max;
   let q = 0;
   for (let j = 0; j <= NZ; j++) for (let i = 0; i <= NT; i++) {
     const th = 2 * Math.PI * (i % NT) / NT, v = vals[q++], r = R + amp * v / 1000, c = jet(Math.abs(v) / mxAbs);
@@ -398,7 +422,17 @@ function buildWall(view, amp, rings) {
   }
   for (let j = 0; j < NZ; j++) for (let i = 0; i < NT; i++) { const a = j * (NT + 1) + i, b = a + 1, c = a + NT + 1, d = c + 1; idx.push(a, b, c, b, d, c); }
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-  view.group.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: .7, metalness: .05 })));
+  const surface=new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: .7, metalness: .05 }));surface.userData.presentation='surface';view.group.add(surface);
+  if(view.id==='cv-wall'){
+    const measured=[];
+    S.heights.forEach((z,j)=>S.angles.forEach((a,i)=>{const t=a*Math.PI/180,r=R+S.values[j][i]*amp/1000;measured.push(r*Math.cos(t),r*Math.sin(t),z);}));
+    const pts=new THREE.Points(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(measured,3)),new THREE.PointsMaterial({color:0xffc5d0,size:7,sizeAttenuation:false,depthTest:false}));pts.userData.presentation='measurements';view.group.add(pts);
+    if(!view.comparison){
+      const bar=document.createElement('div');bar.className='comparison-tools';bar.innerHTML='<label>Сравнение <select><option value="surface">Восстановленная поверхность</option><option value="measurements">Исходные замеры</option><option value="overlay">Поверхность и замеры</option></select></label><p>Точки — исходные замеры, поверхность — восстановление по замерам и локальным вмятинам.</p>';view.canvas.parentElement.append(bar);
+      view.comparison=bar.querySelector('select');view.comparison.onchange=()=>{view.interaction.stop();view.group.children.forEach(o=>{o.visible=view.comparison.value==='overlay'||o.userData.presentation===view.comparison.value;});};
+    }
+    view.group.children.forEach(o=>{o.visible=view.comparison.value==='overlay'||o.userData.presentation===view.comparison.value;});
+  }
   view.setHome([0, 0, H / 2], [R * 2.4, -R * 2.6, H * 0.95 + R * 0.7]);
   return mxAbs;
 }
@@ -433,10 +467,11 @@ function structFields() {
   return f;
 }
 function showStruct() {
+  if(!THREE || step!==5)return;
   readParams();
   const R = S.D / 2, H = S.H, v = makeView("cv-struct", [0, 0, H / 2], [R * 2.6, -R * 2.8, H + R * 1.1]); v.clear();
   const f = structFields(), G = v.group;
-  const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 96, 1, true).rotateX(Math.PI / 2).translate(0, 0, H / 2), new THREE.MeshStandardMaterial({ color: 0x4f86c6, side: THREE.DoubleSide, transparent: true, opacity: .72 })); wall.userData.k = "wall"; G.add(wall);
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, modelQuality().radial, 1, true).rotateX(Math.PI / 2).translate(0, 0, H / 2), new THREE.MeshStandardMaterial({ color: 0x4f86c6, side: THREE.DoubleSide, transparent: true, opacity: .72 })); wall.userData.k = "wall"; G.add(wall);
   const gb = new THREE.Group(); gb.userData.k = "bottom";
   if (f.s_bot_on) {
     const out = num(f.s_bot_outside, 200) / 1000, disc = new THREE.Mesh(new THREE.CircleGeometry(R - 0.1, 96), new THREE.MeshStandardMaterial({ color: 0x7c8a6a, side: THREE.DoubleSide })), ann = new THREE.Mesh(new THREE.RingGeometry(R - num(f.s_bot_width, 1500) / 1000 + out, R + out, 96), new THREE.MeshStandardMaterial({ color: 0x9aa0a6, side: THREE.DoubleSide }));
@@ -574,7 +609,7 @@ function validate1() {
   if (bad.length) { drawGrid(); throw new Error("Введите толщину каждого пояса, мм (колонка «t, мм» справа в таблице): не заполнены пояса " + bad.join(", ") + ". Толщины берутся из паспорта резервуара или толщинометрии — от них зависят напряжения в отчёте."); }
   if (countFilled() === 0 && !loaded) throw new Error("Замеры не заданы. Перетащите файл (проект .json или геодезию .xlsx), вставьте таблицу из Excel или нажмите «Идеальный резервуар».");
 }
-function go(n) {
+async function go(n) {
   if (n > step && step === 1) { try { validate1(); } catch (e) { showErr(e.message); return; } }
   showErr(""); step = Math.max(1, Math.min(STEPS, n));
   document.querySelectorAll(".st-step").forEach((s) => { s.hidden = +s.dataset.step !== step; });
@@ -582,7 +617,11 @@ function go(n) {
   $("dots").innerHTML = Array.from({ length: STEPS }, (_, i) => "<i class=\"" + (i + 1 === step ? "on" : i + 1 < step ? "done" : "") + "\"></i>").join("");
   const stage = step === 1 ? 1 : step <= 4 ? 2 : step <= 6 ? 3 : 4;
   document.querySelectorAll(".st-stages span").forEach((s) => s.classList.toggle("on", +s.dataset.st === stage));
-  if (step === 2) drawProfiles(); if (step === 3) drawDents(); if (step === 4) showWall(); if (step === 5) showStruct(); if (step === 6) showRings(); if (step === 7) showStepSummary();
+  if (step === 2) drawProfiles(); if (step === 3) drawDents(); if (step >= 4 && step <= 6) {
+    const requested = step;
+    try { await ensure3D(); if(step!==requested)return; if(step===4)showWall();if(step===5)showStruct();if(step===6)showRings(); }
+    catch(error){showErr('3D не загрузилось: '+error.message);}
+  } if (step === 7) showStepSummary();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 $("b-next").onclick = () => go(step + 1); $("b-prev").onclick = () => go(step - 1);

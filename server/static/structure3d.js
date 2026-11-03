@@ -1,6 +1,9 @@
-// 3D-схема конструкции: стенка, патрубки, днище с окрайкой, крыша (каркас, кольца, настил). Масштаб - ползунком, колесо прокручивает страницу.
+// 3D-схема конструкции: стенка, патрубки, днище с окрайкой и крыша. Масштаб — колесом, жестом или ползунком.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
+import { modelQuality } from "./model-runtime.js";
+import { modelInspector } from "./model-inspector.js";
+import { modelControls } from "./model-controls.js";
 
 const root = document.getElementById("struct3d");
 if (root) start(root).catch(function (e) { var d = document.createElement("div"); d.className = "viewer-fail"; d.textContent = "3D-схема не запустилась: " + e.message + ". Обновите страницу (Ctrl+F5)."; root.insertBefore(d, root.firstChild); });
@@ -16,7 +19,7 @@ async function start(box) {
   const S = await loadJson(box.dataset.src);
   const R = S.D / 2, H = S.H, canvas = box.querySelector("canvas");
   const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(modelQuality().pixelRatio);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b0d10);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
@@ -25,14 +28,15 @@ async function start(box) {
   const home = new THREE.Vector3(R * 2.6, -R * 3.0, H * 1.3 + R * 0.8);
   camera.position.copy(home);
   const controls = new OrbitControls(camera, canvas);
-  controls.target.copy(target); controls.enableDamping = true; controls.enableZoom = false; controls.update();
+  controls.target.copy(target); controls.enableDamping = true; controls.enableZoom = true; controls.update();
+  const interaction = modelControls(controls, canvas, camera, { scope: box });
   scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 1.2));
   const sun = new THREE.DirectionalLight(0xffffff, 1.0); sun.position.set(R * 2, -R, H * 2); scene.add(sun);
   const g = { wall: new THREE.Group(), nozzles: new THREE.Group(), bottom: new THREE.Group(), roof: new THREE.Group() };
   Object.values(g).forEach(function (x) { scene.add(x); });
 
   // стенка (по образующей №1 - угол 0, ось X)
-  const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 96, 1, true), mat(0x5b9bd5, 0.35));
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, modelQuality().radial, 1, true), mat(0x5b9bd5, 0.35));
   wall.rotation.x = Math.PI / 2; wall.position.z = H / 2;
   g.wall.add(wall);
   g.wall.add(lines(Array.from({ length: 2 }, function (_, i) { return new THREE.Vector3(R, 0, i * H); }), 0xffffff));
@@ -59,7 +63,7 @@ async function start(box) {
     const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.001, R - (ann - out) + b.overlap_mm / 1000, rise, 96, 1, true), mat(0x7fb98a, 0.8));
     cone.rotation.x = Math.PI / 2; cone.position.z = rise / 2;
     g.bottom.add(cone);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(R - (ann - out), R + out, 128), mat(0xa8adb5, 0.95));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(R - (ann - out), R + out, modelQuality().radial), mat(0xa8adb5, 0.95));
     g.bottom.add(ring);
   }
 
@@ -74,7 +78,7 @@ async function start(box) {
     for (let i = 1; i <= r.ring_count; i++) ringsR.push(rc + (R - rc) * i / (r.ring_count + 1));
     ringsR.push(R);
     // настил
-    const seg = 160, pos = [], idx = [];
+    const seg = modelQuality().radial, pos = [], idx = [];
     const rd = R - r.deck_inset_mm / 1000;
     const rad = []; for (let i = 0; i <= 24; i++) rad.push(rc + (rd - rc) * i / 24);
     rad.forEach(function (x) { for (let k = 0; k <= seg; k++) { const t = k / seg * Math.PI * 2; pos.push(x * Math.cos(t), x * Math.sin(t), zAt(x)); } });
@@ -94,6 +98,7 @@ async function start(box) {
     });
   }
 
+  modelInspector({THREE,renderer,scene,camera,canvas,scope:box,R,H,objects:()=>Object.values(g)});
   // управление
   const info = box.querySelector(".vinfo");
   Object.keys(g).forEach(function (k) {
@@ -103,6 +108,11 @@ async function start(box) {
     c.addEventListener("change", function () { g[k].visible = c.checked; });
   });
   const zoomInput = box.querySelector("#st-zoom"), zoomLabel = box.querySelector("#st-zoom-l"), homeDist = home.distanceTo(target);
+  controls.minDistance = Math.max(R, H / 2) * 1.1; controls.maxDistance = homeDist * 5;
+  controls.addEventListener('change', () => {
+    const percent = Math.round(homeDist / camera.position.distanceTo(controls.target) * 100);
+    zoomInput.value = percent; zoomLabel.textContent = percent + '%';
+  });
   zoomInput.addEventListener("input", function () {
     const dir = camera.position.clone().sub(controls.target).normalize();
     camera.position.copy(controls.target).addScaledVector(dir, homeDist / (Number(zoomInput.value) / 100));
@@ -112,7 +122,7 @@ async function start(box) {
   box.querySelector("#st-top").addEventListener("click", function () { camera.position.set(0.001, -0.001, H + R * 3.2); controls.target.set(0, 0, H); controls.update(); });
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (canvas.width !== w * renderer.getPixelRatio()) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); } }
   new ResizeObserver(fit).observe(canvas); fit();
-  renderer.setAnimationLoop(function () { controls.update(); renderer.render(scene, camera); });
+  renderer.setAnimationLoop(function () { if (interaction.update()) renderer.render(scene, camera); });
 }
 
 async function loadJson(url) {                      // файл может появиться на пару секунд позже страницы - повторяем

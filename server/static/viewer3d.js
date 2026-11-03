@@ -1,6 +1,9 @@
 // Интерактивный 3D-просмотр стенки резервуара: вращение мышью, колесо - масштаб, правая кнопка - сдвиг.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
+import { modelQuality } from "./model-runtime.js";
+import { modelInspector } from "./model-inspector.js";
+import { modelControls } from "./model-controls.js";
 
 const root = document.getElementById("viewer");
 if (root) start(root).catch(function (e) { var m = "3D-просмотр не запустился: " + e.message; root.querySelector("#v-info").textContent = m; var d = document.createElement("div"); d.className = "viewer-fail"; d.textContent = m + ". Обновите страницу (Ctrl+F5); если не помогло - включите аппаратное ускорение/WebGL в браузере."; root.insertBefore(d, root.firstChild); root.classList.add("failed"); });
@@ -12,7 +15,15 @@ function jet(t) {
 }
 
 async function start(box) {
-  const data = await loadJson(box.dataset.src);
+  const source = await loadJson(box.dataset.src);
+  const compact = modelQuality().compact;
+  const columns = Array.from({length: compact ? Math.ceil(source.nt / 2) : source.nt}, (_, i) => i);
+  const xs = columns.map(i => Math.round(i / (columns.length - 1) * (source.nt - 1)));
+  const rows = compact ? Math.ceil(source.nz / 2) : source.nz;
+  const ys = Array.from({length: rows}, (_, j) => Math.round(j / (rows - 1) * (source.nz - 1)));
+  const data = {...source, nt: xs.length, nz: ys.length, grid: ys.flatMap(j => xs.map(i => source.grid[j * source.nt + i]))};
+  box.dataset.modelQuality = compact ? "compact" : "full";
+  box.dataset.displayVertices = data.nt * data.nz;
   const canvas = box.querySelector("canvas");
   const info = box.querySelector("#v-info");
   const ampInput = box.querySelector("#v-amp"), ampLabel = box.querySelector("#v-amp-l");
@@ -22,7 +33,7 @@ async function start(box) {
   box.querySelector("#v-min").textContent = "0";
 
   const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(modelQuality().pixelRatio);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b0d10);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 1000);
@@ -32,8 +43,9 @@ async function start(box) {
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, H / 2);
   controls.enableDamping = true;
-  controls.enableZoom = false;                       // колесо прокручивает страницу; масштаб - ползунком
+  controls.enableZoom = true;                       // колесо и жест двумя пальцами меняют масштаб
   controls.update();
+  const interaction = modelControls(controls, canvas, camera, { scope: box });
   scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 1.1));
   const sun = new THREE.DirectionalLight(0xffffff, 1.1);
   sun.position.set(R * 2, -R, H * 2);
@@ -90,8 +102,9 @@ async function start(box) {
   scene.add(ring(0), ring(H));
 
   function rebuild() {
-    const amp = +ampInput.value / 1000;
+    const amp = (typeof shownAmp === "undefined" ? Number(ampInput.value) : shownAmp) / 1000;
     ampLabel.textContent = ampInput.value + "×";
+    info.textContent = "Цвет — |Δr|, мм. Отклонения усилены в " + ampInput.value + " раз только для наглядности.";
     for (let j = 0; j < nz; j++) for (let i = 0; i < nt; i++) {
       const t = i / (nt - 1) * Math.PI * 2, z = j / (nz - 1) * H, r = R + data.grid[j * nt + i] * amp, k = (j * nt + i) * 3;
       pos[k] = r * Math.cos(t); pos[k + 1] = r * Math.sin(t); pos[k + 2] = z;
@@ -104,12 +117,33 @@ async function start(box) {
     sg.computeVertexNormals(); sg.computeBoundingSphere(); pg.computeBoundingSphere();
   }
   rebuild();
+  const nominal = new THREE.Mesh(new THREE.CylinderGeometry(R,R,H,modelQuality().radial,1,true).rotateX(Math.PI/2).translate(0,0,H/2), new THREE.MeshBasicMaterial({color:0xb9c5d8,wireframe:true,transparent:true,opacity:.18,side:THREE.DoubleSide}));
+  nominal.visible=false;scene.add(nominal);
+  const comparison=document.createElement('div');comparison.className='comparison-tools';
+  comparison.innerHTML='<label>Сравнение <select data-compare><option value="surface">Восстановленная поверхность</option><option value="measurements">Исходные замеры</option><option value="overlay">Поверхность и замеры</option></select></label><label><input type="checkbox" data-nominal> Проектный цилиндр</label><p>Исходные замеры показаны точками. Поверхность — интерполяция этих замеров с учётом вмятин. Проектный цилиндр не содержит отклонений.</p>';
+  box.append(comparison);
+  comparison.querySelector('[data-nominal]').onchange=e=>{nominal.visible=e.target.checked;};
+  comparison.querySelector('select').onchange=e=>{
+    interaction.stop();surface.visible=e.target.value!=='measurements';points.visible=e.target.value!=='surface';
+    box.querySelector('#v-surf').checked=surface.visible;box.querySelector('#v-pts').checked=points.visible;
+  };
+  const inspector=modelInspector({THREE,renderer,scene,camera,canvas,scope:box,R,H,objects:()=>[surface,points],describe:(hit,angle)=>{
+    if(hit.object===points){const i=hit.index%na,j=Math.floor(hit.index/na);return `Замер: образующая ${i+1} · φ = ${data.angles[i].toFixed(1)}° · Z = ${data.heights[j].toFixed(3)} м · Δr = ${data.points[hit.index].toFixed(1)} мм`;}
+    const i=Math.round(angle/360*(source.nt-1)),j=Math.max(0,Math.min(source.nz-1,Math.round(hit.point.z/H*(source.nz-1))));
+    return `Интерполированная поверхность: φ = ${angle.toFixed(1)}° · Z = ${hit.point.z.toFixed(3)} м · Δr ≈ ${source.grid[j*source.nt+i].toFixed(1)} мм (ближайший узел сетки)`;
+  }});
+  var shownAmp=Number(ampInput.value), targetAmp=shownAmp;
 
   const bind = function (id, obj) { box.querySelector(id).addEventListener("change", function (e) { obj.visible = e.target.checked; }); };
   bind("#v-surf", surface); bind("#v-pts", points); bind("#v-wire", wire);
-  ampInput.addEventListener("input", rebuild);
+  ampInput.addEventListener("input", () => {interaction.stop();inspector.clear();targetAmp=Number(ampInput.value);if(matchMedia("(prefers-reduced-motion: reduce)").matches){shownAmp=targetAmp;rebuild();}});
   const zoomInput = box.querySelector("#v-zoom"), zoomLabel = box.querySelector("#v-zoom-l");
   const homeDist = home.distanceTo(controls.target);
+  controls.minDistance = Math.max(R, H / 2) * 1.1; controls.maxDistance = homeDist * 5;
+  controls.addEventListener('change', () => {
+    const percent = Math.round(homeDist / camera.position.distanceTo(controls.target) * 100);
+    zoomInput.value = percent; zoomLabel.textContent = percent + '%';
+  });
   function setZoom() {                                // 100% = исходный вид; больше - ближе
     const k = Number(zoomInput.value) / 100, dir = camera.position.clone().sub(controls.target).normalize();
     camera.position.copy(controls.target).addScaledVector(dir, homeDist / k);
@@ -120,22 +154,10 @@ async function start(box) {
   box.querySelector("#v-reset").addEventListener("click", function () { camera.position.copy(home); controls.target.set(0, 0, H / 2); zoomInput.value = 100; zoomLabel.textContent = "100%"; controls.update(); });
   box.querySelector("#v-full").addEventListener("click", function () { if (document.fullscreenElement) document.exitFullscreen(); else box.requestFullscreen && box.requestFullscreen(); });
 
-  // --- подсказка при наведении
-  const ray = new THREE.Raycaster(); ray.params.Points.threshold = 6;
-  canvas.addEventListener("pointermove", function (ev) {
-    const r = canvas.getBoundingClientRect();
-    ray.setFromCamera(new THREE.Vector2((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera);
-    const targets = []; if (points.visible) targets.push(points); if (surface.visible) targets.push(surface);
-    const hit = ray.intersectObjects(targets, false)[0];
-    if (!hit) return;
-    if (hit.object === points) {
-      const g = hit.index % na, b = Math.floor(hit.index / na);
-      info.textContent = "Точка: образующая " + (g + 1) + ", отметка " + data.heights[b].toFixed(2) + " м: Δr = " + data.points[hit.index].toFixed(1) + " мм";
-    } else {
-      const v = hit.face.a, i = v % nt, j = Math.floor(v / nt);
-      info.textContent = "Поверхность: φ = " + (i / (nt - 1) * 360).toFixed(0) + "°, высота " + (j / (nz - 1) * H).toFixed(2) + " м: Δr = " + data.grid[v].toFixed(1) + " мм";
-    }
-  });
+  const advanced=document.createElement('details');advanced.className='model-analysis';
+  const summary=document.createElement('summary');summary.textContent='Разрез, сравнение и отображение';advanced.append(summary);
+  const selection=inspector.tools.querySelector('output');box.append(selection);
+  advanced.append(comparison,inspector.tools,box.querySelector('.vbar'));box.append(advanced);
 
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -145,7 +167,10 @@ async function start(box) {
   }
   new ResizeObserver(resize).observe(canvas);
   resize();
-  renderer.setAnimationLoop(function () { controls.update(); renderer.render(scene, camera); });
+  renderer.setAnimationLoop(function () {
+    if (Math.abs(shownAmp-targetAmp)>.01) {shownAmp+=(targetAmp-shownAmp)*.16;rebuild();}
+    if (interaction.update()) renderer.render(scene, camera);
+  });
   box.classList.add("ready");
 }
 

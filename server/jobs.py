@@ -140,6 +140,13 @@ def compute_preview(gen_dir: str) -> None:
     Ошибка записывается в preview/error.txt, чтобы страница не ждала бесконечно."""
     gen = Path(gen_dir)
     try:
+        from .preview_cache import preview_key, preview_is_cached
+        key = preview_key(gen)
+        pv = gen / "preview"
+        if preview_is_cached(gen, key):
+            return
+        (pv / "ready").unlink(missing_ok=True)
+        (pv / "error.txt").unlink(missing_ok=True)
         from ansys_report.geometry import check, figures
         res = check.analyze(check.load_project(gen / "input.json"))
         from ansys_report.geometry.viewer_data import viewer_data
@@ -152,6 +159,7 @@ def compute_preview(gen_dir: str) -> None:
         for d, info in zip(res["model"].defects, res["dents"]):
             figures.dent_plot(res, d, info, pv / f"dent{info['id']}.png")
         figures.make_preview(res, pv)
+        (pv / "cache-key").write_text(json.dumps({"key": key, "files": ["viewer.json"] + [p.name for p in pv.glob("*.png")]}))
         (pv / "ready").write_text("1")                     # признак: все файлы просмотра записаны целиком
     except Exception as e:   # noqa: BLE001
         (gen / "preview").mkdir(parents=True, exist_ok=True)

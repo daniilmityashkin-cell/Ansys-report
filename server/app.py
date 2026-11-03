@@ -39,7 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=st.secret_key, https_only=st.https_only, same_site="lax", max_age=14 * 86400)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=str(HERE / "templates"))
-    templates.env.globals["asset_v"] = int((HERE / "static" / "style.css").stat().st_mtime)    # сброс кэша стилей при обновлении
+    templates.env.globals["asset_v"] = max((HERE / "static" / name).stat().st_mtime_ns for name in ("style.css", "redsun.css", "motion.js", "model-controls.js", "loads3d.js", "viewer3d.js", "structure3d.js", "studio.js", "model-runtime.js", "model-loader.js", "model-inspector.js"))    # сброс кэша стилей при обновлении
     templates.env.filters["rub"] = lambda n: f"{int(n):,}".replace(",", "\u00a0")       # 12000 -> 12 000
     templates.env.globals["min_unit"] = min((p // n for n, p in st.packs.items()), default=0)    # самая низкая цена генерации в пакетах
     limiter = LoginLimiter()
@@ -796,7 +796,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             p = gen_dir(g.id) / "structure.json" if g else None
             if not u or not g or not p.exists():
                 return HTMLResponse("Не найдено", status_code=404)
-            return FileResponse(p, media_type="application/json")
+            from .preview_cache import cache_headers
+            headers = cache_headers(p)
+            if request.headers.get("if-none-match") == headers["ETag"]:
+                return Response(status_code=304, headers=headers)
+            return FileResponse(p, media_type="application/json", headers=headers)
 
     @app.get("/g/{gid}/viewer.json")
     def viewer_json(request: Request, gid: int):
@@ -814,7 +818,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     p.write_text(json.dumps(viewer_data(res), separators=(",", ":")), encoding="utf-8")
                 except Exception:   # noqa: BLE001
                     return HTMLResponse("Не найдено", status_code=404)
-            return FileResponse(p, media_type="application/json")
+            from .preview_cache import cache_headers
+            headers = cache_headers(p)
+            if request.headers.get("if-none-match") == headers["ETag"]:
+                return Response(status_code=304, headers=headers)
+            return FileResponse(p, media_type="application/json", headers=headers)
 
     @app.get("/g/{gid}/img/{name}")
     def preview_img(request: Request, gid: int, name: str):
@@ -823,7 +831,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not u or not g or not re.fullmatch(r"prev_points\.png|prev_surface\.png|prev_unfold\.png|dent\d{1,3}\.png", name):
                 return HTMLResponse("Не найдено", status_code=404)
             p = gen_dir(g.id) / "preview" / name
-            return FileResponse(p) if p.exists() else HTMLResponse("Не найдено", status_code=404)
+            if not p.exists():
+                return HTMLResponse("Не найдено", status_code=404)
+            from .preview_cache import cache_headers
+            headers = cache_headers(p)
+            if request.headers.get("if-none-match") == headers["ETag"]:
+                return Response(status_code=304, headers=headers)
+            return FileResponse(p, headers=headers)
 
     @app.get("/g/{gid}/all.zip")
     def download_zip(request: Request, gid: int):
