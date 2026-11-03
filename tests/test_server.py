@@ -337,7 +337,7 @@ def test_report_data_required_and_passed_to_package(site):
     page = c.get(gen).text
     assert 'id="report-form"' in page and "Шаг 3: данные для отчёта" in page and 'name="r_roof_radius" value="3420' in page    # радиус крыши из подъёма
     r = c.post(gen + "/pay", data={"csrf": csrf_of(c, gen)}, follow_redirects=False)
-    assert r.headers["location"].endswith("#report") and "проверка пройдена" in c.get(gen).text           # без данных не запускается
+    assert r.headers["location"].endswith("#report") and "замеры приняты" in c.get(gen).text           # без данных не запускается
     r = _report_data(c, gen, steel_yield_mpa="abc")
     assert "report_error=" in r.headers["location"]
     r = _report_data(c, gen, steel_yield_mpa="500", steel_ultimate_mpa="480")
