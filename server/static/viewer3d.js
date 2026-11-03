@@ -1,6 +1,7 @@
 // Интерактивный 3D-просмотр стенки резервуара: вращение мышью, колесо - масштаб, правая кнопка - сдвиг.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
+import { modelControls } from "./model-controls.js";
 
 const root = document.getElementById("viewer");
 if (root) start(root).catch(function (e) { var m = "3D-просмотр не запустился: " + e.message; root.querySelector("#v-info").textContent = m; var d = document.createElement("div"); d.className = "viewer-fail"; d.textContent = m + ". Обновите страницу (Ctrl+F5); если не помогло - включите аппаратное ускорение/WebGL в браузере."; root.insertBefore(d, root.firstChild); root.classList.add("failed"); });
@@ -32,8 +33,9 @@ async function start(box) {
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, H / 2);
   controls.enableDamping = true;
-  controls.enableZoom = false;                       // колесо прокручивает страницу; масштаб - ползунком
+  controls.enableZoom = true;                       // колесо и жест двумя пальцами меняют масштаб
   controls.update();
+  const interaction = modelControls(controls, canvas, camera, { scope: box });
   scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 1.1));
   const sun = new THREE.DirectionalLight(0xffffff, 1.1);
   sun.position.set(R * 2, -R, H * 2);
@@ -110,6 +112,11 @@ async function start(box) {
   ampInput.addEventListener("input", rebuild);
   const zoomInput = box.querySelector("#v-zoom"), zoomLabel = box.querySelector("#v-zoom-l");
   const homeDist = home.distanceTo(controls.target);
+  controls.minDistance = Math.max(R, H / 2) * 1.1; controls.maxDistance = homeDist * 5;
+  controls.addEventListener('change', () => {
+    const percent = Math.round(homeDist / camera.position.distanceTo(controls.target) * 100);
+    zoomInput.value = percent; zoomLabel.textContent = percent + '%';
+  });
   function setZoom() {                                // 100% = исходный вид; больше - ближе
     const k = Number(zoomInput.value) / 100, dir = camera.position.clone().sub(controls.target).normalize();
     camera.position.copy(controls.target).addScaledVector(dir, homeDist / k);
@@ -145,7 +152,7 @@ async function start(box) {
   }
   new ResizeObserver(resize).observe(canvas);
   resize();
-  renderer.setAnimationLoop(function () { controls.update(); renderer.render(scene, camera); });
+  renderer.setAnimationLoop(function () { if (interaction.update()) renderer.render(scene, camera); });
   box.classList.add("ready");
 }
 

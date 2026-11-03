@@ -229,9 +229,9 @@ main:has(.studio){max-width:min(1900px,97vw);padding-left:clamp(12px,1.6vw,28px)
 .st-side{max-height:calc(100vh - 160px)}
 .tablewrap{max-height:calc(100vh - 330px);min-height:260px}
 /* колонка «t, мм» всегда на виду: прижата к правому краю таблицы */
-.st-grid th:last-child,.st-grid td:last-child{position:sticky;right:0;background:var(--card2);z-index:2;box-shadow:-8px 0 12px -8px rgba(0,0,0,.6);min-width:76px}
-.st-grid th:last-child{z-index:3;color:var(--accent)}
-.st-grid td:last-child input{width:70px;font-weight:600}
+.st-grid#grid th:last-child,.st-grid#grid td:last-child{position:sticky;right:0;background:var(--card2);z-index:2;box-shadow:-8px 0 12px -8px rgba(0,0,0,.6);min-width:76px}
+.st-grid#grid th:last-child{z-index:3;color:var(--accent)}
+.st-grid#grid td:last-child input{width:70px;font-weight:600}
 /* главная кнопка выбора файла */
 .filebtn.primary{background:var(--accent);border-color:var(--accent);color:#14110a!important;font-weight:700;font-size:16px;padding:13px 30px;box-shadow:0 6px 22px -8px rgba(255,183,27,.7)}
 .filebtn.primary:hover{background:#ffc43d;border-color:#ffc43d;transform:translateY(-1px)}

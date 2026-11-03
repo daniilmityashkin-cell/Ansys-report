@@ -72,7 +72,7 @@ tick();setInterval(tick,5000);})();</script>
 <textarea name="l_equipment" style="min-height:90px" placeholder="Люк-лаз 600; 2; 170; 1&#10;Площадка на крыше; 1; 4297; крыша">{{ lf.l_equipment }}</textarea>
 <p><button class="btn">Сохранить нагрузки</button></p></form></div>
 </div><div class="l3col"><div class="card" id="loads3d" data-src="/g/{{ g.id }}/loads3d.json"{% if g.status == 'draft' %} data-form="loads-form"{% endif %}><h2>Нагрузки на модели</h2>
-<p class="sub">Так нагрузки ложатся на резервуар в каждом расчётном случае отчёта.{% if g.status == 'draft' %} Меняйте значения слева: картина обновляется сразу, до сохранения.{% endif %}</p>
+<p class="sub">Выберите расчётный случай: цвет показывает давление на стенку, крышу и днище, стрелки — его направление.{% if g.status == 'draft' %} Меняйте значения слева: картина обновляется сразу, до сохранения.{% endif %}</p>
 <div class="dent-tabs" id="l3-tabs"></div>
 <div class="viewer l3view"><canvas></canvas></div>
 <div class="vlegend"><span id="l3-min"></span><i class="vgrad l3grad"></i><span id="l3-max"></span></div>
@@ -87,7 +87,7 @@ tick();setInterval(tick,5000);})();</script>
 <div><label>{{ f[1] }}{% if f[4] %} <b class="req" title="обязательно">*</b>{% endif %}</label><input type="text" name="r_{{ f[0] }}" value="{{ rf.get(f[0], '') }}"{% if f[6] %} placeholder="{{ f[6] }}"{% endif %}{% if f[4] %} data-req="1"{% endif %}></div>{% endfor %}</div>{% endfor %}
 <p class="muted">Пример заполнения — серые подсказки в полях (эталонный отчёт ТО-019-26). Поля со звёздочкой обязательны.</p>
 <p><button class="btn">Сохранить данные для отчёта</button></p></form></div>{% endif %}{% elif has_loads %}<div class="card" id="loads3d" data-src="/g/{{ g.id }}/loads3d.json"{% if g.status == 'draft' %} data-form="loads-form"{% endif %}><h2>Нагрузки на модели</h2>
-<p class="sub">Так нагрузки ложатся на резервуар в каждом расчётном случае отчёта.{% if g.status == 'draft' %} Меняйте значения слева: картина обновляется сразу, до сохранения.{% endif %}</p>
+<p class="sub">Выберите расчётный случай: цвет показывает давление на стенку, крышу и днище, стрелки — его направление.{% if g.status == 'draft' %} Меняйте значения слева: картина обновляется сразу, до сохранения.{% endif %}</p>
 <div class="dent-tabs" id="l3-tabs"></div>
 <div class="viewer l3view"><canvas></canvas></div>
 <div class="vlegend"><span id="l3-min"></span><i class="vgrad l3grad"></i><span id="l3-max"></span></div>
@@ -118,10 +118,10 @@ tick();setInterval(tick,5000);})();</script>
 <div class="grid">{% for d in summary.dents %}<div><h3>{{ loop.index }}. {{ d.name }}</h3><p class="sub">P{{ d.id }}: s = {{ d.s_m }} м · φ = {{ d.angle }}° · Z = {{ d.z_m }} м · {{ d.sign }} {{ d.depth_mm }} мм · {{ d.n_points }} точек · {{ d.width_m }}×{{ d.height_m }} м</p><img class="pv" src="/g/{{ g.id }}/img/dent{{ d.id }}.png" alt="{{ d.name }}" onerror="var i=this;if((i._n=(i._n||0)+1)<40)setTimeout(function(){i.src=i.src.split('?')[0]+'?t='+Date.now()},2500)"></div>{% endfor %}</div>{% endif %}
 <h2 style="margin-top:18px">Разбиение стенки по толщине</h2><table><tr><th>Высота, м</th><th>Толщина, мм</th></tr>{% for gr in summary.groups %}<tr><td>{{ gr.bottom_m }}–{{ gr.top_m }}</td><td>{{ gr.thickness_mm }}</td></tr>{% endfor %}</table></div>
 {% if summary.belts %}<div class="card"><h2>Оценка замеров по допускам (ГОСТ 31385-2016)</h2><p class="sub">Для каждого пояса: допуск H/200 и расширенный H/200 + 30 мм от высоты пояса, наибольшее по модулю отклонение и число точек за допуском.</p>
-<table><tr><th>Пояс</th><th>Высота, м</th><th>Толщина, мм</th><th>H/200, мм</th><th>H/200+30, мм</th><th>Макс. |Δ|, мм</th><th>Образующая</th><th>Выше H/200</th><th>Выше H/200+30</th></tr>
-{% for b in summary.belts %}<tr><td>{{ b.belt }}</td><td>{{ b.z_m }}</td><td>{{ summary.thickness_belts[loop.index0] if summary.thickness_belts else '' }}</td><td>{{ b.lim_a }}</td><td>{{ b.lim_b }}</td><td{% if b.max_abs > b.lim_b %} class="bad"{% elif b.max_abs > b.lim_a %} class="warn"{% endif %}>{{ b.max_abs }}</td><td>{{ b.max_gen }}</td><td>{{ b.over_a }} из {{ b.n }}</td><td>{{ b.over_b }} из {{ b.n }}</td></tr>{% endfor %}</table>
-{% if summary.worst %}<h2 style="margin-top:18px">Точки с наибольшим превышением допуска H/200</h2><table><tr><th>Пояс</th><th>Образующая</th><th>Угол, °</th><th>Высота, м</th><th>Δ, мм</th><th>Допуск, мм</th><th>|Δ| / допуск</th></tr>
-{% for w in summary.worst %}<tr><td>{{ w.belt }}</td><td>{{ w.gen }}</td><td>{{ w.angle }}</td><td>{{ w.z_m }}</td><td>{{ w.dev }}</td><td>{{ w.lim_a }}</td><td>{{ w.ratio }}</td></tr>{% endfor %}</table>{% endif %}</div>{% endif %}
+<div class="table-scroll" tabindex="0" role="region" aria-label="Таблица результатов, прокрутка по горизонтали"><table><tr><th>Пояс</th><th>Высота, м</th><th>Толщина, мм</th><th>H/200, мм</th><th>H/200+30, мм</th><th>Макс. |Δ|, мм</th><th>Образующая</th><th>Выше H/200</th><th>Выше H/200+30</th></tr>
+{% for b in summary.belts %}<tr><td>{{ b.belt }}</td><td>{{ b.z_m }}</td><td>{{ summary.thickness_belts[loop.index0] if summary.thickness_belts else '' }}</td><td>{{ b.lim_a }}</td><td>{{ b.lim_b }}</td><td{% if b.max_abs > b.lim_b %} class="bad"{% elif b.max_abs > b.lim_a %} class="warn"{% endif %}>{{ b.max_abs }}</td><td>{{ b.max_gen }}</td><td>{{ b.over_a }} из {{ b.n }}</td><td>{{ b.over_b }} из {{ b.n }}</td></tr>{% endfor %}</table></div>
+{% if summary.worst %}<h2 style="margin-top:18px">Точки с наибольшим превышением допуска H/200</h2><div class="table-scroll" tabindex="0" role="region" aria-label="Таблица результатов, прокрутка по горизонтали"><table><tr><th>Пояс</th><th>Образующая</th><th>Угол, °</th><th>Высота, м</th><th>Δ, мм</th><th>Допуск, мм</th><th>|Δ| / допуск</th></tr>
+{% for w in summary.worst %}<tr><td>{{ w.belt }}</td><td>{{ w.gen }}</td><td>{{ w.angle }}</td><td>{{ w.z_m }}</td><td>{{ w.dev }}</td><td>{{ w.lim_a }}</td><td>{{ w.ratio }}</td></tr>{% endfor %}</table></div>{% endif %}</div>{% endif %}
 {% else %}{% endif %}
 {% if loads_view %}{% if loads_view.error %}<div class="err">Нагрузки не рассчитаны: {{ loads_view.error }}</div>{% else %}{% set L = loads_view.loads %}{% set I = loads_view.inputs %}
 <div class="card"><h2>Нагрузки на резервуар</h2><p class="sub">Расчёт по методике ГОСТ 31385-2016 и СП 20.13330. Здесь значения без коэффициентов; расчётные сочетания войдут в пакет для Ansys.</p>

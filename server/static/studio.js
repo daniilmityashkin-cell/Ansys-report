@@ -1,6 +1,7 @@
 // Студия геометрии: пошаговый ввод замеров → восстановленная стенка → конструкция → нагрузки → страница расчёта.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
+import { modelControls } from "./model-controls.js";
 
 const root = document.getElementById("studio");
 const $ = (id) => document.getElementById(id);
@@ -173,10 +174,18 @@ document.addEventListener("paste", (e) => {                   // Ctrl+V в се�
 function loadProject(p) {
   S.raw = p;
   S.D = num(p.diameter); S.H = num(p.height);
-  S.angles = (p.angles || []).map(Number); S.heights = (p.heights || []).map(Number);
-  S.values = (p.values || []).map((r) => r.map(Number));
+  S.angles = (p.angles || []).map(v => num(v)); S.heights = (p.heights || []).map(v => num(v));
+  S.values = (p.values || []).map((r) => r.map(v => num(v)));
   S.thick = (p.bands || []).map((b) => thickOf(b[1]));
-  S.defects = p.defects || [];
+  S.defects = (p.defects || []).map(d => {
+    const result = { ...d };
+    for (const key of ['anchor', 'height', 'width', 'span_height']) result[key] = num(d[key]);
+    if ((d.mode || 'Дуга, м') === 'Дуга, м') result.anchor = result.anchor / (S.D / 2) * 180 / Math.PI;
+    result.mode = 'Угол, град';
+    result.x = (d.x || []).map(v => num(v)); result.y = (d.y || []).map(v => num(v));
+    result.values = (d.values || []).map(row => row.map(v => num(v)));
+    return result;
+  });
   $("p-D").value = S.D; $("p-H").value = S.H; $("p-ng").value = S.angles.length; $("p-nz").value = S.heights.length - 1;
   const ex = p.export_selection;                              // что входит в модель — видимость на шаге 5
   if (ex) { $("v-nozzles").checked = ex.nozzles !== false; }
@@ -249,6 +258,7 @@ $("b-ideal").onclick = () => { loaded = true; say("Идеальный резер
 
 /* ---------- шаг 2: профили образующих ---------- */
 function drawProfiles() {
+  $("profiles").style.setProperty("--profile-columns", Math.ceil(S.angles.length / Math.max(1, Math.ceil(S.angles.length / 9))));
   const box = $("profiles"); box.innerHTML = "";
   let mx = 1; S.values.forEach((r) => r.forEach((v) => { mx = Math.max(mx, Math.abs(v)); }));
   const nz = S.heights.length;
@@ -341,9 +351,10 @@ function makeView(id, target, cam) {
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 2000); camera.up.set(0, 0, 1);
   const controls = new OrbitControls(camera, canvas); controls.enableDamping = true;
   scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 1.1)); const sun = new THREE.DirectionalLight(0xffffff, 1.0); sun.position.set(1, -1, 2); scene.add(sun);
-  const v = { id, canvas, renderer, scene, camera, controls, group: new THREE.Group(), home: null };
+  const interaction = modelControls(controls, canvas, camera);
+  const v = { interaction, id, canvas, renderer, scene, camera, controls, group: new THREE.Group(), home: null };
   scene.add(v.group);
-  v.setHome = (t, c) => { v.home = { t, c }; camera.position.set(...c); controls.target.set(...t); controls.update(); };
+  v.setHome = (t, c) => { const r = Math.hypot(...c.map((x, i) => x - t[i])); controls.minDistance = r * .15; controls.maxDistance = r * 5; v.home = { t, c }; camera.position.set(...c); controls.target.set(...t); controls.update(); };
   v.setHome(target, cam);
   v.clear = () => { while (v.group.children.length) { const o = v.group.children.pop(); o.traverse && o.traverse((m) => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); }); } };
   views[id] = v; return v;
@@ -354,7 +365,7 @@ function loop() {
     const v = views[k]; if (!v.canvas.offsetParent) continue;
     const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
     if (v.canvas.width !== Math.round(w * v.renderer.getPixelRatio()) || v.canvas.height !== Math.round(h * v.renderer.getPixelRatio())) { v.renderer.setSize(w, h, false); v.camera.aspect = w / h; v.camera.updateProjectionMatrix(); }
-    v.controls.update(); v.renderer.render(v.scene, v.camera);
+    if (v.interaction.update()) v.renderer.render(v.scene, v.camera);
   }
 }
 loop();
