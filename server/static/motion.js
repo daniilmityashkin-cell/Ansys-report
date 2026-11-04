@@ -91,3 +91,22 @@
   }
   desktop.addEventListener('change',sync);sync();
 })();
+
+// Lower-page decoration is loaded only as the visitor reaches the content below the hero.
+(() => {
+  const hero=document.querySelector('.solar-hero'),entry=document.querySelector('.format-strip');
+  if(!hero||!entry)return;
+  const desktop=matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
+  let dispose=null,observer=null,version=0;
+  function sync(){
+    const current=++version;observer?.disconnect();dispose?.();dispose=null;
+    if(!desktop.matches)return;
+    async function load(){
+      observer?.disconnect();
+      try{const module=await import('./industry-particles.js');if(current===version&&desktop.matches)dispose=module.mountIndustryParticles(hero);}catch(error){/* Decorative fallback: keep the existing page background. */}
+    }
+    if(!('IntersectionObserver' in window)){load();return;}
+    observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting))load();},{rootMargin:'200px'});observer.observe(entry);
+  }
+  desktop.addEventListener('change',sync);sync();
+})();

@@ -54,3 +54,10 @@ main:has(.studio){max-width:1600px;padding-inline:24px}.st-head{padding-bottom:1
   .particles-ready .solar-orbit,.particles-ready .solar-core,.particles-ready .orbit-dot{display:none}
   .particles-ready .solar-halo{opacity:.35;animation:none;background:radial-gradient(ellipse,#b4c7e514,transparent 64%);height:300px;top:0}
 }
+
+.solar-hero>p:not(.hero-tagline){margin-bottom:6px}
+.solar-hero>.hero-tagline{margin-top:0;margin-bottom:26px}
+.industry-particles{display:none}
+@media(min-width:1024px) and (hover:hover) and (pointer:fine){
+  .industry-particles{display:block;position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.6}
+}
